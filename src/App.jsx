@@ -6,8 +6,7 @@ import Dashboard from "./views/Dashboard";
 import GoldRate from "./views/GoldRate";
 import Customers from "./views/Customers";
 import Schemes from "./views/Schemes";
-import Enrollments from "./views/Enrollments";
-import Collections from "./views/Collections";
+import SchemeManagement from "./views/SchemeManagement";
 import Payments from "./views/Payments";
 import CatalogueStudio from "./views/CatalogueStudio";
 import PromotionBanners from "./views/PromotionBanners";
@@ -30,8 +29,7 @@ const PAGES = {
   "gold-rate": { title: "Gold Rate", crumb: "Overview", component: GoldRate, action: "Publish update" },
   customers: { title: "Customers", crumb: "People", component: Customers },
   schemes: { title: "Schemes", crumb: "Schemes", component: Schemes },
-  enrollments: { title: "Enrollments", crumb: "Schemes", component: Enrollments },
-  collections: { title: "Collections", crumb: "Schemes", component: Collections },
+  "scheme-management": { title: "Scheme Management", crumb: "Schemes", component: SchemeManagement },
   payments: { title: "Payments", crumb: "Billing", component: Payments },
   inventory: { title: "Inventory", crumb: "Billing", component: Inventory },
   "new-sale": { title: "New Sale", crumb: "Billing", component: NewSale },

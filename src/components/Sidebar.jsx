@@ -38,8 +38,7 @@ export const NAV_SECTIONS = [
     collapsible: true,
     items: [
       { id: "schemes", name: "Schemes", icon: <Icon d={<><circle cx="8" cy="8" r="5" /><circle cx="15" cy="12" r="3" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></>} /> },
-      { id: "enrollments", name: "Enrollments", icon: <Icon d={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="3" /><path d="M18 8a2.5 2.5 0 0 1 2.5 2.5V12" /><circle cx="18" cy="5" r="1.5" /></>} /> },
-      { id: "collections", name: "Collections", icon: <Icon d={<><circle cx="12" cy="6" r="4" /><path d="M12 10v4" /><path d="M8 14h8l-1 5H9l-1-5z" /></>} /> },
+      { id: "scheme-management", name: "Scheme Management", icon: <Icon d={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="3" /><path d="M18 8a2.5 2.5 0 0 1 2.5 2.5V12" /><circle cx="18" cy="5" r="1.5" /></>} /> },
     ],
   },
   {
