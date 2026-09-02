@@ -1,18 +1,58 @@
 # dependencies
-/node_modules
+node_modules/
+/.pnp
+.pnp.js
 
-# next.js
-/.next
-/dist
-/out
-next-env.d.ts
-tsconfig.tsbuildinfo
+# backend: generated/local files only (backend source IS tracked)
+Backend/venv/
+Backend/.env
+Backend/.env.local
+Backend/.pytest_cache/
+Backend/*.db
+Backend/qa-test-credentials.txt
+**/__pycache__/
+*.pyc
+*.pyo
+# LocalDiskStorageProvider's upload target (Module 20) — real uploaded/
+# rendered images from local dev testing, never meant to be versioned.
+# Supabase Storage is the real target once configured; this directory is
+# purely a local fallback (see app/services/storage_service.py).
+Backend/uploads/
 
-# env / secrets
+# logs
+*.log
+logs/
+
+# OS/editor backup & temp files
+*.bak
+*~
+*.tmp
+
+# next.js build output
+/.next/
+/out/
+/build
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
 .env
-.env.local
 .env*.local
 
-# misc
-*.log
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# IDE & OS files
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Claude Code local session/tooling state — machine-local, not project source
+.claude/

@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JROS — Interactive Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1C1428;
+    --ink-2:#2A1E3B;
+    --ink-soft:#4A3D5C;
+    --gold:#C79A2B;
+    --gold-light:#E8C766;
+    --gold-dim:#C79A2B33;
+    --cream:#FAF7F0;
+    --paper:#FFFFFF;
+    --slate:#2B2733;
+    --muted:#7A7288;
+    --line:#EAE3D3;
+    --success:#2F9E5B;
+    --success-bg:#E7F5EC;
+    --danger:#C24545;
+    --danger-bg:#FBEAEA;
+    --warn:#B8860B;
+    --warn-bg:#FBF2DC;
+    --radius:12px;
+    --font-display:'Poppins',sans-serif;
+    --font-body:'Inter',sans-serif;
+    --font-mono:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font-body);
+    background:#EDE7DA;
+    color:var(--slate);
+    min-height:100vh;
+  }
+
+  /* ---------- TOPBAR ---------- */
+  #topbar{
+    position:sticky;top:0;z-index:50;
+    background:linear-gradient(180deg,var(--ink) 0%, var(--ink-2) 100%);
+    color:#fff;
+    padding:12px 20px;
+    display:flex;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;gap:12px;
+    box-shadow:0 2px 12px rgba(0,0,0,.25);
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-mark{
+    width:34px;height:34px;border-radius:50%;
+    border:1.5px solid var(--gold);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-display);font-weight:700;color:var(--gold-light);
+    font-size:13px;flex-shrink:0;
+    background:radial-gradient(circle at 35% 30%, #3A2A55, #1C1428);
+  }
+  .brand-text .name{font-family:var(--font-display);font-weight:700;font-size:14px;color:#fff;}
+  .brand-text .sub{font-size:10.5px;color:var(--gold-light);letter-spacing:.4px;text-transform:uppercase;}
+  #app-switcher{display:flex;gap:6px;background:#00000030;padding:4px;border-radius:10px;}
+  .switch-btn{
+    font-family:var(--font-body);font-weight:600;font-size:12.5px;
+    color:#C9C0DB;background:transparent;border:none;
+    padding:8px 14px;border-radius:8px;cursor:pointer;
+    display:flex;align-items:center;gap:6px;
+    transition:background .15s,color .15s;
+    white-space:nowrap;
+  }
+  .switch-btn:hover{background:#ffffff14;color:#fff;}
+  .switch-btn.active{background:var(--gold);color:var(--ink);}
+
+  /* ---------- STAGE ---------- */
+  #stage{padding:28px 16px 60px;display:flex;justify-content:center;}
+  .app-stage{display:none;width:100%;max-width:1180px;}
+  .app-stage.active{display:block;}
+
+  /* ---------- PHONE FRAME (Customer App) ---------- */
+  .phone-wrap{display:flex;justify-content:center;gap:28px;flex-wrap:wrap;align-items:flex-start;}
+  .phone{
+    width:360px;height:740px;
+    background:var(--ink);
+    border-radius:40px;
+    border:10px solid #0d0a14;
+    box-shadow:0 30px 60px -20px rgba(0,0,0,.5), 0 0 0 1px #00000020;
+    position:relative;
+    overflow:hidden;
+    flex-shrink:0;
+  }
+  .phone-notch{
+    position:absolute;top:0;left:50%;transform:translateX(-50%);
+    width:130px;height:22px;background:#0d0a14;border-radius:0 0 16px 16px;
+    z-index:30;
+  }
+  .status-bar{
+    height:38px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 22px;font-size:12px;font-weight:600;color:#fff;
+    font-family:var(--font-body);
+  }
+  .status-bar.on-light{color:var(--ink);}
+  .screen{
+    height:calc(100% - 38px - 64px);
+    overflow-y:auto;
+    background:var(--cream);
+  }
+  .screen::-webkit-scrollbar{width:0;}
+  .screen.dark-bg{background:radial-gradient(ellipse at top, #241a37, #150f22 70%);}
+
+  .bottom-nav{
+    height:64px;background:#fff;border-top:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-around;
+    position:relative;z-index:20;
+  }
+  .nav-item{
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    font-size:9.5px;font-weight:600;color:var(--muted);
+    background:none;border:none;cursor:pointer;padding:4px 8px;
+    font-family:var(--font-body);
+  }
+  .nav-item .ic{font-size:19px;line-height:1;filter:grayscale(1);opacity:.55;}
+  .nav-item.active{color:var(--gold);}
+  .nav-item.active .ic{filter:none;opacity:1;}
+
+  /* ---------- typography helpers ---------- */
+  .disp{font-family:var(--font-display);}
+  h1,h2,h3{font-family:var(--font-display);margin:0;color:var(--ink);}
+  .pad{padding:18px 16px;}
+  .muted{color:var(--muted);}
+  .small{font-size:11.5px;}
+
+  /* ---------- Customer screens ---------- */
+  .splash-logo{
+    width:74px;height:74px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #4a3567, #1C1428);
+    border:1.5px solid var(--gold);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-display);font-weight:800;font-size:26px;color:var(--gold-light);
+    margin:0 auto 14px;
+  }
+  .brand-input{
+    width:100%;padding:13px 14px;border-radius:10px;border:1px solid #3a2e50;
+    background:#221733;color:#fff;font-family:var(--font-body);font-size:14px;margin-bottom:12px;
+  }
+  .brand-input::placeholder{color:#8b7fa3;}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:12px 18px;border-radius:10px;border:none;cursor:pointer;
+    font-family:var(--font-body);font-weight:600;font-size:13.5px;
+    transition:transform .1s, filter .15s;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn-primary{background:linear-gradient(135deg,var(--gold-light),var(--gold));color:var(--ink);width:100%;}
+  .btn-primary:hover{filter:brightness(1.05);}
+  .btn-secondary{background:transparent;border:1.4px solid var(--gold);color:var(--gold);width:100%;}
+  .btn-ghost{background:#ffffff14;color:#fff;border:1px solid #ffffff30;width:100%;}
+  .btn-block{width:100%;}
+  .btn-sm{padding:8px 12px;font-size:12px;}
+  .link-row{display:flex;align-items:center;gap:10px;margin:14px 0;}
+  .hr{flex:1;height:1px;background:#3a2e50;}
+
+  .card{
+    background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;margin-bottom:14px;
+  }
+  .card-dark{
+    background:linear-gradient(135deg,#2a1e3b,#1c1428);
+    border-radius:var(--radius);padding:18px;margin-bottom:14px;color:#fff;
+    position:relative;overflow:hidden;
+  }
+  .card-dark::after{
+    content:'';position:absolute;right:-30px;top:-30px;width:120px;height:120px;
+    border-radius:50%;background:radial-gradient(circle, #C79A2B22, transparent 70%);
+  }
+  .kicker{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;}
+  .row{display:flex;align-items:center;justify-content:space-between;}
+  .chip{
+    display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;
+    padding:3px 9px;border-radius:99px;
+  }
+  .chip-success{background:var(--success-bg);color:var(--success);}
+  .chip-danger{background:var(--danger-bg);color:var(--danger);}
+  .chip-warn{background:var(--warn-bg);color:var(--warn);}
+  .chip-gold{background:var(--gold-dim);color:#8a6a1c;}
+
+  .quick-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px;}
+  .qa-btn{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:12px 4px;display:flex;flex-direction:column;align-items:center;gap:6px;
+    cursor:pointer;font-size:10px;font-weight:600;color:var(--ink);
+    font-family:var(--font-body);
+  }
+  .qa-btn .ic{font-size:20px;}
+  .qa-btn:hover{border-color:var(--gold);}
+
+  .progress-ring-wrap{display:flex;justify-content:center;margin:10px 0 4px;}
+
+  .list-item{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 0;border-bottom:1px solid var(--line);
+  }
+  .list-item:last-child{border-bottom:none;}
+
+  .method-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:13px 14px;border:1.4px solid var(--line);border-radius:10px;margin-bottom:9px;
+    cursor:pointer;font-size:13px;font-weight:600;
+  }
+  .method-row.selected{border-color:var(--gold);background:var(--gold-dim);}
+  .method-row .radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted);flex-shrink:0;}
+  .method-row.selected .radio{border-color:var(--gold);background:radial-gradient(circle,var(--gold) 40%,transparent 44%);}
+
+  .product-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .product-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .product-img{
+    height:90px;background:linear-gradient(135deg,#f3e4bd,#e8c766 60%,#C79A2B);
+    display:flex;align-items:center;justify-content:center;font-size:28px;
+  }
+  .product-info{padding:9px 10px;}
+
+  .toast{
+    position:absolute;left:16px;right:16px;bottom:80px;z-index:40;
+    background:var(--ink);color:#fff;padding:12px 14px;border-radius:10px;
+    font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px;
+    box-shadow:0 10px 24px rgba(0,0,0,.3);
+    animation:toastIn .25s ease;
+  }
+  @keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+  .map-box{
+    height:170px;border-radius:12px;
+    background:
+      radial-gradient(circle at 30% 40%, #d8e8dc, transparent 60%),
+      radial-gradient(circle at 70% 65%, #dbe6f0, transparent 55%),
+      #eef2ea;
+    position:relative;border:1px solid var(--line);
+  }
+  .map-pin{
+    position:absolute;left:50%;top:45%;transform:translate(-50%,-100%);
+    font-size:26px;filter:drop-shadow(0 3px 4px rgba(0,0,0,.25));
+  }
+
+  .back-row{display:flex;align-items:center;gap:10px;margin-bottom:4px;}
+  .back-btn{
+    width:30px;height:30px;border-radius:50%;background:#fff;border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;flex-shrink:0;
+  }
+  .back-btn.on-dark{background:#ffffff1a;border-color:#ffffff30;color:#fff;}
+
+  /* ---------- Dashboard layout (Admin / Super Admin) ---------- */
+  .dash-shell{
+    display:grid;grid-template-columns:250px 1fr;
+    background:var(--cream);border-radius:16px;overflow:hidden;
+    box-shadow:0 20px 50px -25px rgba(0,0,0,.35);
+    min-height:640px;
+  }
+  .dash-sidebar{
+    background:linear-gradient(180deg,var(--ink) 0%, var(--ink-2) 100%);
+    color:#EDE7F5;padding:0 0 20px;
+  }
+  .dash-brand{
+    padding:22px 20px 16px;display:flex;align-items:center;gap:10px;
+    border-bottom:1px solid #3A2E4D;
+  }
+  .dash-nav-item{
+    display:flex;align-items:center;gap:10px;padding:10px 20px;
+    font-size:13px;font-weight:600;color:#C9C0DB;cursor:pointer;
+    border-left:3px solid transparent;
+  }
+  .dash-nav-item .ic{font-size:15px;width:18px;text-align:center;}
+  .dash-nav-item:hover{background:#2E2242;color:#fff;}
+  .dash-nav-item.active{background:#2E2242;color:#fff;border-left-color:var(--gold);}
+  .dash-nav-label{
+    font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8B7FA3;
+    padding:18px 20px 6px;font-weight:700;
+  }
+  .dash-main{padding:26px 28px;overflow:auto;}
+  .dash-topline{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;}
+
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+  .kpi-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;}
+  .kpi-val{font-family:var(--font-display);font-weight:700;font-size:22px;color:var(--ink);margin:4px 0 2px;}
+  .kpi-delta{font-size:11px;font-weight:700;}
+  .kpi-delta.up{color:var(--success);}
+  .kpi-delta.down{color:var(--danger);}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  thead th{
+    text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;
+    color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line);font-weight:700;
+  }
+  tbody td{padding:11px 12px;border-bottom:1px solid var(--line);color:var(--slate);}
+  tbody tr:hover{background:#faf7ee;cursor:pointer;}
+  .avatar{
+    width:26px;height:26px;border-radius:50%;background:var(--gold-dim);color:#8a6a1c;
+    display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;
+    margin-right:8px;
+  }
+
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+  .search-box{
+    flex:1;min-width:160px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;
+    background:#fff;font-size:12.5px;font-family:var(--font-body);
+  }
+  .select-box{padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:12.5px;}
+
+  .panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px;}
+  .panel-title{font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--ink);margin-bottom:12px;}
+
+  .chart-bars{display:flex;align-items:flex-end;gap:8px;height:130px;padding-top:10px;}
+  .bar{flex:1;background:linear-gradient(180deg,var(--gold-light),var(--gold));border-radius:4px 4px 0 0;position:relative;}
+  .bar-label{position:absolute;bottom:-18px;left:0;right:0;text-align:center;font-size:9.5px;color:var(--muted);}
+
+  .donut-wrap{display:flex;align-items:center;gap:18px;}
+  .legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:11.5px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;}
+  .field input[type=text], .field input[type=color], .field select{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-family:var(--font-body);font-size:13px;
+  }
+  .swatch-row{display:flex;gap:10px;align-items:center;}
+  .swatch{width:38px;height:38px;border-radius:8px;border:1px solid var(--line);cursor:pointer;}
+
+  .placeholder-panel{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:70px 20px;color:var(--muted);text-align:center;gap:8px;
+  }
+  .placeholder-panel .big{font-size:34px;}
+  .placeholder-panel b{color:var(--ink);font-family:var(--font-display);}
+
+  .modal-overlay{
+    position:fixed;inset:0;background:#00000066;z-index:100;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .modal-overlay.hidden{display:none;}
+  .modal{
+    background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;
+    box-shadow:0 30px 60px rgba(0,0,0,.3);
+  }
+  .modal h3{margin-bottom:14px;}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;}
+  .btn-outline{background:#fff;border:1px solid var(--line);color:var(--ink);padding:10px 16px;border-radius:9px;font-weight:600;font-size:13px;cursor:pointer;font-family:var(--font-body);}
+
+  .breadcrumb-note{font-size:11px;color:var(--muted);margin-bottom:14px;}
+
+  @media (max-width: 860px){
+    .dash-shell{grid-template-columns:1fr;}
+    .dash-sidebar{display:flex;overflow-x:auto;padding:10px;gap:4px;}
+    .dash-brand{display:none;}
+    .dash-nav-item{border-left:none;border-bottom:3px solid transparent;white-space:nowrap;}
+    .dash-nav-item.active{border-left-color:transparent;border-bottom-color:var(--gold);}
+    .kpi-grid{grid-template-columns:1fr 1fr;}
+    .phone-wrap{gap:16px;}
+  }
+
+  /* ---------- App Header (Customer App, in-screen) ---------- */
+  .app-header{
+    position:sticky;top:0;z-index:15;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;background:var(--cream);border-bottom:1px solid var(--line);
+  }
+  .ah-left{display:flex;align-items:center;gap:8px;}
+  .ah-logo{
+    width:26px;height:26px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #3A2A55, #1C1428);
+    border:1px solid var(--gold);display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-display);font-weight:700;font-size:10px;color:var(--gold-light);
+  }
+  .ah-brand{font-family:var(--font-display);font-weight:700;font-size:12.5px;color:var(--ink);}
+  .ah-right{display:flex;align-items:center;gap:10px;}
+  .ah-icon-btn{
+    position:relative;width:32px;height:32px;border-radius:50%;background:#fff;border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;
+  }
+  .ah-icon-btn .dot{
+    position:absolute;top:5px;right:6px;width:7px;height:7px;border-radius:50%;
+    background:var(--danger);border:1.5px solid var(--cream);
+  }
+  .ah-avatar{
+    width:30px;height:30px;border-radius:50%;background:var(--gold-dim);color:#8a6a1c;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;cursor:pointer;
+  }
+
+  /* ---------- Bottom nav badge ---------- */
+  .nav-item{position:relative;}
+  .nav-badge{
+    position:absolute;top:2px;right:16px;width:7px;height:7px;border-radius:50%;
+    background:var(--danger);border:1.5px solid #fff;
+  }
+
+  /* ---------- Welcome / Auth screens ---------- */
+  .welcome-art{
+    height:190px;border-radius:16px;margin-bottom:22px;
+    background:radial-gradient(circle at 30% 30%, #3A2A55, #1C1428 70%);
+    display:flex;align-items:center;justify-content:center;font-size:52px;
+    border:1px solid #3a2e50;
+  }
+  .auth-tab-row{display:flex;gap:8px;margin-bottom:18px;}
+  .auth-tab{
+    flex:1;text-align:center;padding:9px;border-radius:9px;font-size:12px;font-weight:700;
+    background:#221733;color:#8b7fa3;cursor:pointer;border:1px solid #3a2e50;
+  }
+  .auth-tab.active{background:var(--gold);color:var(--ink);border-color:var(--gold);}
+  .field-dark label{display:block;font-size:11px;font-weight:700;color:#B7ACC9;margin-bottom:6px;}
+  .field-dark{margin-bottom:12px;}
+  .check-row{display:flex;align-items:flex-start;gap:8px;margin:6px 0 18px;}
+  .check-row input{margin-top:2px;}
+  .check-row span{font-size:11px;color:#B7ACC9;line-height:1.5;}
+
+  /* ---------- OTP boxes ---------- */
+  .otp-row{display:flex;gap:8px;justify-content:center;margin:22px 0 8px;}
+  .otp-box{
+    width:42px;height:52px;border-radius:10px;border:1.4px solid #3a2e50;background:#221733;
+    color:#fff;font-size:20px;text-align:center;font-family:var(--font-mono);font-weight:600;
+  }
+  .otp-box:focus{border-color:var(--gold);outline:none;}
+
+  /* ---------- Ad Carousel ---------- */
+  .ad-carousel{position:relative;border-radius:14px;overflow:hidden;margin-bottom:16px;height:88px;}
+  .ad-slide{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;opacity:0;transition:opacity .5s ease;color:#fff;cursor:pointer;
+  }
+  .ad-slide.show{opacity:1;}
+  .ad-dots{position:absolute;bottom:8px;left:0;right:0;display:flex;gap:5px;justify-content:center;}
+  .ad-dot{width:6px;height:6px;border-radius:50%;background:#ffffff55;cursor:pointer;}
+  .ad-dot.active{background:#fff;width:16px;border-radius:4px;}
+
+  /* ---------- Live rates ---------- */
+  .rate-ticker{
+    display:flex;justify-content:space-between;background:#fff;border:1px solid var(--line);
+    border-radius:12px;padding:11px 14px;margin-bottom:14px;cursor:pointer;
+  }
+  .rate-ticker-item{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;}
+  .rates-split{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .rate-panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .rate-panel .metal-ic{font-size:22px;}
+  .rate-panel .big-price{font-family:var(--font-display);font-weight:700;font-size:17px;margin:6px 0 2px;}
+  .rate-mini-bars{display:flex;align-items:flex-end;gap:3px;height:34px;margin:10px 0 2px;}
+  .rate-mini-bars .b{flex:1;background:var(--gold-dim);border-radius:2px 2px 0 0;}
+  .rate-panel.silver .rate-mini-bars .b{background:#E4E7EB;}
+  .rate-panel.silver .big-price{color:#6B7280;}
+  .rate-row{display:flex;justify-content:space-between;padding:6px 0;border-top:1px dashed var(--line);font-size:11px;}
+
+  /* ---------- Dashboard footer ---------- */
+  .dash-footer{
+    margin-top:24px;padding-top:14px;border-top:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
+    font-size:11px;color:var(--muted);
+  }
+  .dash-footer a{color:var(--ink-soft);text-decoration:none;margin-left:14px;font-weight:600;}
+  .dash-footer a:hover{color:var(--gold);}
+
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="brand">
+    <div class="brand-mark">JR</div>
+    <div class="brand-text">
+      <div class="name">JROS Prototype</div>
+      <div class="sub">Click through every screen</div>
+    </div>
+  </div>
+  <div id="app-switcher">
+    <button class="switch-btn active" data-app="customer" onclick="switchApp('customer')">📱 Customer App</button>
+    <button class="switch-btn" data-app="admin" onclick="switchApp('admin')">🏬 Jeweller Admin</button>
+    <button class="switch-btn" data-app="superadmin" onclick="switchApp('superadmin')">🛡️ Super Admin</button>
+  </div>
+</div>
+
+<div id="stage">
+
+  <!-- ============ CUSTOMER APP ============ -->
+  <div id="stage-customer" class="app-stage active">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div id="cust-status" class="status-bar">
+          <span>9:41</span><span>●●● JROS ▮▮▮</span>
+        </div>
+        <div id="cust-screen" class="screen"></div>
+        <div id="cust-bottomnav" class="bottom-nav"></div>
+      </div>
+      <div style="max-width:320px;padding-top:10px;">
+        <h2 style="font-size:16px;">Customer Mobile App</h2>
+        <p class="muted small" style="line-height:1.6;">All 8 screens from Chapter 8 of the Product Bible (SCR-CUST-01 … 08). Tap through: Splash → Login → Home → Scheme Details → Pay Installment → Digital Passbook, or use the bottom nav for Catalogue and Branch Locator.</p>
+        <p class="muted small" style="line-height:1.6;">This is a click-through prototype — payment is simulated, no real money moves.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ JEWELLER ADMIN ============ -->
+  <div id="stage-admin" class="app-stage">
+    <div class="dash-shell">
+      <div class="dash-sidebar">
+        <div class="dash-brand">
+          <div class="brand-mark">JR</div>
+          <div class="brand-text"><div class="name">Gold Palace</div><div class="sub" style="color:#8B7FA3;">Jeweller Admin</div></div>
+        </div>
+        <div id="admin-nav"></div>
+      </div>
+      <div id="admin-main" class="dash-main"></div>
+    </div>
+  </div>
+
+  <!-- ============ SUPER ADMIN ============ -->
+  <div id="stage-superadmin" class="app-stage">
+    <div class="dash-shell">
+      <div class="dash-sidebar">
+        <div class="dash-brand">
+          <div class="brand-mark">JR</div>
+          <div class="brand-text"><div class="name">JROS</div><div class="sub" style="color:#8B7FA3;">Super Admin</div></div>
+        </div>
+        <div id="sa-nav"></div>
+      </div>
+      <div id="sa-main" class="dash-main"></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="modal-root"></div>
+
+<script>
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  app: 'customer',
+  custScreen: 'splash',
+  selectedScheme: null,
+  paymentMethod: 'upi',
+  authMode: 'login',
+  adIndex: 0,
+  admScreen: 'dashboard',
+  admSelectedCustomer: null,
+  saScreen: 'dashboard',
+  brandColor: '#C79A2B',
+  brandName: 'Gold Palace Jewellers',
+};
+
+let adTimer = null;
+
+const AD_SLIDES = [
+  {ic:'🎁', title:'Festival Offer', sub:'Flat 5% Bonus on New Schemes', bg:'linear-gradient(135deg,#3a1f52,#231436)', go:'schemes'},
+  {ic:'👥', title:'Refer & Earn ₹500', sub:'Invite friends, both of you earn gold', bg:'linear-gradient(135deg,#5a3a10,#2e2008)', go:'refer'},
+  {ic:'🥈', title:'New: Silver Savings', sub:'Start a Silver scheme from ₹300/month', bg:'linear-gradient(135deg,#3a3f4a,#1c1f26)', go:'schemes'},
+];
+
+const GOLD_RATES = {price:9820, change:1.25, up:true, k24:9820, k22:9003, k18:7365, hist:[38,44,40,55,49,62,58]};
+const SILVER_RATES = {price:118, change:-0.4, up:false, p999:118, p925:109, hist:[50,46,52,44,48,42,40]};
+
+/* ============================================================
+   MOCK DATA (sourced from the Product Bible mock figures)
+   ============================================================ */
+const SCHEMES = [
+  {id:'monthly', name:'Monthly Gold Plan', type:'Monthly', tenure:'36 Months', min:'₹1,000', bonus:'8%', status:'Active'},
+  {id:'flexible', name:'Flexible Gold Plan', type:'Flexible', tenure:'12 Months', min:'₹500', bonus:'—', status:'Active'},
+  {id:'wedding', name:'Wedding Gold Plan', type:'Monthly', tenure:'24 Months', min:'₹2,000', bonus:'10%', status:'Active'},
+  {id:'kids', name:'Kids Gold Plan', type:'Monthly', tenure:'60 Months', min:'₹1,000', bonus:'15% Bonus', status:'Active'},
+  {id:'festival', name:'Festival Special Plan', type:'Monthly', tenure:'36 Months', min:'₹1,500', bonus:'5% Bonus', status:'Inactive'},
+];
+
+const CUSTOMERS = [
+  {name:'Ramesh Kumar', phone:'98765 43210', scheme:'Monthly Gold Plan', status:'Active', outstanding:'₹10,000'},
+  {name:'Sangeetha R',  phone:'98765 43211', scheme:'Flexible Gold Plan', status:'Active', outstanding:'₹5,000'},
+  {name:'Arun Prakash', phone:'98765 43212', scheme:'Wedding Gold Plan', status:'Active', outstanding:'₹15,000'},
+  {name:'Priya Nair',   phone:'98765 43213', scheme:'Monthly Gold Plan', status:'Overdue', outstanding:'₹8,000'},
+  {name:'Vikram Singh', phone:'98765 43214', scheme:'Kids Gold Plan', status:'Active', outstanding:'₹5,000'},
+];
+
+const PASSBOOK = [
+  {date:'25 Jun 2025', amount:'₹10,000', weight:'1.052 g', status:'Payment Successful'},
+  {date:'25 May 2025', amount:'₹10,000', weight:'1.049 g', status:'Payment Successful'},
+  {date:'25 Apr 2025', amount:'₹10,000', weight:'1.045 g', status:'Payment Successful'},
+  {date:'25 Mar 2025', amount:'₹10,000', weight:'1.038 g', status:'Payment Successful'},
+];
+
+const PRODUCTS = [
+  {name:'Gold Necklace', wt:'22.05 g', price:'₹1,88,450', ic:'📿'},
+  {name:'Floral Necklace', wt:'18.67 g', price:'₹1,56,230', ic:'💐'},
+  {name:'Gold Bangles', wt:'14.20 g', price:'₹1,12,900', ic:'⭕'},
+  {name:'Diamond Ring', wt:'4.10 g', price:'₹64,500', ic:'💍'},
+];
+
+const TENANTS = [
+  {name:'Gold Palace Jewellers', city:'Chennai', contact:'98765 00001', plan:'Business', status:'Active', due:'05 Aug 2025'},
+  {name:'Sri Krishna Jewellers', city:'Chennai', contact:'98765 00002', plan:'Professional', status:'Active', due:'20 Aug 2025'},
+  {name:'Maha Lakshmi Jewellers', city:'Madurai', contact:'98765 00003', plan:'Business', status:'Active', due:'12 Aug 2025'},
+  {name:'Sree Kumaran Jewellers', city:'Trichy', contact:'98765 00004', plan:'Trial', status:'Trial', due:'10 Jul 2025'},
+  {name:'Diamond World', city:'Coimbatore', contact:'98765 00005', plan:'Business', status:'Expired', due:'05 Aug 2025'},
+];
+
+/* ============================================================
+   UTIL
+   ============================================================ */
+function el(html){ const t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstElementChild; }
+function q(sel){ return document.querySelector(sel); }
+function initials(name){ return name.split(' ').map(w=>w[0]).slice(0,2).join(''); }
+function statusChip(status){
+  const map = {Active:'chip-success', Overdue:'chip-danger', Trial:'chip-warn', Expired:'chip-danger', Inactive:'chip-warn'};
+  return `<span class="chip ${map[status]||'chip-gold'}">${status}</span>`;
+}
+
+function switchApp(app){
+  state.app = app;
+  document.querySelectorAll('.switch-btn').forEach(b=>b.classList.toggle('active', b.dataset.app===app));
+  document.querySelectorAll('.app-stage').forEach(s=>s.classList.remove('active'));
+  q('#stage-'+app).classList.add('active');
+  if(app==='customer') renderCustomer();
+  if(app==='admin') renderAdmin();
+  if(app==='superadmin') renderSA();
+}
+
+function toast(msg){
+  const scr = q('#cust-screen');
+  const t = el(`<div class="toast">✅ ${msg}</div>`);
+  scr.appendChild(t);
+  setTimeout(()=>t.remove(), 2200);
+}
+
+/* ============================================================
+   CUSTOMER APP
+   ============================================================ */
+const CUST_TABS = [
+  {key:'home', ic:'🏠', label:'Home'},
+  {key:'schemes', ic:'💎', label:'Schemes', badge:true},
+  {key:'passbook', ic:'📒', label:'Passbook'},
+  {key:'catalogue', ic:'🛍️', label:'Catalogue'},
+  {key:'profile', ic:'👤', label:'Profile'},
+];
+
+function goCust(screen, extra){
+  state.custScreen = screen;
+  if(extra) Object.assign(state, extra);
+  renderCustomer();
+}
+
+function renderCustomer(){
+  const scr = q('#cust-screen');
+  const statusBar = q('#cust-status');
+  const nav = q('#cust-bottomnav');
+  const darkScreens = ['splash','welcome','login','signup','otp','forgot'];
+  scr.classList.toggle('dark-bg', darkScreens.includes(state.custScreen));
+  statusBar.classList.toggle('on-light', !darkScreens.includes(state.custScreen));
+
+  if(adTimer){ clearInterval(adTimer); adTimer = null; }
+
+  const builders = {
+    splash: screenSplash, welcome: screenWelcome, login: screenLogin,
+    signup: screenSignup, otp: screenOtp, forgot: screenForgot,
+    home: screenHome, schemes: screenSchemesList, schemeDetails: screenSchemeDetails,
+    payment: screenPayment, passbook: screenPassbook,
+    catalogue: screenCatalogue, branch: screenBranchLocator, profile: screenProfile,
+    rates: screenRates, refer: screenRefer,
+  };
+  scr.innerHTML = '';
+  scr.appendChild(builders[state.custScreen]());
+
+  if(state.custScreen === 'home'){
+    adTimer = setInterval(advanceAd, 4000);
+  }
+
+  const hideNav = ['splash','welcome','login','signup','otp','forgot','payment','schemeDetails','branch','rates','refer'].includes(state.custScreen);
+  nav.style.display = hideNav ? 'none' : 'flex';
+  const activeTabFor = {home:'home', schemes:'schemes', passbook:'passbook', catalogue:'catalogue', profile:'profile'};
+  const activeTab = activeTabFor[state.custScreen] || '';
+  nav.innerHTML = '';
+  CUST_TABS.forEach(t=>{
+    const btn = el(`<button class="nav-item ${t.key===activeTab?'active':''}"><span class="ic">${t.ic}</span>${t.label}${t.badge?'<span class="nav-badge"></span>':''}</button>`);
+    btn.onclick = ()=> goCust(t.key);
+    nav.appendChild(btn);
+  });
+}
+
+function custHeader(){
+  return `<div class="app-header">
+    <div class="ah-left"><div class="ah-logo">JR</div><span class="ah-brand">${state.brandName}</span></div>
+    <div class="ah-right">
+      <button class="ah-icon-btn" onclick="toast('No new notifications')">🔔<span class="dot"></span></button>
+      <div class="ah-avatar" onclick="goCust('profile')">RK</div>
+    </div>
+  </div>`;
+}
+
+function screenSplash(){
+  return el(`
+    <div class="pad" style="height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;color:#fff;">
+      <div class="splash-logo">JR</div>
+      <h1 style="font-size:22px;color:#fff;">${state.brandName}</h1>
+      <p class="muted small" style="margin:6px 0 30px;color:#B7ACC9;">Jewellery Relationship Operating System</p>
+      <p class="small" style="color:var(--gold-light);letter-spacing:.5px;margin-bottom:30px;">Trust. Save. Shine. Forever.</p>
+      <button class="btn btn-primary" style="max-width:220px;" onclick="goCust('welcome')">Get Started →</button>
+    </div>
+  `);
+}
+
+function screenWelcome(){
+  return el(`
+    <div class="pad" style="height:100%;display:flex;flex-direction:column;justify-content:center;color:#fff;">
+      <div class="welcome-art">💍</div>
+      <h1 style="color:#fff;font-size:21px;text-align:center;">Welcome to<br>${state.brandName}</h1>
+      <p class="muted small" style="text-align:center;margin:8px 0 26px;">Save gold in easy monthly installments, track it live, and redeem in-store — all from your phone.</p>
+      <button class="btn btn-primary" style="margin-bottom:10px;" onclick="goCust('signup')">Create an Account</button>
+      <button class="btn btn-ghost" onclick="goCust('login')">I already have an account — Log In</button>
+      <p class="small" style="text-align:center;margin-top:22px;color:#8b7fa3;">By continuing you agree to our Terms of Service and Privacy Policy</p>
+    </div>
+  `);
+}
+
+function screenLogin(){
+  const d = el(`
+    <div class="pad" style="height:100%;display:flex;flex-direction:column;justify-content:center;color:#fff;">
+      <div class="back-row"><div class="back-btn on-dark" onclick="goCust('welcome')">←</div></div>
+      <div class="auth-tab-row">
+        <div class="auth-tab active">Log In</div>
+        <div class="auth-tab" id="toSignupTab">Sign Up</div>
+      </div>
+      <h1 style="color:#fff;font-size:19px;">Welcome back</h1>
+      <p class="muted small" style="margin:6px 0 20px;">Log in with your registered mobile number</p>
+      <div class="field-dark"><label>Mobile Number</label><input class="brand-input" id="login-phone" placeholder="+91  Mobile number" value="98765 43210"></div>
+      <button class="btn btn-primary" id="loginBtn">Send OTP</button>
+      <div style="text-align:right;margin-top:10px;">
+        <a href="#" id="forgotLink" class="small" style="color:var(--gold-light);text-decoration:none;">Trouble logging in?</a>
+      </div>
+      <div class="link-row"><div class="hr"></div><span class="muted small">or continue with</span><div class="hr"></div></div>
+      <button class="btn btn-ghost" style="margin-bottom:10px;">🔵 Continue with Google</button>
+      <button class="btn btn-ghost">🍎 Continue with Apple</button>
+      <p class="muted small" style="text-align:center;margin-top:20px;">🔒 Use biometric login</p>
+    </div>
+  `);
+  d.querySelector('#loginBtn').onclick = ()=> goCust('otp', {authMode:'login'});
+  d.querySelector('#toSignupTab').onclick = ()=> goCust('signup');
+  d.querySelector('#forgotLink').onclick = (e)=>{ e.preventDefault(); goCust('forgot'); };
+  return d;
+}
+
+function screenSignup(){
+  const d = el(`
+    <div class="pad" style="min-height:100%;display:flex;flex-direction:column;justify-content:center;color:#fff;padding-top:26px;padding-bottom:26px;">
+      <div class="back-row"><div class="back-btn on-dark" onclick="goCust('welcome')">←</div></div>
+      <div class="auth-tab-row">
+        <div class="auth-tab" id="toLoginTab">Log In</div>
+        <div class="auth-tab active">Sign Up</div>
+      </div>
+      <h1 style="color:#fff;font-size:19px;">Create your account</h1>
+      <p class="muted small" style="margin:6px 0 18px;">Takes less than a minute</p>
+      <div class="field-dark"><label>Full Name</label><input class="brand-input" id="su-name" placeholder="e.g. Ramesh Kumar"></div>
+      <div class="field-dark"><label>Mobile Number</label><input class="brand-input" id="su-phone" placeholder="+91  Mobile number"></div>
+      <div class="field-dark"><label>Email (optional)</label><input class="brand-input" id="su-email" placeholder="you@example.com"></div>
+      <div class="field-dark"><label>Referral Code (optional)</label><input class="brand-input" id="su-ref" placeholder="e.g. RAMESH500"></div>
+      <div class="check-row">
+        <input type="checkbox" id="su-agree" checked>
+        <span>I agree to the Terms of Service and consent to KYC verification as required for gold savings schemes.</span>
+      </div>
+      <div id="su-error" class="small" style="color:var(--danger);margin-bottom:10px;display:none;">Please enter your name and mobile number to continue.</div>
+      <button class="btn btn-primary" id="signupBtn">Create Account</button>
+      <p class="small" style="text-align:center;margin-top:16px;color:#8b7fa3;">Already have an account? <a href="#" id="toLoginLink" style="color:var(--gold-light);">Log in</a></p>
+    </div>
+  `);
+  const goLogin = ()=> goCust('login');
+  d.querySelector('#toLoginTab').onclick = goLogin;
+  d.querySelector('#toLoginLink').onclick = (e)=>{ e.preventDefault(); goLogin(); };
+  d.querySelector('#signupBtn').onclick = ()=>{
+    const name = d.querySelector('#su-name').value.trim();
+    const phone = d.querySelector('#su-phone').value.trim();
+    if(!name || !phone){ d.querySelector('#su-error').style.display = 'block'; return; }
+    goCust('otp', {authMode:'signup'});
+  };
+  return d;
+}
+
+function screenForgot(){
+  const d = el(`
+    <div class="pad" style="height:100%;display:flex;flex-direction:column;justify-content:center;color:#fff;">
+      <div class="back-row"><div class="back-btn on-dark" onclick="goCust('login')">←</div></div>
+      <h1 style="color:#fff;font-size:19px;">Trouble logging in?</h1>
+      <p class="muted small" style="margin:6px 0 20px;line-height:1.6;">JROS uses OTP-based login, so there's no password to remember. Enter your registered mobile number and we'll send a fresh code to regain access.</p>
+      <div class="field-dark"><label>Registered Mobile Number</label><input class="brand-input" id="fg-phone" placeholder="+91  Mobile number"></div>
+      <button class="btn btn-primary" id="fgBtn">Send Reset Code</button>
+      <p class="small" style="text-align:center;margin-top:16px;color:#8b7fa3;">Still stuck? Contact your jeweller's branch for help.</p>
+    </div>
+  `);
+  d.querySelector('#fgBtn').onclick = ()=> goCust('otp', {authMode:'forgot'});
+  return d;
+}
+
+function screenOtp(){
+  const copy = {
+    login:  {title:'Verify to log in',  sub:'Enter the 6-digit code sent to +91 98765 43210'},
+    signup: {title:'Verify your number', sub:'Enter the 6-digit code sent to your mobile to activate your account'},
+    forgot: {title:'Verify to reset access', sub:'Enter the 6-digit code sent to your registered mobile number'},
+  }[state.authMode] || {title:'Verify', sub:'Enter the 6-digit code sent to your mobile'};
+  const d = el(`
+    <div class="pad" style="height:100%;display:flex;flex-direction:column;justify-content:center;color:#fff;">
+      <div class="back-row"><div class="back-btn on-dark" onclick="goCust(state.authMode==='signup'?'signup':(state.authMode==='forgot'?'forgot':'login'))">←</div></div>
+      <h1 style="color:#fff;font-size:19px;">${copy.title}</h1>
+      <p class="muted small" style="margin:6px 0 6px;">${copy.sub}</p>
+      <div class="otp-row">
+        <input class="otp-box" maxlength="1" value="4"><input class="otp-box" maxlength="1" value="2">
+        <input class="otp-box" maxlength="1" value="1"><input class="otp-box" maxlength="1" value="9">
+        <input class="otp-box" maxlength="1" value="0"><input class="otp-box" maxlength="1" value="5">
+      </div>
+      <p class="small" style="text-align:center;color:#8b7fa3;margin:6px 0 22px;">Code expires in 04:32</p>
+      <button class="btn btn-primary" id="otpBtn">Verify &amp; Continue</button>
+      <p class="small" style="text-align:center;margin-top:16px;">
+        <a href="#" id="resendLink" style="color:var(--gold-light);">Resend OTP</a>
+      </p>
+    </div>
+  `);
+  d.querySelectorAll('.otp-box').forEach((box,i,arr)=>{
+    box.oninput = ()=>{ if(box.value && arr[i+1]) arr[i+1].focus(); };
+  });
+  d.querySelector('#resendLink').onclick = (e)=>{ e.preventDefault(); toast('A new OTP has been sent'); };
+  d.querySelector('#otpBtn').onclick = function(){
+    this.textContent = 'Verifying…'; this.disabled = true;
+    setTimeout(()=>{
+      goCust('home');
+      const msg = {login:'Welcome back, Ramesh!', signup:'Account created — welcome to JROS!', forgot:'Access restored — you are logged in'}[state.authMode];
+      toast(msg || 'Verified');
+    }, 700);
+  };
+  return d;
+}
+
+function advanceAd(){
+  state.adIndex = (state.adIndex + 1) % AD_SLIDES.length;
+  updateAdCarousel();
+}
+function setAd(i){
+  state.adIndex = i;
+  updateAdCarousel();
+}
+function updateAdCarousel(){
+  const wrap = q('#adCarousel');
+  if(!wrap) return;
+  wrap.querySelectorAll('.ad-slide').forEach((s,i)=> s.classList.toggle('show', i===state.adIndex));
+  wrap.querySelectorAll('.ad-dot').forEach((s,i)=> s.classList.toggle('active', i===state.adIndex));
+}
+
+function adCarouselHTML(){
+  return `<div class="ad-carousel" id="adCarousel">
+    ${AD_SLIDES.map((s,i)=>`
+      <div class="ad-slide ${i===state.adIndex?'show':''}" style="background:${s.bg};" data-go="${s.go}">
+        <div><div style="font-weight:700;font-size:13px;">${s.ic} ${s.title}</div><div class="small" style="color:#E8C766;margin-top:2px;">${s.sub}</div></div>
+        <span style="font-size:18px;">›</span>
+      </div>
+    `).join('')}
+    <div class="ad-dots">${AD_SLIDES.map((_,i)=>`<span class="ad-dot ${i===state.adIndex?'active':''}" data-i="${i}"></span>`).join('')}</div>
+  </div>`;
+}
+
+function rateTickerHTML(){
+  return `<div class="rate-ticker" id="rateTicker">
+    <div class="rate-ticker-item">🥇 Gold <span style="color:var(--ink);">₹${GOLD_RATES.price.toLocaleString('en-IN')}/g</span> <span class="chip ${GOLD_RATES.up?'chip-success':'chip-danger'}">${GOLD_RATES.up?'▲':'▼'} ${Math.abs(GOLD_RATES.change)}%</span></div>
+    <div class="rate-ticker-item">🥈 Silver <span style="color:var(--ink);">₹${SILVER_RATES.price}/g</span> <span class="chip ${SILVER_RATES.up?'chip-success':'chip-danger'}">${SILVER_RATES.up?'▲':'▼'} ${Math.abs(SILVER_RATES.change)}%</span></div>
+  </div>`;
+}
+
+function screenHome(){
+  const d = el(`
+    <div>
+      ${custHeader()}
+      <div class="pad" style="padding-top:14px;">
+        <div class="kicker">Good afternoon</div>
+        <h2 style="font-size:16px;margin:2px 0 14px;">Hello, Ramesh 👋</h2>
+
+        ${rateTickerHTML()}
+
+        <div class="card-dark">
+          <div class="kicker" style="color:#B7ACC9;">Current Gold Savings</div>
+          <div class="row" style="align-items:flex-end;margin-top:6px;">
+            <div>
+              <div style="font-family:var(--font-display);font-weight:700;font-size:24px;">₹78,500</div>
+              <div class="small" style="color:#C9C0DB;">Total Weight: 7.985 g</div>
+            </div>
+            <span class="chip chip-success">+1.25% today</span>
+          </div>
+          <div class="small" style="color:#C9C0DB;margin-top:10px;">Next Installment: 25 Jul 2025 · ₹10,000</div>
+        </div>
+
+        ${adCarouselHTML()}
+
+        <div class="kicker" style="margin-bottom:8px;">Quick Actions</div>
+        <div class="quick-actions">
+          <div class="qa-btn" onclick="goCust('schemes')"><span class="ic">💎</span>Join Scheme</div>
+          <div class="qa-btn" onclick="goCust('schemeDetails',{selectedScheme:'monthly'})"><span class="ic">💳</span>Pay Installment</div>
+          <div class="qa-btn" onclick="goCust('passbook')"><span class="ic">📒</span>My Passbook</div>
+          <div class="qa-btn" onclick="goCust('rates')"><span class="ic">🥇</span>Live Rates</div>
+          <div class="qa-btn" onclick="goCust('branch')"><span class="ic">📍</span>Find Branch</div>
+          <div class="qa-btn" onclick="goCust('refer')"><span class="ic">🎁</span>Refer &amp; Earn</div>
+        </div>
+
+        <div class="kicker" style="margin:18px 0 8px;">Your Active Schemes</div>
+        <div id="homeSchemeCards"></div>
+      </div>
+    </div>
+  `);
+  const wrap = d.querySelector('#homeSchemeCards');
+  SCHEMES.filter(s=>s.status==='Active').slice(0,2).forEach(s=>{ wrap.insertAdjacentHTML('beforeend', schemeCardHTML(s)); });
+  wrap.querySelectorAll('[data-scheme]').forEach(c=>{
+    c.onclick = ()=> goCust('schemeDetails', {selectedScheme:c.dataset.scheme});
+  });
+  d.querySelector('#adCarousel').querySelectorAll('.ad-slide').forEach(s=>{
+    s.onclick = ()=> goCust(s.dataset.go);
+  });
+  d.querySelector('#adCarousel').querySelectorAll('.ad-dot').forEach(dot=>{
+    dot.onclick = ()=> setAd(parseInt(dot.dataset.i,10));
+  });
+  d.querySelector('#rateTicker').onclick = ()=> goCust('rates');
+  return d;
+}
+
+function schemeCardHTML(s){
+  return `<div class="card" data-scheme="${s.id}" style="cursor:pointer;">
+    <div class="row"><b style="font-size:13px;">${s.name}</b>${statusChip(s.status)}</div>
+    <div class="small muted" style="margin-top:4px;">${s.type} · ${s.tenure} · Min ${s.min}</div>
+  </div>`;
+}
+
+function screenSchemesList(){
+  const d = el(`<div>
+    ${custHeader()}
+    <div class="pad" style="padding-top:14px;">
+      <h2 style="font-size:17px;margin-bottom:4px;">Gold Savings Schemes</h2>
+      <p class="muted small" style="margin-bottom:14px;">Choose a scheme to join or manage.</p>
+      <div id="schemeCardsWrap"></div>
+    </div>
+  </div>`);
+  const wrap = d.querySelector('#schemeCardsWrap');
+  SCHEMES.forEach(s=>{ wrap.insertAdjacentHTML('beforeend', schemeCardHTML(s)); });
+  wrap.querySelectorAll('[data-scheme]').forEach(c=>{
+    c.onclick = ()=> goCust('schemeDetails', {selectedScheme:c.dataset.scheme});
+  });
+  return d;
+}
+
+function screenSchemeDetails(){
+  const s = SCHEMES.find(x=>x.id===state.selectedScheme) || SCHEMES[0];
+  const pct = 72;
+  const d = el(`<div class="pad">
+    <div class="back-row"><div class="back-btn" onclick="goCust('schemes')">←</div><b style="font-size:14px;">${s.name}</b></div>
+    <div class="card" style="text-align:center;">
+      <div class="progress-ring-wrap">
+        <svg width="130" height="130" viewBox="0 0 130 130">
+          <circle cx="65" cy="65" r="54" fill="none" stroke="#EAE3D3" stroke-width="12"/>
+          <circle cx="65" cy="65" r="54" fill="none" stroke="var(--gold)" stroke-width="12"
+            stroke-dasharray="${2*Math.PI*54}" stroke-dashoffset="${2*Math.PI*54*(1-pct/100)}"
+            stroke-linecap="round" transform="rotate(-90 65 65)"/>
+          <text x="65" y="60" text-anchor="middle" font-family="Poppins" font-weight="700" font-size="20" fill="var(--ink)">${pct}%</text>
+          <text x="65" y="78" text-anchor="middle" font-family="Inter" font-size="10" fill="var(--muted)">7.985 / 11.000 g</text>
+        </svg>
+      </div>
+      <div class="muted small">Gold Rate (24K): ₹9,820/g <span style="color:var(--success);">+1.25%</span></div>
+    </div>
+    <div class="card">
+      <div class="list-item"><span class="small muted">Installments Paid</span><b class="small">23 / 36</b></div>
+      <div class="list-item"><span class="small muted">Next Installment</span><b class="small">25 Jul 2025 · ₹10,000</b></div>
+      <div class="list-item"><span class="small muted">Maturity Date</span><b class="small">25 Jun 2027</b></div>
+      <div class="list-item"><span class="small muted">AutoPay</span><span class="chip chip-success">Enabled</span></div>
+      <div class="list-item"><span class="small muted">Reminder</span><span class="chip chip-success">Enabled</span></div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-secondary" onclick="goCust('passbook')">View Passbook</button>
+      <button class="btn btn-primary" onclick="goCust('payment')">Pay Now</button>
+    </div>
+  </div>`);
+  return d;
+}
+
+function screenPayment(){
+  const methods = [
+    {key:'upi', label:'💠 UPI'}, {key:'card', label:'💳 Credit / Debit Cards'},
+    {key:'netbanking', label:'🏦 Net Banking'}, {key:'wallet', label:'👛 Wallets'},
+    {key:'scan', label:'📷 Scan & Pay'},
+  ];
+  const d = el(`<div class="pad">
+    <div class="back-row"><div class="back-btn" onclick="goCust('schemeDetails')">←</div><b style="font-size:14px;">Pay Installment</b></div>
+    <div class="card">
+      <div class="kicker" style="margin-bottom:8px;">Payment Summary</div>
+      <div class="list-item"><span class="small muted">Installment Amount</span><b class="small">₹10,000</b></div>
+      <div class="list-item"><span class="small muted">Gold Rate (24K)</span><b class="small">₹9,820/g</b></div>
+      <div class="list-item"><span class="small muted">GST (3%)</span><b class="small">₹300</b></div>
+      <div class="list-item"><span style="font-weight:700;">Total Payable</span><b style="color:var(--gold);font-size:15px;">₹10,300</b></div>
+    </div>
+    <div class="kicker" style="margin-bottom:8px;">Choose Payment Method</div>
+    <div id="methodWrap"></div>
+    <button class="btn btn-primary" id="payBtn" style="margin-top:6px;">Pay ₹10,300</button>
+  </div>`);
+  const wrap = d.querySelector('#methodWrap');
+  methods.forEach(m=>{
+    const row = el(`<div class="method-row ${state.paymentMethod===m.key?'selected':''}" data-m="${m.key}"><span>${m.label}</span><span class="radio"></span></div>`);
+    row.onclick = ()=>{ state.paymentMethod = m.key; renderCustomer(); };
+    wrap.appendChild(row);
+  });
+  d.querySelector('#payBtn').onclick = function(){
+    this.textContent = 'Processing…'; this.disabled = true;
+    setTimeout(()=>{
+      PASSBOOK.unshift({date:'Today', amount:'₹10,300', weight:'1.049 g', status:'Payment Successful'});
+      goCust('passbook');
+      toast('Payment of ₹10,300 successful');
+    }, 900);
+  };
+  return d;
+}
+
+function screenPassbook(){
+  const d = el(`<div>
+    ${custHeader()}
+    <div class="pad" style="padding-top:14px;">
+      <h2 style="font-size:17px;margin-bottom:2px;">Digital Passbook</h2>
+      <p class="muted small" style="margin-bottom:12px;">Monthly Gold Plan</p>
+      <div class="card"><div class="row">
+        <div><div class="kicker">Total Paid</div><b>₹2,30,000</b></div>
+        <div style="text-align:right;"><div class="kicker">Total Weight</div><b>7.985 g</b></div>
+      </div></div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <button class="btn btn-secondary btn-sm" onclick="toast('Passbook PDF downloading…')">⬇ Download</button>
+        <button class="btn btn-secondary btn-sm" onclick="toast('Share sheet opened')">↗ Share</button>
+      </div>
+      <div class="card" id="pbList"></div>
+    </div>
+  </div>`);
+  const list = d.querySelector('#pbList');
+  PASSBOOK.forEach(p=>{
+    list.insertAdjacentHTML('beforeend', `<div class="list-item">
+      <div><div class="small" style="font-weight:600;">${p.date}</div><div class="small muted">${p.status}</div></div>
+      <div style="text-align:right;"><div class="small" style="font-weight:700;">${p.amount}</div><div class="small muted">${p.weight}</div></div>
+    </div>`);
+  });
+  return d;
+}
+
+function screenCatalogue(){
+  const d = el(`<div>
+    ${custHeader()}
+    <div class="pad" style="padding-top:14px;">
+      <h2 style="font-size:17px;margin-bottom:10px;">Product Catalogue</h2>
+      <input class="field-search" placeholder="🔍 Search jewellery" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:10px;font-family:var(--font-body);font-size:13px;">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <span class="chip chip-gold">Necklaces</span><span class="chip" style="background:#f2ede0;color:var(--ink-soft);">Earrings</span><span class="chip" style="background:#f2ede0;color:var(--ink-soft);">Rings</span><span class="chip" style="background:#f2ede0;color:var(--ink-soft);">Bangles</span>
+      </div>
+      <div class="card-dark" style="padding:14px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:12.5px;">Wedding Collection</div>
+        <div class="small" style="color:#E8C766;">Timeless Beauty</div>
+      </div>
+      <div class="kicker" style="margin-bottom:8px;">Best Sellers</div>
+      <div class="product-grid" id="prodGrid"></div>
+    </div>
+  </div>`);
+  const grid = d.querySelector('#prodGrid');
+  PRODUCTS.forEach(p=>{
+    const c = el(`<div class="product-card">
+      <div class="product-img">${p.ic}</div>
+      <div class="product-info">
+        <div class="small" style="font-weight:600;">${p.name}</div>
+        <div class="small muted">${p.wt}</div>
+        <div class="small" style="font-weight:700;color:var(--gold);margin-top:2px;">${p.price}</div>
+      </div>
+    </div>`);
+    c.onclick = ()=> toast(p.name + ' added to Wishlist');
+    grid.appendChild(c);
+  });
+  return d;
+}
+
+function screenBranchLocator(){
+  return el(`<div class="pad">
+    <div class="back-row"><div class="back-btn" onclick="goCust('home')">←</div><b style="font-size:14px;">Branch Locator</b></div>
+    <div class="map-box"><div class="map-pin">📍</div></div>
+    <div class="card" style="margin-top:14px;">
+      <div class="row"><b style="font-size:13px;">${state.brandName} — Anna Nagar</b><span class="small muted">2.4 km</span></div>
+      <div class="small muted" style="margin-top:4px;">No. 133, 3rd Avenue, Anna Nagar, Chennai 600040</div>
+      <div style="display:flex;gap:10px;margin-top:12px;">
+        <button class="btn btn-secondary btn-sm" onclick="toast('Calling branch…')">📞 Call</button>
+        <button class="btn btn-primary btn-sm" onclick="toast('Opening directions…')">🧭 Directions</button>
+      </div>
+    </div>
+  </div>`);
+}
+
+function screenProfile(){
+  return el(`<div>
+    ${custHeader()}
+    <div class="pad" style="padding-top:14px;">
+      <div style="text-align:center;margin:6px 0 18px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:var(--gold-dim);color:#8a6a1c;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;margin:0 auto 10px;">RK</div>
+        <b style="font-size:15px;">Ramesh Kumar</b>
+        <div class="muted small">+91 98765 43210</div>
+      </div>
+      <div class="card">
+        <div class="list-item"><span class="small muted">KYC Status</span><span class="chip chip-success">Verified</span></div>
+        <div class="list-item"><span class="small muted">Member Since</span><b class="small">Jan 2024</b></div>
+        <div class="list-item" style="cursor:pointer;" onclick="goCust('rates')"><span class="small">🥇 Live Gold &amp; Silver Rates</span><span class="muted">›</span></div>
+        <div class="list-item" style="cursor:pointer;" onclick="goCust('refer')"><span class="small">🎁 Refer &amp; Earn</span><span class="muted">›</span></div>
+        <div class="list-item" style="cursor:pointer;" onclick="goCust('branch')"><span class="small">📍 Branch Locator</span><span class="muted">›</span></div>
+        <div class="list-item" style="cursor:pointer;" onclick="toast('No new notifications')"><span class="small">🔔 Notification Preferences</span><span class="muted">›</span></div>
+        <div class="list-item" style="cursor:pointer;" onclick="toast('English (India) selected')"><span class="small">🌐 Language</span><span class="muted">›</span></div>
+      </div>
+      <button class="btn btn-secondary" onclick="goCust('welcome')" style="color:var(--danger);border-color:var(--danger);">Log Out</button>
+    </div>
+  </div>`);
+}
+
+function screenRates(){
+  const bars = (arr, cls)=> arr.map(h=>`<div class="b ${cls||''}" style="height:${h}%;"></div>`).join('');
+  const d = el(`<div>
+    <div class="pad" style="padding-bottom:8px;">
+      <div class="back-row"><div class="back-btn" onclick="goCust('home')">←</div><b style="font-size:14px;">Live Gold &amp; Silver Rates</b></div>
+      <p class="muted small" style="margin:2px 0 14px 40px;">Updated 2 minutes ago · Chennai</p>
+      <div class="rates-split">
+        <div class="rate-panel gold">
+          <div class="metal-ic">🥇</div>
+          <div class="kicker" style="margin-top:4px;">Gold (per gram)</div>
+          <div class="big-price">₹${GOLD_RATES.price.toLocaleString('en-IN')}</div>
+          <span class="chip ${GOLD_RATES.up?'chip-success':'chip-danger'}">${GOLD_RATES.up?'▲':'▼'} ${Math.abs(GOLD_RATES.change)}% today</span>
+          <div class="rate-mini-bars">${bars(GOLD_RATES.hist)}</div>
+          <div class="rate-row"><span class="muted">24K</span><b>₹${GOLD_RATES.k24.toLocaleString('en-IN')}</b></div>
+          <div class="rate-row"><span class="muted">22K</span><b>₹${GOLD_RATES.k22.toLocaleString('en-IN')}</b></div>
+          <div class="rate-row"><span class="muted">18K</span><b>₹${GOLD_RATES.k18.toLocaleString('en-IN')}</b></div>
+        </div>
+        <div class="rate-panel silver">
+          <div class="metal-ic">🥈</div>
+          <div class="kicker" style="margin-top:4px;">Silver (per gram)</div>
+          <div class="big-price">₹${SILVER_RATES.price}</div>
+          <span class="chip ${SILVER_RATES.up?'chip-success':'chip-danger'}">${SILVER_RATES.up?'▲':'▼'} ${Math.abs(SILVER_RATES.change)}% today</span>
+          <div class="rate-mini-bars">${bars(SILVER_RATES.hist)}</div>
+          <div class="rate-row"><span class="muted">999 (Fine)</span><b>₹${SILVER_RATES.p999}</b></div>
+          <div class="rate-row"><span class="muted">925 (Sterling)</span><b>₹${SILVER_RATES.p925}</b></div>
+          <div class="rate-row"><span class="muted">&nbsp;</span><span>&nbsp;</span></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <p class="small muted" style="line-height:1.6;margin:0;">Rates shown are indicative and refresh through the day. Your installment locks the rate at the moment of payment — see <b>Chapter 9, Flow A</b> in the Product Bible.</p>
+      </div>
+      <button class="btn btn-primary" onclick="goCust('schemes')">Start a Gold or Silver Scheme</button>
+    </div>
+  </div>`);
+  return d;
+}
+
+function screenRefer(){
+  return el(`<div>
+    <div class="pad">
+      <div class="back-row"><div class="back-btn" onclick="goCust('home')">←</div><b style="font-size:14px;">Refer &amp; Earn</b></div>
+      <div class="card-dark" style="text-align:center;padding:24px 16px;">
+        <div style="font-size:34px;">🎁</div>
+        <div style="font-weight:700;margin:8px 0 2px;">Give ₹500, Get ₹500</div>
+        <p class="small" style="color:#C9C0DB;margin:0;">You and your friend both earn ₹500 in gold when they complete their first installment.</p>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="kicker">Your Referral Code</div>
+        <div style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--ink);letter-spacing:2px;margin:8px 0;">RAMESH500</div>
+        <button class="btn btn-secondary btn-sm" onclick="toast('Referral code copied to clipboard')">📋 Copy Code</button>
+      </div>
+      <div class="kicker" style="margin:16px 0 8px;">Share via</div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="toast('Opening WhatsApp…')">💬 WhatsApp</button>
+        <button class="btn btn-secondary btn-sm" onclick="toast('Opening Messages…')">✉️ SMS</button>
+        <button class="btn btn-secondary btn-sm" onclick="toast('Share sheet opened')">↗ More</button>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <div class="list-item"><span class="small muted">Referrals sent</span><b class="small">6</b></div>
+        <div class="list-item"><span class="small muted">Successful joins</span><b class="small">3</b></div>
+        <div class="list-item"><span class="small muted">Gold earned</span><b class="small" style="color:var(--gold);">₹1,500</b></div>
+      </div>
+      <p class="small muted" style="line-height:1.6;">Referral is a Chapter 3 (V2) feature — shown here to demonstrate the planned experience.</p>
+    </div>
+  </div>`);
+}
+
+/* ============================================================
+   JEWELLER ADMIN
+   ============================================================ */
+const ADMIN_NAV = [
+  {key:'dashboard', ic:'📊', label:'Dashboard', ready:true},
+  {key:'customers', ic:'👥', label:'Customers', ready:true},
+  {key:'schemes', ic:'💰', label:'Schemes', ready:true},
+  {key:'payments', ic:'💳', label:'Payments', ready:false},
+  {key:'catalogue', ic:'🏷️', label:'Catalogue', ready:false},
+  {key:'appointments', ic:'📅', label:'Appointments', ready:false},
+  {key:'marketing', ic:'📣', label:'Marketing', ready:false},
+  {key:'reports', ic:'📈', label:'Reports', ready:false},
+  {key:'analytics', ic:'📉', label:'Analytics', ready:false},
+  {key:'branches', ic:'🏬', label:'Branches', ready:false},
+  {key:'users', ic:'👤', label:'Users', ready:false},
+  {key:'settings', ic:'⚙️', label:'Settings', ready:false},
+];
+
+function goAdmin(screen){ state.admScreen = screen; renderAdmin(); }
+
+function renderAdmin(){
+  const navEl = q('#admin-nav');
+  navEl.innerHTML = '';
+  ADMIN_NAV.forEach(n=>{
+    const item = el(`<div class="dash-nav-item ${n.key===state.admScreen?'active':''}"><span class="ic">${n.ic}</span>${n.label}</div>`);
+    item.onclick = ()=> goAdmin(n.key);
+    navEl.appendChild(item);
+  });
+  const main = q('#admin-main');
+  main.innerHTML = '';
+  const item = ADMIN_NAV.find(n=>n.key===state.admScreen);
+  if(!item.ready){ main.appendChild(placeholderPanel(item.label)); main.appendChild(dashFooter('Gold Palace Jewellers Admin')); return; }
+  const builders = {dashboard:adminDashboard, customers:adminCustomers, schemes:adminSchemes};
+  main.appendChild(builders[state.admScreen]());
+  main.appendChild(dashFooter('Gold Palace Jewellers Admin'));
+}
+
+function placeholderPanel(label){
+  return el(`<div class="placeholder-panel">
+    <div class="big">🚧</div>
+    <div><b>${label}</b> is scoped for a later release — see Chapter 3 (Product Requirements) for its phase.</div>
+  </div>`);
+}
+
+function dashFooter(scope){
+  return el(`<div class="dash-footer">
+    <span>© 2026 JROS Platform · ${scope} · v1.0.0</span>
+    <span><a href="#" onclick="toast('Opening Help Center…');return false;">Help</a><a href="#" onclick="toast('Opening documentation…');return false;">Docs</a><a href="#" onclick="toast('Opening support chat…');return false;">Support</a></span>
+  </div>`);
+}
+
+function kpiCard(label, val, delta, up){
+  return `<div class="kpi-card"><div class="kicker">${label}</div><div class="kpi-val">${val}</div><div class="kpi-delta ${up?'up':'down'}">${up?'▲':'▼'} ${delta}</div></div>`;
+}
+
+function barChart(labels, heights){
+  return `<div class="chart-bars" style="position:relative;margin-bottom:22px;">${
+    heights.map((h,i)=>`<div class="bar" style="height:${h}%;"><span class="bar-label">${labels[i]}</span></div>`).join('')
+  }</div>`;
+}
+
+function adminDashboard(){
+  const d = el(`<div>
+    <div class="dash-topline"><h2 style="font-size:19px;">Dashboard</h2>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span class="breadcrumb-note" style="margin:0;">Anna Nagar Branch · Today</span>
+        <button class="ah-icon-btn" onclick="toast('3 alerts: 2 overdue payments, 1 low-stock item')">🔔<span class="dot"></span></button>
+        <div class="ah-avatar" title="Mr. Kumar">MK</div>
+      </div>
+    </div>
+    <div class="kpi-grid">
+      ${kpiCard('Total Customers','4,281','12.5% vs last month',true)}
+      ${kpiCard('Active Schemes','2,145','8.3% vs last month',true)}
+      ${kpiCard("Today's Payments",'₹8.5 L','15.7% vs yesterday',true)}
+      ${kpiCard('Pending Payments','184','2.4% vs yesterday',false)}
+      ${kpiCard('Total Revenue','₹1.8 Cr','9.1% vs last month',true)}
+      ${kpiCard('Gold Savings (Total)','1,245.67 g','10.7% vs last month',true)}
+      ${kpiCard('New Customers','312','9.2% vs last month',true)}
+      ${kpiCard('Conversion Rate','24.6%','5.2% vs last month',true)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="panel"><div class="panel-title">Collections Trend</div>${barChart(['M','T','W','T','F','S','S'],[40,55,48,70,62,80,66])}</div>
+      <div class="panel"><div class="panel-title">Customer Growth</div>${barChart(['Jan','Feb','Mar','Apr','May','Jun'],[35,45,50,62,58,74])}</div>
+    </div>
+  </div>`);
+  return d;
+}
+
+function adminCustomers(){
+  const d = el(`<div>
+    <div class="dash-topline"><h2 style="font-size:19px;">Customers</h2></div>
+    <div class="toolbar">
+      <input class="search-box" placeholder="🔍 Search by name or phone">
+      <select class="select-box"><option>All Schemes</option>${SCHEMES.map(s=>`<option>${s.name}</option>`).join('')}</select>
+      <button class="btn-outline" onclick="toast('Exporting customer list to Excel…')">⬇ Export</button>
+    </div>
+    <div class="panel" style="padding:0;overflow:hidden;">
+      <table><thead><tr><th>Name</th><th>Phone</th><th>Scheme</th><th>Status</th><th>Outstanding</th><th>Actions</th></tr></thead>
+      <tbody id="custTbody"></tbody></table>
+    </div>
+  </div>`);
+  const tb = d.querySelector('#custTbody');
+  CUSTOMERS.forEach((c,i)=>{
+    const tr = el(`<tr><td><span class="avatar">${initials(c.name)}</span>${c.name}</td><td>${c.phone}</td><td>${c.scheme}</td><td>${statusChip(c.status)}</td><td>${c.outstanding}</td><td>👁️ 💬 ✏️</td></tr>`);
+    tr.onclick = ()=> openCustomerModal(c);
+    tb.appendChild(tr);
+  });
+  return d;
+}
+
+function openCustomerModal(c){
+  openModal(`
+    <h3>${c.name}</h3>
+    <div class="field"><label>Phone</label><div class="small">${c.phone}</div></div>
+    <div class="field"><label>Scheme</label><div class="small">${c.scheme}</div></div>
+    <div class="field"><label>Status</label><div>${statusChip(c.status)}</div></div>
+    <div class="field"><label>Outstanding</label><div class="small" style="font-weight:700;">${c.outstanding}</div></div>
+    <div class="modal-actions">
+      <button class="btn-outline" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="recordManualPayment('${c.name}')">Log Manual Payment</button>
+    </div>
+  `);
+}
+
+function recordManualPayment(name){
+  closeModal();
+  setTimeout(()=> alert(`Manual payment logged for ${name}. (Chapter 18, BR-018-01 — this action is written to the Audit Log with actor, amount, and timestamp.)`), 150);
+}
+
+function adminSchemes(){
+  const d = el(`<div>
+    <div class="dash-topline"><h2 style="font-size:19px;">Scheme Management</h2>
+      <button class="btn btn-primary" style="width:auto;" onclick="openCreateSchemeModal()">+ Create Scheme</button>
+    </div>
+    <div class="panel" style="padding:0;overflow:hidden;">
+      <table><thead><tr><th>Scheme Name</th><th>Type</th><th>Tenure</th><th>Min Amount</th><th>Interest / Bonus</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="schemeTbody"></tbody></table>
+    </div>
+  </div>`);
+  fillSchemeTable(d.querySelector('#schemeTbody'));
+  return d;
+}
+
+function fillSchemeTable(tb){
+  tb.innerHTML = '';
+  SCHEMES.forEach(s=>{
+    tb.appendChild(el(`<tr><td>${s.name}</td><td>${s.type}</td><td>${s.tenure}</td><td>${s.min}</td><td>${s.bonus}</td><td>${statusChip(s.status)}</td><td>✏️ 🗑️</td></tr>`));
+  });
+}
+
+function openCreateSchemeModal(){
+  openModal(`
+    <h3>Create Scheme</h3>
+    <div class="field"><label>Scheme Name</label><input type="text" id="ns-name" placeholder="e.g. Diwali Gold Plan"></div>
+    <div class="field"><label>Type</label><select id="ns-type"><option>Monthly</option><option>Flexible</option></select></div>
+    <div class="field"><label>Tenure (months)</label><input type="text" id="ns-tenure" placeholder="12"></div>
+    <div class="field"><label>Minimum Amount (₹)</label><input type="text" id="ns-min" placeholder="1000"></div>
+    <div class="modal-actions">
+      <button class="btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="saveNewScheme()">Save Scheme</button>
+    </div>
+  `);
+}
+
+function saveNewScheme(){
+  const name = q('#ns-name').value.trim() || 'New Scheme';
+  const type = q('#ns-type').value;
+  const tenure = (q('#ns-tenure').value.trim()||'12') + ' Months';
+  const min = '₹' + (q('#ns-min').value.trim()||'1000');
+  SCHEMES.push({id:'s'+Date.now(), name, type, tenure, min, bonus:'—', status:'Active'});
+  closeModal();
+  goAdmin('schemes');
+}
+
+/* ============================================================
+   SUPER ADMIN
+   ============================================================ */
+const SA_NAV = [
+  {key:'dashboard', ic:'📊', label:'Dashboard', ready:true},
+  {key:'tenants', ic:'🏢', label:'Tenants', ready:true},
+  {key:'subscriptions', ic:'💳', label:'Subscriptions', ready:false},
+  {key:'payments', ic:'💰', label:'Payments', ready:false},
+  {key:'branding', ic:'🎨', label:'Branding', ready:true},
+  {key:'users', ic:'👤', label:'Users', ready:false},
+  {key:'support', ic:'🎫', label:'Support Tickets', ready:false},
+  {key:'audit', ic:'📜', label:'Audit Logs', ready:true},
+  {key:'integrations', ic:'🔌', label:'Integrations', ready:false},
+  {key:'settings', ic:'⚙️', label:'Settings', ready:false},
+];
+
+function goSA(screen){ state.saScreen = screen; renderSA(); }
+
+function renderSA(){
+  const navEl = q('#sa-nav');
+  navEl.innerHTML = '';
+  SA_NAV.forEach(n=>{
+    const item = el(`<div class="dash-nav-item ${n.key===state.saScreen?'active':''}"><span class="ic">${n.ic}</span>${n.label}</div>`);
+    item.onclick = ()=> goSA(n.key);
+    navEl.appendChild(item);
+  });
+  const main = q('#sa-main');
+  main.innerHTML = '';
+  const item = SA_NAV.find(n=>n.key===state.saScreen);
+  if(!item.ready){ main.appendChild(placeholderPanel(item.label)); main.appendChild(dashFooter('Super Admin Console')); return; }
+  const builders = {dashboard:saDashboard, tenants:saTenants, branding:saBranding, audit:saAudit};
+  main.appendChild(builders[state.saScreen]());
+  main.appendChild(dashFooter('Super Admin Console'));
+}
+
+function saDashboard(){
+  const donutSegs = [
+    {label:'Active', pct:63, color:'var(--success)'},
+    {label:'Trial', pct:10, color:'var(--warn)'},
+    {label:'Expired', pct:18, color:'var(--danger)'},
+    {label:'Cancelled', pct:9, color:'#7A7288'},
+  ];
+  let acc = 0;
+  const gradient = donutSegs.map(s=>{ const from=acc; acc+=s.pct; return `${s.color} ${from}% ${acc}%`; }).join(',');
+  return el(`<div>
+    <div class="dash-topline"><h2 style="font-size:19px;">Platform Dashboard</h2>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span class="breadcrumb-note" style="margin:0;">Overview of JROS Platform</span>
+        <button class="ah-icon-btn" onclick="toast('2 tenants have subscriptions expiring this week')">🔔<span class="dot"></span></button>
+        <div class="ah-avatar" title="Super Admin">SA</div>
+      </div>
+    </div>
+    <div class="kpi-grid">
+      ${kpiCard('Total Jewellers','256','18 vs last month',true)}
+      ${kpiCard('Active Subscriptions','198','14 vs last month',true)}
+      ${kpiCard('Monthly Revenue','₹24.8 L','33.5% vs last month',true)}
+      ${kpiCard('Total Tenants','312','20 vs last month',true)}
+    </div>
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;">
+      <div class="panel"><div class="panel-title">Revenue Overview</div>${barChart(['Jan','Feb','Mar','Apr','May','Jun'],[40,50,46,64,58,80])}</div>
+      <div class="panel">
+        <div class="panel-title">Subscription Status</div>
+        <div class="donut-wrap">
+          <div style="width:110px;height:110px;border-radius:50%;background:conic-gradient(${gradient});"></div>
+          <div>${donutSegs.map(s=>`<div class="small" style="margin-bottom:6px;"><span class="legend-dot" style="background:${s.color};"></span>${s.label} — ${s.pct}%</div>`).join('')}</div>
+        </div>
+      </div>
+    </div>
+  </div>`);
+}
+
+function saTenants(){
+  const d = el(`<div>
+    <div class="dash-topline"><h2 style="font-size:19px;">Tenant Management</h2>
+      <button class="btn btn-primary" style="width:auto;" onclick="openAddTenantModal()">+ Add Tenant</button>
+    </div>
+    <div class="toolbar"><input class="search-box" placeholder="🔍 Search jeweller / tenant"></div>
+    <div class="panel" style="padding:0;overflow:hidden;">
+      <table><thead><tr><th>Jeweller</th><th>Contact</th><th>Plan</th><th>Status</th><th>Due Date</th><th>Actions</th></tr></thead>
+      <tbody id="tenantTbody"></tbody></table>
+    </div>
+  </div>`);
+  fillTenantTable(d.querySelector('#tenantTbody'));
+  return d;
+}
+
+function fillTenantTable(tb){
+  tb.innerHTML = '';
+  TENANTS.forEach(t=>{
+    const tr = el(`<tr><td><span class="avatar">${initials(t.name)}</span>${t.name}<div class="small muted">${t.city}</div></td><td>${t.contact}</td><td>${t.plan}</td><td>${statusChip(t.status)}</td><td>${t.due}</td><td>✏️ 🔒</td></tr>`);
+    tr.onclick = ()=> goSA('branding');
+    tb.appendChild(tr);
+  });
+}
+
+function openAddTenantModal(){
+  openModal(`
+    <h3>Add Tenant</h3>
+    <div class="field"><label>Business Name</label><input type="text" id="nt-name" placeholder="e.g. Sri Lakshmi Jewellers"></div>
+    <div class="field"><label>Contact Number</label><input type="text" id="nt-contact" placeholder="98765 00000"></div>
+    <div class="field"><label>Plan</label><select id="nt-plan"><option>Trial</option><option>Professional</option><option>Business</option></select></div>
+    <div class="modal-actions">
+      <button class="btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="saveNewTenant()">Create Tenant</button>
+    </div>
+  `);
+}
+
+function saveNewTenant(){
+  const name = q('#nt-name').value.trim() || 'New Jewellery Tenant';
+  const contact = q('#nt-contact').value.trim() || '98765 00000';
+  const plan = q('#nt-plan').value;
+  TENANTS.push({name, city:'—', contact, plan, status: plan==='Trial'?'Trial':'Active', due:'—'});
+  closeModal();
+  goSA('tenants');
+}
+
+function saBranding(){
+  const d = el(`<div>
+    <div class="dash-topline"><h2 style="font-size:19px;">Branding &amp; White Label</h2><span class="breadcrumb-note" style="margin:0;">Customize tenant brand</span></div>
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;">
+      <div class="panel">
+        <div class="field"><label>Brand / App Name</label><input type="text" id="br-name" value="${state.brandName}"></div>
+        <div class="field"><label>Primary Color</label>
+          <div class="swatch-row">
+            <input type="color" id="br-color" value="${state.brandColor}" style="width:44px;height:38px;border:none;padding:0;cursor:pointer;">
+            <span class="small muted" id="br-color-val">${state.brandColor}</span>
+          </div>
+        </div>
+        <div class="field"><label>Font Family</label><select><option>Poppins / Inter</option><option>Playfair / Source Sans</option></select></div>
+        <button class="btn btn-primary" style="width:auto;" onclick="saveBranding()">Save Changes</button>
+        <p class="small muted" style="margin-top:10px;">Per Chapter 10 (FR-002-02): changes propagate to the Customer App instantly — no app-store release. Try it, then switch to the Customer App tab.</p>
+      </div>
+      <div class="panel" style="display:flex;justify-content:center;">
+        <div style="transform:scale(.62);transform-origin:top center;">
+          <div class="phone" style="width:360px;height:740px;">
+            <div class="phone-notch"></div>
+            <div class="status-bar"><span>9:41</span><span>●●● JROS ▮▮▮</span></div>
+            <div class="screen dark-bg pad" style="height:calc(100% - 38px);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;color:#fff;">
+              <div class="splash-logo" id="preview-logo">JR</div>
+              <h1 id="preview-name" style="font-size:22px;color:#fff;">${state.brandName}</h1>
+              <p class="small" id="preview-tagline" style="color:var(--gold-light);">Trust. Save. Shine. Forever.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`);
+  const colorInput = d.querySelector('#br-color');
+  colorInput.oninput = ()=>{
+    d.querySelector('#br-color-val').textContent = colorInput.value;
+    d.querySelector('#preview-name').textContent = d.querySelector('#br-name').value;
+  };
+  d.querySelector('#br-name').oninput = (e)=>{ d.querySelector('#preview-name').textContent = e.target.value; };
+  return d;
+}
+
+function saveBranding(){
+  const name = q('#br-name').value.trim() || state.brandName;
+  const color = q('#br-color').value;
+  state.brandName = name;
+  state.brandColor = color;
+  document.documentElement.style.setProperty('--gold', color);
+  toast('Branding updated');
+  alert(`Branding saved for "${name}". Switch to the Customer App tab — the gold accent and brand name have updated live across the app, with zero rebuild (Chapter 10, FR-002-02).`);
+}
+
+function saAudit(){
+  const logs = [
+    {who:'Anitha (Staff)', action:'Recorded a ₹10,000 manual payment', target:'for Ramesh Kumar', time:'Today, 11:42 AM'},
+    {who:'Super Admin', action:'Activated tenant', target:'Sree Kumaran Jewellers', time:'Today, 09:15 AM'},
+    {who:'Super Admin', action:"Changed plan to Business", target:'for Diamond World', time:'Yesterday, 4:02 PM'},
+    {who:'Mr. Kumar (Admin)', action:'Created scheme', target:'"Festival Special Plan"', time:'Yesterday, 2:20 PM'},
+    {who:'Super Admin', action:'Updated branding', target:'for Gold Palace Jewellers', time:'2 days ago'},
+  ];
+  const d = el(`<div>
+    <div class="dash-topline"><h2 style="font-size:19px;">Audit Logs</h2></div>
+    <div class="panel" id="auditPanel"></div>
+  </div>`);
+  const p = d.querySelector('#auditPanel');
+  logs.forEach(l=>{
+    p.insertAdjacentHTML('beforeend', `<div class="list-item">
+      <div><b class="small">${l.who}</b> <span class="small">${l.action} <span class="muted">${l.target}</span></span></div>
+      <span class="small muted">${l.time}</span>
+    </div>`);
+  });
+  return d;
+}
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+function openModal(html){
+  q('#modal-root').innerHTML = `<div class="modal-overlay" id="modalOverlay"><div class="modal">${html}</div></div>`;
+  q('#modalOverlay').onclick = (e)=>{ if(e.target.id==='modalOverlay') closeModal(); };
+}
+function closeModal(){ q('#modal-root').innerHTML = ''; }
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+renderCustomer();
+renderAdmin();
+renderSA();
+</script>
+</body>
+</html>
+

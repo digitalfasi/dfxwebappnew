@@ -1,113 +1,108 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@theme {
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+@layer base {
+  :root {
+    /* DFX Solution brand — sky-blue + navy + white, per the platform's
+       explicit brand direction (the marketing site's raw CSS also exposes
+       a violet accent, but the product's own visual identity is blue/navy). */
+    --gold: #2C6FBD;
+    --gold-light: #60A3E6;
+    --gold-dim: rgba(44, 111, 189, 0.14);
+    --ink: #0B0E23;
+    --ink-2: #151C3A;
+    --ink-soft: #2A3352;
+    --cream: #F7F8FC;
+    --paper: #FFFFFF;
+    --slate: #1A2340;
+    --muted: #6B7290;
+    --line: #E3E6F0;
+    --success: #2F9E5B;
+    --success-bg: #E7F5EC;
+    --danger: #C24545;
+    --danger-bg: #FBEAEA;
+    --warn: #B8860B;
+    --warn-bg: #FBF2DC;
+    --radius: 12px;
 
-  --color-canvas: #ffffff;
-  --color-surface: #ffffff;
-  --color-ink: #1e293b;
-  --color-ink-soft: #334155;
-  --color-muted: #475569;
-  --color-faint: #64748b;
-  --color-line: #d4c5b2;
-  --color-line-soft: #eae5dc;
+    --background: 228 45% 98%;
+    --foreground: 233 52% 9%;
 
-  --color-accent: #c9a84c;
-  --color-accent-strong: #a68631;
-  --color-accent-soft: #fffbf0;
-  --color-accent-line: #ffe5c7;
+    --card: 0 0% 100%;
+    --card-foreground: 233 52% 9%;
 
-  --color-warn: #d4b46d;
-  --color-warn-soft: #fff8e7;
-  --color-warn-line: #ffe29f;
-  --color-danger: #b91c1c;
-  --color-danger-soft: #fef2f2;
-  --color-danger-line: #fca5a5;
-  --color-info: #3b82f6;
-  --color-info-soft: #eff6ff;
-  --color-info-line: #bfdbfe;
+    --popover: 0 0% 100%;
+    --popover-foreground: 233 52% 9%;
 
-  --radius-card: 1rem;
-  --shadow-card: 0 2px 4px rgba(30,41,59,0.05), 0 8px 20px -4px rgba(30,41,59,0.08);
-  --ease-out-soft: cubic-bezier(0.2, 0, 0, 1);
-}
+    --primary: 212 62% 46%;
+    --primary-foreground: 0 0% 100%;
 
-html {
-  font-family: var(--font-sans);
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  -webkit-font-smoothing: antialiased;
-}
+    --secondary: 210 73% 64%;
+    --secondary-foreground: 0 0% 100%;
 
-body { margin: 0; }
+    --muted: 228 18% 55%;
+    --muted-foreground: 228 18% 55%;
 
-/* Shared responsive shell: every module's root fills the available viewport
-   width instead of centering inside a fixed max-width (which left a large blank
-   area on wider/minimized windows). The main wrapper keeps the page gutters. */
-.content-shell > * {
-  max-width: 100% !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-}
+    --accent: 210 73% 64%;
+    --accent-foreground: 0 0% 100%;
 
-::selection { background: var(--color-accent-soft); }
+    --destructive: 0 52% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-.glass {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid var(--color-line);
-  transition: transform 380ms cubic-bezier(0.16,1,0.3,1), box-shadow 380ms cubic-bezier(0.16,1,0.3,1), border-color 380ms ease;
-  will-change: transform;
-}
-
-.glass:hover {
-  transform: translateY(-4px);
-  border-color: var(--color-accent-line);
-  box-shadow: 0 8px 20px rgba(30,41,59,0.12), 0 20px 40px -10px rgba(30,41,59,0.18);
-}
-
-.hero-card {
-  transition: transform 380ms cubic-bezier(0.16,1,0.3,1), box-shadow 380ms cubic-bezier(0.16,1,0.3,1);
-  will-change: transform;
-}
-.hero-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 28px rgba(30,41,59,0.25);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .glass, .hero-card { transition: none; }
-  .glass:hover, .hero-card:hover { transform: none; box-shadow: none; border-color: var(--color-line); }
-}
-
-.num { font-variant-numeric: tabular-nums; }
-
-.auto-fade-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  transition: scrollbar-color 500ms ease;
-}
-.auto-fade-scroll:hover,
-.auto-fade-scroll.is-scrolling {
-  scrollbar-color: #cbd5e1 transparent;
-}
-.auto-fade-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
-.auto-fade-scroll::-webkit-scrollbar-track { background: transparent; }
-.auto-fade-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; transition: background 500ms ease; }
-.auto-fade-scroll:hover::-webkit-scrollbar-thumb,
-.auto-fade-scroll.is-scrolling::-webkit-scrollbar-thumb { background: #cbd5e1; }
-
-*:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    --border: 226 30% 92%;
+    --input: 226 30% 92%;
+    --ring: 212 62% 46%;
   }
-  html { scroll-behavior: auto; }
+
+  .dark {
+    --background: 233 52% 9%;
+    --foreground: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-cream-dark text-slate font-body min-h-screen antialiased;
+  }
+}
+
+/* Product Studio workspace — real fade transitions. The `animate-in
+   fade-in` classes used elsewhere in this codebase reference the
+   tailwindcss-animate plugin, which isn't installed (plugins: [] in
+   tailwind.config.js) — those classes have never actually applied any
+   animation. These are plain, dependency-free keyframes instead. */
+@keyframes studio-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes studio-fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: studio-fade-in 280ms ease-out both;
+}
+.animate-fade-in-up {
+  animation: studio-fade-in-up 220ms ease-out both;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ink-soft);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gold);
 }
