@@ -1,0 +1,18 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next
+/dist
+/out
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# env / secrets
+.env
+.env.local
+.env*.local
+
+# misc
+*.log
+.DS_Store
