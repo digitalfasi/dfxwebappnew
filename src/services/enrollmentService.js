@@ -54,6 +54,22 @@ export const enrollmentService = {
     return (res.data?.enrollments ?? []).map(mapRow);
   },
 
+  /**
+   * GET /api/v1/enrollments — admin list plus the backend-authoritative KPI
+   * summary from the SAME response. Rows use the shared mapRow; `summary` is
+   * passed through untouched (per status-filter slices, each carrying
+   * active_enrollments, completed, total_paid, outstanding). The frontend never
+   * sums or derives these figures — it only displays the slice for the active
+   * filter. `summary` is null when the live backend predates the field.
+   */
+  async getEnrollmentsWithSummary() {
+    const res = await apiClient.get("/enrollments", { auth: true });
+    return {
+      rows: (res.data?.enrollments ?? []).map(mapRow),
+      summary: res.data?.summary ?? null,
+    };
+  },
+
   /** GET /api/v1/enrollments/{id}/balance — authoritative totals + redemptions. */
   async getBalance(id) {
     const res = await apiClient.get(`/enrollments/${id}/balance`, { auth: true });

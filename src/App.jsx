@@ -72,7 +72,7 @@ function Toast({ onRef }) {
 }
 
 export default function App() {
-  const { tenantName, logout } = useAuth();
+  const { logout } = useAuth();
   const [page, setPage] = useState("dashboard");
   const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -88,14 +88,10 @@ export default function App() {
       <div className="auto-fade-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain" onScroll={(e) => { const el = e.currentTarget; el.classList.add("is-scrolling"); clearTimeout(el._fadeT); el._fadeT = setTimeout(() => el.classList.remove("is-scrolling"), 1000); }}>
         <TopBar
           title={meta.title}
-          crumb={`${tenantName || "DFX Solution"} / ${meta.crumb ?? ""}`}
           onMenu={() => setNavOpen(true)}
           onNavigate={setPage}
           onLogout={logout}
-          hideTitle={page === "dashboard"}
-          search={search}
-          onSearch={page === "dashboard" ? setSearch : undefined}
-          searchPlaceholder="Search recent invoices or enrollments..."
+          hideTitle
           action={
             meta.action && (
               <button

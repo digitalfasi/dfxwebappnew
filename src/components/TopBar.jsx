@@ -25,10 +25,14 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          {!hideTitle && (
+          {/* Compact context breadcrumb. The page title itself lives once, in
+              the body — never duplicated here. */}
+          {(crumb || (!hideTitle && title)) && (
             <div>
-              <div className="text-[11px] font-semibold text-ink-soft">{crumb}</div>
-              <h1 className="text-lg font-extrabold tracking-tight text-ink">{title}</h1>
+              {crumb && <div className="text-[11px] font-semibold text-ink-soft">{crumb}</div>}
+              {!hideTitle && title && (
+                <h1 className="text-lg font-extrabold tracking-tight text-ink">{title}</h1>
+              )}
             </div>
           )}
         </div>
@@ -66,18 +70,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
             </svg>
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-surface bg-danger" />
           </button>
-          {onNavigate && (
-            <button
-              className="grid h-9 w-9 place-items-center rounded-full border border-line bg-surface text-ink-soft transition-colors duration-150 hover:border-accent-line hover:text-accent-strong"
-              onClick={() => onNavigate("settings")}
-              aria-label="Settings"
-            >
-              <svg viewBox="0 0 24 24" className="h-[17px] w-[17px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-              </svg>
-            </button>
-          )}
+          {/* Settings lives in the sidebar — no duplicate header gear. */}
           {onLogout && (
             <button
               className="grid h-9 w-9 place-items-center rounded-full border border-danger-line bg-surface text-danger transition-colors duration-150 hover:bg-danger-soft"

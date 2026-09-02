@@ -497,7 +497,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
           {/* Sales Trend */}
           <Card className="p-3.5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-xs font-bold">Sales Trend</CardTitle>
+              <CardTitle className="text-xs font-bold">Business Pulse</CardTitle>
               <div className="flex flex-wrap items-center gap-1.5">
                 <MetricSelect value={bizMetric} onChange={setBizMetric} options={BIZ_METRICS} accent={BUSINESS_ACCENT} />
                 <PeriodTabs value={bizPeriod} onChange={setBizPeriod} accent={BUSINESS_ACCENT} />
@@ -570,7 +570,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
           {/* Collections Trend */}
           <Card className="p-3.5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-xs font-bold">Collections Trend</CardTitle>
+              <CardTitle className="text-xs font-bold">Payment Activity</CardTitle>
               <div className="flex flex-wrap items-center gap-1.5">
                 <MetricSelect value={schemeMetric} onChange={setSchemeMetric} options={SCHEME_METRICS} accent={SCHEME_ACCENT} />
                 <PeriodTabs value={schemePeriod} onChange={setSchemePeriod} accent={SCHEME_ACCENT} />

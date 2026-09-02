@@ -3,6 +3,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Select } from "../components/ui/select";
+import { SearchInput } from "../components/ui/input";
 import { usePageMotion, usePressFeedback } from "../hooks/usePageMotion";
 import { toast } from "../lib/toast";
 import { enrollmentService } from "../services/enrollmentService";
@@ -39,11 +40,23 @@ function rate(v) {
   return `₹${Number(v).toLocaleString("en-IN")}/g`;
 }
 
+// KPI card — presentation only, matches the existing DFX card language.
+function KpiCard({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-accent-line hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+      <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{label}</div>
+      <div className="mt-1.5 text-xl font-extrabold tracking-tight">{value}</div>
+    </div>
+  );
+}
+
 export default function SchemeManagement() {
   const scope = useRef(null);
   usePressFeedback(scope);
   const [filter, setFilter] = useState("All");
+  const [query, setQuery] = useState("");
   const [rows, setRows] = useState([]);
+  const [summary, setSummary] = useState(null); // backend-authoritative KPI slices
   const [loading, setLoading] = useState(true);
   usePageMotion(scope, [loading]);
   const [loadError, setLoadError] = useState("");
@@ -62,7 +75,9 @@ export default function SchemeManagement() {
     setLoading(true);
     setLoadError("");
     try {
-      setRows(await enrollmentService.getEnrollments());
+      const { rows: r, summary: s } = await enrollmentService.getEnrollmentsWithSummary();
+      setRows(r);
+      setSummary(s);
     } catch (err) {
       setLoadError(err?.message || "Could not load enrollments.");
     } finally {
@@ -76,6 +91,26 @@ export default function SchemeManagement() {
     () => (filter === "All" ? rows : rows.filter((r) => r.status === filter)),
     [rows, filter]
   );
+
+  // Text search over the already-loaded rows — customer name or enrollment
+  // number only. A pure display filter for the table; it never touches KPIs
+  // (which stay backend-summary/status driven) and computes no financial value.
+  const searched = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return filtered;
+    return filtered.filter(
+      (r) =>
+        (r.customer || "").toLowerCase().includes(q) ||
+        (r.enrollment || "").toLowerCase().includes(q)
+    );
+  }, [filtered, query]);
+
+  // KPI row — read straight from the backend-authoritative `summary` slice for
+  // the active filter. The frontend performs NO financial aggregation: it only
+  // selects the matching slice (All/Active/Completed/Cancelled) and displays the
+  // values the backend already computed. Null when the slice is unavailable.
+  const FILTER_TO_SLICE = { All: "all", Active: "active", Completed: "completed", Cancelled: "cancelled" };
+  const kpis = summary?.[FILTER_TO_SLICE[filter]] ?? null;
 
   // Outstanding is backend-authoritative (enrollment.outstanding_amount). The
   // frontend never computes it — `—` when the live backend hasn't sent it yet.
@@ -157,7 +192,21 @@ export default function SchemeManagement() {
         </Button>
       </div>
 
+      <div data-motion="reveal" className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiCard label="Active Enrollments" value={loading || !kpis ? "—" : String(kpis.active_enrollments)} />
+        <KpiCard label="Total Paid" value={loading || !kpis ? "—" : money(kpis.total_paid)} />
+        <KpiCard label="Outstanding" value={loading || !kpis ? "—" : money(kpis.outstanding)} />
+        <KpiCard label="Completed" value={loading || !kpis ? "—" : String(kpis.completed)} />
+      </div>
+
       <div data-motion="toolbar" className="mb-4 flex flex-wrap items-center gap-2">
+        <SearchInput
+          className="w-full max-w-xs sm:max-w-sm sm:flex-1"
+          placeholder="Search customers or enrollment..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search enrollments"
+        />
         {FILTERS.map((f) => (
           <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${filter === f ? "border-ink bg-ink text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{f}</button>
         ))}
@@ -166,26 +215,31 @@ export default function SchemeManagement() {
 
       <Card data-motion="reveal" className="overflow-hidden">
         <CardContent className="overflow-x-auto px-0 pb-0">
-          <table className="w-full min-w-[1100px] border-collapse text-sm">
+          <table className="w-full table-fixed border-collapse text-sm">
+            <colgroup>
+              <col style={{ width: "14%" }} /><col style={{ width: "12%" }} /><col style={{ width: "11%" }} />
+              <col style={{ width: "9%" }} /><col style={{ width: "9%" }} /><col style={{ width: "9%" }} />
+              <col style={{ width: "7%" }} /><col style={{ width: "12%" }} /><col style={{ width: "8%" }} /><col style={{ width: "9%" }} />
+            </colgroup>
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Customer</th><th className="py-3">Scheme</th><th className="py-3">Enrollment #</th><th className="py-3">Joined</th><th className="py-3">Maturity</th><th className="py-3">Installment</th><th className="py-3">Paid</th><th className="py-3">Outstanding</th><th className="py-3">Status</th><th className="py-3 text-right pr-6">Action</th>
+                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3 text-right">Installment</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Outstanding</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
+              {searched.map((r) => (
                 <tr key={r.enrollment} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
                   <td className="px-6 py-3.5"><div className="font-bold leading-tight">{r.customer}</div></td>
-                  <td className="py-3.5 font-medium">{r.scheme}</td>
-                  <td className="py-3.5 font-mono text-xs font-semibold">{r.enrollment}</td>
-                  <td className="py-3.5 text-muted">{fmtDate(r.joined)}</td>
-                  <td className="py-3.5 text-muted">{fmtDate(r.maturity)}</td>
-                  <td className="num py-3.5 font-semibold">{money(r.installment)}</td>
-                  <td className="num py-3.5"><span className="font-bold">{r.paid}/{r.total}</span></td>
-                  <td className="num py-3.5 font-bold">{money(outstanding(r))}</td>
-                  <td className="py-3.5"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></td>
-                  <td className="py-3.5 pr-6 text-right">
-                    <Button size="sm" variant="outline" onClick={() => openManage(r)}>Manage Scheme</Button>
+                  <td className="px-4 py-3.5 font-medium">{r.scheme}</td>
+                  <td className="px-4 py-3.5 font-mono text-xs font-semibold whitespace-nowrap">{r.enrollment}</td>
+                  <td className="px-4 py-3.5 text-muted whitespace-nowrap">{fmtDate(r.joined)}</td>
+                  <td className="px-4 py-3.5 text-muted whitespace-nowrap">{fmtDate(r.maturity)}</td>
+                  <td className="num px-4 py-3.5 text-right font-semibold whitespace-nowrap">{money(r.installment)}</td>
+                  <td className="num px-4 py-3.5 text-right whitespace-nowrap"><span className="font-bold">{r.paid}/{r.total}</span></td>
+                  <td className="num px-4 py-3.5 text-right font-bold whitespace-nowrap">{money(outstanding(r))}</td>
+                  <td className="px-4 py-3.5"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></td>
+                  <td className="px-4 py-3.5 pr-6 text-right">
+                    <Button size="sm" variant="outline" onClick={() => openManage(r)}>Manage</Button>
                   </td>
                 </tr>
               ))}
@@ -195,14 +249,14 @@ export default function SchemeManagement() {
               {!loading && loadError && (
                 <tr><td colSpan={10} className="px-6 py-14 text-center"><div className="font-bold text-danger">Couldn’t load enrollments</div><p className="mt-1 text-sm text-muted">{loadError}</p><Button size="sm" variant="outline" className="mt-3" onClick={loadRows}>Retry</Button></td></tr>
               )}
-              {!loading && !loadError && filtered.length === 0 && (
-                <tr><td colSpan={10} className="px-6 py-14 text-center"><div className="font-bold">No enrollments found</div><p className="mt-1 text-sm text-muted">Nothing matches this filter.</p></td></tr>
+              {!loading && !loadError && searched.length === 0 && (
+                <tr><td colSpan={10} className="px-6 py-14 text-center"><div className="font-bold">No enrollments found</div><p className="mt-1 text-sm text-muted">Nothing matches this {query.trim() ? "search" : "filter"}.</p></td></tr>
               )}
             </tbody>
           </table>
         </CardContent>
       </Card>
-      <div className="mt-3 text-xs font-semibold text-muted">Showing {filtered.length} of {rows.length} enrollments</div>
+      <div className="mt-3 text-xs font-semibold text-muted">Showing {searched.length} of {rows.length} enrollments</div>
 
       {manage && (
         <div className="fixed inset-0 z-50 flex justify-end">
