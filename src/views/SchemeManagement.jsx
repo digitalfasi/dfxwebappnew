@@ -77,10 +77,10 @@ export default function SchemeManagement() {
     [rows, filter]
   );
 
-  // Outstanding = base maturity − total paid, both backend-authoritative figures.
-  // Same display subtraction the existing Collections screen used; no new rule.
+  // Outstanding is backend-authoritative (enrollment.outstanding_amount). The
+  // frontend never computes it — `—` when the live backend hasn't sent it yet.
   function outstanding(r) {
-    return Math.max(0, (r.maturityAmount || 0) - (r.totalPaid || 0));
+    return r?.outstanding ?? null;
   }
 
   async function openManage(r) {
@@ -108,32 +108,26 @@ export default function SchemeManagement() {
     setManage(null);
   }
 
-  // Passbook rows with a running gold balance. Gold Credited is the backend
-  // gold_weight per entry; the balance is a ledger running total of those
-  // authoritative weights — no gold is valued or computed from money here.
+  // Passbook rows — every gold figure is backend-authoritative. Gold Credited is
+  // the ledger gold_weight; Gold Balance is the backend running_gold_weight. No
+  // gold is valued or summed in the frontend.
   const passbookRows = useMemo(() => {
     const entries = (passbook?.entries ?? []).slice().sort(
       (a, b) => (a.entryNumber ?? 0) - (b.entryNumber ?? 0)
     );
-    let running = 0;
-    let anyWeight = false;
-    const out = entries.map((e) => {
-      const w = e.goldWeight === null || e.goldWeight === undefined ? null : Number(e.goldWeight);
-      if (w !== null && !Number.isNaN(w)) { running += w; anyWeight = true; }
-      return {
-        id: e.id,
-        date: fmtDate(e.entryDate),
-        amount: e.amount,
-        goldRate: e.goldRate,
-        goldWeight: w,
-        goldBalance: anyWeight ? running : null,
-      };
-    });
-    return out;
+    return entries.map((e) => ({
+      id: e.id,
+      date: fmtDate(e.entryDate),
+      amount: e.amount,
+      goldRate: e.goldRate,
+      goldWeight: e.goldWeight,
+      goldBalance: e.goldBalance,
+    }));
   }, [passbook]);
 
   const totalPaid = balance?.total_paid ?? manage?.totalPaid ?? null;
-  const goldBalance = passbookRows.length ? passbookRows[passbookRows.length - 1].goldBalance : null;
+  // Authoritative total gold balance from the passbook summary (backend).
+  const goldBalance = passbook?.summary?.total_gold_weight ?? null;
 
   async function saveRemark() {
     if (!manage) return;

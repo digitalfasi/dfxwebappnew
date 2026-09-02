@@ -20,6 +20,9 @@ export const passbookService = {
         amount: e.amount,
         goldRate: e.gold_rate,
         goldWeight: e.gold_weight,
+        // Authoritative cumulative gold balance through this entry (backend
+        // running ledger balance). Null when the live backend predates it.
+        goldBalance: e.running_gold_weight ?? null,
       })),
       summary: p.summary ?? null,
     };

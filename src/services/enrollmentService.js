@@ -37,6 +37,9 @@ function mapRow(raw) {
     totalPaid: raw.total_paid ?? 0,
     // Backend base maturity (monthly x duration, no bonus) — authoritative.
     maturityAmount: raw.maturity_amount ?? 0,
+    // Authoritative amount still due (max(0, maturity - paid)) computed by the
+    // backend. Null when the live backend predates the field — never recomputed.
+    outstanding: raw.outstanding_amount ?? null,
     // Redemptions are not on the list payload; enriched from balance on open.
     alreadyRedeemed: 0,
     nextDue: raw.next_due_date,
