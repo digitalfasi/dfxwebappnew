@@ -7,6 +7,7 @@ import { usePageMotion, usePressFeedback } from "../hooks/usePageMotion";
 import { toast } from "../lib/toast";
 import { formatINR } from "../lib/utils";
 import { goldRateService } from "../services/goldRateService";
+import { liveRateService } from "../services/liveRateService";
 
 // Real gold rate loaded from the DFX backend (24K authoritative).
 // No mock rate history remains; the backend contract exposes no history endpoint.
@@ -19,13 +20,55 @@ export default function GoldRate() {
   // never fabricated. rate_24k is the only backend-required figure.
   const EMPTY = { r24: "", r22: "", r18: "", r14: "", r9: "", silver: "" };
   const [rates, setRates] = useState(EMPTY);
-  const setField = (k) => (e) => setRates((s) => ({ ...s, [k]: e.target.value }));
+  // Fields the operator has hand-edited since the last live pull. Auto-refresh
+  // updates every other field but never clobbers these.
+  const dirty = useRef(new Set());
+  const setField = (k) => (e) => {
+    dirty.current.add(k);
+    setRates((s) => ({ ...s, [k]: e.target.value }));
+  };
   const [loading, setLoading] = useState(true);
   usePageMotion(scope, [loading]);
   const [saving, setSaving] = useState(false);
   const [todayExists, setTodayExists] = useState(false);
+  // DFX Collector Engine: live rates scraped from KJPL + MJDTA (server-side).
+  const [live, setLive] = useState(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveErr, setLiveErr] = useState("");
 
   const num = (v) => { const n = Number(v); return v !== "" && Number.isFinite(n) ? n : null; };
+
+  // Pull live rates from the collector.
+  //   "fill"  — initial load: fill only blank fields, never touch a saved rate.
+  //   "force" — Fetch live button: replace every field, clear hand-edits.
+  //   "auto"  — refresh timer: update every field except ones hand-edited.
+  const fetchLive = useCallback(async (mode = "fill") => {
+    setLiveLoading(true);
+    setLiveErr("");
+    try {
+      const data = await liveRateService.getLiveRates({ fresh: mode === "force" });
+      setLive(data);
+      const f = data.form || {};
+      const str = (n) => (n != null ? String(n) : "");
+      const keys = ["r24", "r22", "r18", "r14", "r9", "silver"];
+      setRates((s) => {
+        const next = { ...s };
+        for (const k of keys) {
+          if (f[k] == null) continue;
+          const allow = mode === "force" ? true : mode === "fill" ? s[k] === "" : !dirty.current.has(k);
+          if (allow) next[k] = str(f[k]);
+        }
+        return next;
+      });
+      if (mode === "force") dirty.current.clear();
+      return data;
+    } catch (err) {
+      setLiveErr(err?.message || "Live fetch failed");
+      return null;
+    } finally {
+      setLiveLoading(false);
+    }
+  }, []);
 
   const loadRate = useCallback(async () => {
     setLoading(true);
@@ -53,8 +96,20 @@ export default function GoldRate() {
   }, []);
 
   useEffect(() => {
-    loadRate();
-  }, [loadRate]);
+    // Load today's saved rate, then overlay live collector data (fills only the
+    // blank fields, and populates the live/GST hints below).
+    loadRate().finally(() => fetchLive("fill"));
+  }, [loadRate, fetchLive]);
+
+  // Auto-refresh every 60s, unconditionally, for as long as the screen is
+  // mounted — the whole app keys off these live rates, so it keeps ticking even
+  // when the tab is in the background. Paced at ~1 request/min via the 20s
+  // server cache, so it stays gentle on the source sites.
+  useEffect(() => {
+    const REFRESH_MS = 60000;
+    const id = setInterval(() => fetchLive("auto"), REFRESH_MS);
+    return () => clearInterval(id);
+  }, [fetchLive]);
 
   async function publishRate() {
     const r24 = Number(rates.r24);
@@ -103,6 +158,11 @@ export default function GoldRate() {
           <div className="num relative mt-3 text-5xl font-extrabold tracking-tight text-white drop-shadow-sm">
             {num(rates.r22) != null ? formatINR(num(rates.r22)) : "—"}
           </div>
+          {live?.rates?.gold_22k?.withGst != null && (
+            <div className="num relative mt-1 text-[13px] font-semibold text-white/60">
+              incl. GST {formatINR(live.rates.gold_22k.withGst)}
+            </div>
+          )}
           <div className={`relative mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-bold backdrop-blur ${isUp ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300" : isDown ? "border-red-400/20 bg-red-500/15 text-red-300" : "border-[#fde68a]/20 bg-[#c9a84c]/15 text-[#fde68a]"}`} style={isDown ? { textShadow: "0 0 10px rgba(252,165,165,0.7)", boxShadow: "0 0 18px rgba(239,68,68,0.32)" } : isUp ? { textShadow: "0 0 10px rgba(110,231,183,0.55)", boxShadow: "0 0 18px rgba(16,185,129,0.22)" } : undefined}>
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">{isDown ? <path d="M7 7l10 10M17 7v10H7" /> : <path d="M7 17 17 7M7 7h10v10" />}</svg>
             {diff === 0 ? "— No change vs yesterday" : `${diff > 0 ? "+" : ""}₹${diff} (${pct > 0 ? "+" : ""}${pct.toFixed(2)}%) vs yesterday`}
@@ -137,6 +197,11 @@ export default function GoldRate() {
               <label className="grid gap-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-[0.07em]">22K rate / gram</span>
                 <Input type="number" value={rates.r22} onChange={setField("r22")} />
+                {live?.rates?.gold_22k?.withGst != null && (
+                  <span className="text-[11px] text-muted">
+                    Without GST {formatINR(live.rates.gold_22k.withoutGst)} · With GST {formatINR(live.rates.gold_22k.withGst)}
+                  </span>
+                )}
               </label>
               <label className="grid gap-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-[0.07em]">18K rate / gram</span>
@@ -145,10 +210,16 @@ export default function GoldRate() {
               <label className="grid gap-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-[0.07em]">14K rate / gram</span>
                 <Input type="number" value={rates.r14} onChange={setField("r14")} />
+                {live?.rates?.gold_14k?.derived && (
+                  <span className="text-[11px] text-muted">Derived · 24K × 14/24</span>
+                )}
               </label>
               <label className="grid gap-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-[0.07em]">9K rate / gram</span>
                 <Input type="number" value={rates.r9} onChange={setField("r9")} />
+                {live?.rates?.gold_9k?.derived && (
+                  <span className="text-[11px] text-muted">Derived · 24K × 9/24</span>
+                )}
               </label>
               <label className="grid gap-1.5">
                 <span className="text-[11px] font-bold uppercase tracking-[0.07em]">Silver / gram</span>
@@ -158,9 +229,19 @@ export default function GoldRate() {
             <p className="mt-3 text-xs text-muted">
               Existing bill drafts are unaffected. Rate history keeps a full audit trail.
             </p>
-            <div className="mt-4 flex gap-2.5">
+            <div className="mt-4 flex flex-wrap items-center gap-2.5">
               <Button size="sm" disabled={saving || loading} onClick={publishRate}>{saving ? "Publishing…" : "Save & publish"}</Button>
               <Button size="sm" variant="outline" disabled={saving} onClick={loadRate}>Reset</Button>
+              <Button size="sm" variant="outline" disabled={liveLoading || saving} onClick={() => fetchLive("force")}>
+                {liveLoading ? "Fetching…" : "Fetch live"}
+              </Button>
+              {liveErr ? (
+                <span className="text-[11px] text-red-500">Live: {liveErr}</span>
+              ) : live?.fetchedAt ? (
+                <span className="text-[11px] text-muted">
+                  Live · KJPL + MJDTA · auto 60s · {new Date(live.fetchedAt).toLocaleTimeString()}
+                </span>
+              ) : null}
             </div>
           </CardContent>
         </Card>

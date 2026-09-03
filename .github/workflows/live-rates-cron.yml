@@ -1,0 +1,66 @@
+# DFX Collector Engine — free 24/7 auto-publish cron.
+#
+# Every 5 minutes GitHub Actions POSTs to the deployed /api/live-rates/publish
+# route, which scrapes KJPL + MJDTA and writes the live rate into the DFX
+# (Render) backend — the source the MOBILE app reads. No server of your own runs
+# 24/7; GitHub's runners do the scheduling for free, Vercel does the work.
+#
+# The publish route itself enforces market hours (09:05–23:25 IST, Mon–Fri) and
+# sanity checks, so off-hours or bad-scrape runs simply no-op (published:false).
+# The schedule below is narrowed to roughly those hours (UTC) just to avoid
+# pointless runs — the route remains the authority.
+#
+# SETUP (one time):
+#   1. Push this repo to the GitHub repo Vercel deploys from.
+#   2. Add two GitHub repo secrets (Settings → Secrets and variables → Actions):
+#        PUBLISH_URL  = https://<your-app>.vercel.app/api/live-rates/publish
+#        CRON_SECRET  = <a long random string>
+#   3. In Vercel (Project → Settings → Environment Variables) set the matching:
+#        CRON_SECRET           = <the SAME random string>
+#        DFX_API_URL           = https://dfx-backend-lym0.onrender.com/api/v1
+#        DFX_SERVICE_USERNAME  = <a backend account allowed to write gold rates>
+#        DFX_SERVICE_PASSWORD  = <its password>
+#      then redeploy so the env vars take effect.
+#   4. Test without touching the backend: run the workflow manually (Actions →
+#      Run workflow) — or locally hit the route with ?dryRun=1.
+
+name: live-rates-cron
+
+on:
+  schedule:
+    - cron: "*/5 3-18 * * 1-5" # ~every 5 min during IST market hours (UTC), Mon–Fri
+  workflow_dispatch: {}
+
+concurrency:
+  group: live-rates-cron
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Scrape & publish live rate
+        env:
+          PUBLISH_URL: ${{ secrets.PUBLISH_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$PUBLISH_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::PUBLISH_URL and CRON_SECRET secrets must be set."
+            exit 1
+          fi
+          echo "POST $PUBLISH_URL"
+          code=$(curl -sS -m 40 -o /tmp/out.json -w "%{http_code}" \
+            -X POST "$PUBLISH_URL" \
+            -H "x-cron-secret: $CRON_SECRET" || echo "000")
+          echo "HTTP $code"
+          echo "----- response -----"
+          head -c 800 /tmp/out.json || true
+          echo ""
+          # 200 covers both a real publish and an intentional no-op
+          # (market-closed / sanity-failed). Only non-200 is worth a warning.
+          if [ "$code" = "200" ]; then
+            echo "OK"
+          else
+            echo "::warning::Non-200 ($code) — will retry next run."
+          fi
