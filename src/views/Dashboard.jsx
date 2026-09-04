@@ -346,8 +346,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
     const today = isoDate(new Date());
     const allTime = buildQuery({ date_from: "2020-01-01", date_to: today });
     (async () => {
-      const [rate, payAll, billing, enr, cds, todayRate] = await Promise.all([
-        billingService.getTodayGoldRate24k().catch(() => null),
+      const [payAll, billing, enr, cds, todayRate] = await Promise.all([
         getSummary(`/reports/payment-summary${allTime}`),
         billingService.listSales({ limit: 5 }).catch(() => null),
         enrollmentService.getEnrollments().catch(() => []),
@@ -355,8 +354,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
         goldRateService.getTodayRate().catch(() => null),
       ]);
       if (!alive) return;
-      setGoldRate(rate);
+      // Single gold-rate source: derive the 24K headline from today's rate row
+      // instead of a second /billing/dashboard-summary fetch. Same "today 24K"
+      // figure, one fewer request on first paint.
       setBullion(todayRate);
+      setGoldRate(todayRate?.rate_24k ?? null);
       setOverdue(payAll?.outstanding_dues ?? null);
       setInvoices(billing?.sales ?? []);
       setOutstanding(billing ? billing.totalOutstanding : null);
@@ -400,22 +402,27 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // Top Selling Categories (analytics period)
   const catReq = useRef("this_year");
   useEffect(() => {
+    // Below-fold analytics: hold until the base load resolves so it doesn't add
+    // to the first-paint request fan-out. Data shown is unchanged, only later.
+    if (loading) return;
     const key = analyticsKey(catPeriod, catCustom);
     catReq.current = key;
     const q = analyticsQuery(catPeriod, catCustom);
     if (!q) return;
     getReport(`/reports/sales-by-category${q}`).then((r) => { if (catReq.current === key) setSalesCats(r); });
-  }, [catPeriod, catCustom]);
+  }, [catPeriod, catCustom, loading]);
 
   // Popular Schemes (analytics period)
   const popReq = useRef("this_year");
   useEffect(() => {
+    // Below-fold analytics — deferred behind the base load, same as categories.
+    if (loading) return;
     const key = analyticsKey(popPeriod, popCustom);
     popReq.current = key;
     const q = analyticsQuery(popPeriod, popCustom);
     if (!q) return;
     getReport(`/reports/scheme-summary${q}`).then((r) => { if (popReq.current === key) setPopSchemes(r?.schemes ?? []); });
-  }, [popPeriod, popCustom]);
+  }, [popPeriod, popCustom, loading]);
 
   /* derived — all backend-authoritative, summed only (no invented values) */
   const bizPfx = periodPrefix(bizPeriod);

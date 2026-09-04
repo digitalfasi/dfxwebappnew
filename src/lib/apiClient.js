@@ -30,6 +30,20 @@ export class ApiError extends Error {
 
 const isBrowser = () => typeof window !== "undefined";
 
+// Hard ceiling for a single request. Render free-tier cold starts can take tens
+// of seconds; this is generous enough not to abort a legitimate cold wake, but
+// bounds a genuinely hung request so the UI fails cleanly instead of blocking
+// forever. Overridable per call via opts.timeoutMs (0 disables).
+const DEFAULT_TIMEOUT_MS = 45000;
+
+// Broadcast that the session is unrecoverable (access + refresh both dead). The
+// React AuthContext listens for this to clear the user and drop back to login,
+// so an expired session never leaves the UI falsely authenticated.
+export const SESSION_EXPIRED_EVENT = "dfx:session-expired";
+function notifySessionExpired() {
+  if (isBrowser()) window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+}
+
 export const tokenStore = {
   getAccessToken() {
     return isBrowser() ? localStorage.getItem(STORAGE_KEYS.accessToken) : null;
@@ -62,11 +76,25 @@ function extractErrorMessage(payload, status) {
 }
 
 async function rawRequest(path, opts = {}) {
-  const { method = "GET", body, token, signal } = opts;
+  const { method = "GET", body, token, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = opts;
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const headers = { Accept: "application/json" };
   if (body !== undefined && !isFormData) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
+
+  // Own the abort so we can both time out and honour a caller-supplied signal
+  // without conflating the two: `timedOut` distinguishes our timeout from a
+  // caller cancellation on the same underlying AbortController.
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = timeoutMs
+    ? setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs)
+    : null;
+  const onCallerAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", onCallerAbort, { once: true });
+  }
 
   let response;
   try {
@@ -74,9 +102,18 @@ async function rawRequest(path, opts = {}) {
       method,
       headers,
       body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
-      signal,
+      signal: controller.signal,
     });
   } catch (networkError) {
+    if (timedOut) {
+      throw new ApiError(
+        `The DFX Solution API at ${API_BASE_URL} did not respond in time. It may be waking up — please retry.`,
+        0,
+        [{ code: "TIMEOUT", message: "Request timed out" }]
+      );
+    }
+    // Genuine caller cancellation — propagate the AbortError untouched.
+    if (signal?.aborted) throw networkError;
     if (networkError instanceof DOMException && networkError.name === "AbortError") {
       throw networkError;
     }
@@ -85,6 +122,9 @@ async function rawRequest(path, opts = {}) {
       0,
       [{ code: "NETWORK_ERROR", message: String(networkError) }]
     );
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onCallerAbort);
   }
 
   const text = await response.text();
@@ -145,6 +185,9 @@ export async function apiRequest(path, options = {}) {
 
   const token = tokenStore.getAccessToken();
   if (!token) {
+    // Token already gone (e.g. a sibling request just failed refresh). Signal
+    // once more so the UI drops to login rather than spinning on error states.
+    notifySessionExpired();
     throw new ApiError("Your session has expired. Please sign in again.", 401);
   }
 
@@ -155,6 +198,9 @@ export async function apiRequest(path, options = {}) {
       const newToken = await refreshAccessToken();
       if (!newToken) {
         tokenStore.clear();
+        // Access and refresh are both dead: tell the app to drop to login so the
+        // UI is never left falsely authenticated on a mid-session expiry.
+        notifySessionExpired();
         throw new ApiError("Your session has expired. Please sign in again.", 401);
       }
       return rawRequest(path, { method, body, token: newToken, signal });

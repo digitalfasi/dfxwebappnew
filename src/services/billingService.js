@@ -161,9 +161,11 @@ export const billingService = {
    * statuses are backend authoritative. Returns already-mapped rows plus the
    * real total count for the footer.
    */
-  async listSales({ search = "", limit = 100 } = {}) {
+  async listSales({ search = "", limit = 100, customerId = "", paymentStatus = "" } = {}) {
     const params = new URLSearchParams({ page: "1", limit: String(limit) });
     if (search) params.set("search", search);
+    if (customerId) params.set("customer_id", customerId);
+    if (paymentStatus) params.set("payment_status", paymentStatus);
     const res = await apiClient.get(`/billing/sales?${params.toString()}`, { auth: true });
     return {
       sales: (res.data?.sales ?? []).map(mapSaleRow),

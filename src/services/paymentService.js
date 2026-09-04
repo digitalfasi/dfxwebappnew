@@ -5,7 +5,6 @@
  * names only and recreates no business rules.
  */
 import { apiClient } from "../lib/apiClient";
-import { enrollmentService } from "./enrollmentService";
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -49,22 +48,17 @@ export const paymentService = {
   },
 
   /**
-   * POST /api/v1/payments/manual — canonical manual payment.
-   * The modal collects an enrollment NUMBER; the backend needs the enrollment id,
-   * so resolve it from the real enrollment list (no fabrication).
+   * POST /api/v1/payments/manual — canonical scheme manual payment. The caller
+   * supplies the backend enrollment id (chosen in the customer-first picker), so
+   * no enrollment lookup happens here. Amount, months coverage and maturity caps
+   * are re-validated server-side; nothing is recomputed in this layer.
    */
-  async recordManualPayment({ enrollmentNumber, amount, method, monthsCovered, remarks }) {
-    const enrollments = await enrollmentService.getEnrollments();
-    const match = enrollments.find((e) => e.enrollment === String(enrollmentNumber).trim());
-    if (!match) {
-      const err = new Error(`No enrollment found for ${enrollmentNumber}`);
-      err.status = 404;
-      throw err;
-    }
+  async recordManualPayment({ enrollmentId, amount, method, paymentDate, monthsCovered, remarks }) {
     const body = {
-      enrollment_id: match.id,
+      enrollment_id: enrollmentId,
       amount,
       payment_method: method,
+      ...(paymentDate ? { payment_date: paymentDate } : {}),
       ...(monthsCovered ? { months_covered: monthsCovered } : {}),
       ...(remarks ? { remarks } : {}),
     };

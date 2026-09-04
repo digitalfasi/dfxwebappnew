@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { authService } from "../lib/authService";
-import { tokenStore } from "../lib/apiClient";
+import { tokenStore, SESSION_EXPIRED_EVENT } from "../lib/apiClient";
 
 /**
  * App-wide authentication context. Infrastructure only — no visual output.
@@ -40,6 +40,20 @@ export function AuthProvider({ children }) {
     return () => {
       alive = false;
     };
+  }, []);
+
+  // Mid-session hard expiry: the apiClient clears tokens when both access and
+  // refresh are dead and emits SESSION_EXPIRED_EVENT. Drop the user so AuthGate
+  // falls back to the login screen instead of a stuck, falsely-authenticated UI.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onExpired = () => {
+      tokenStore.clear();
+      setUser(null);
+      setTenantName(null);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
   const login = useCallback(async (username, password) => {

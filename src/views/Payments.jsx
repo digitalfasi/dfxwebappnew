@@ -2,12 +2,13 @@ import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Input, SearchInput } from "../components/ui/input";
+import { SearchInput } from "../components/ui/input";
 import { Select } from "../components/ui/select";
 import { usePageMotion, usePressFeedback } from "../hooks/usePageMotion";
-import { toast } from "../lib/toast";
 import { paymentService } from "../services/paymentService";
 import { billingService } from "../services/billingService";
+import BusinessManualPaymentModal from "../components/BusinessManualPaymentModal";
+import SchemeManualPaymentModal from "../components/SchemeManualPaymentModal";
 
 // Scheme payments load from GET /payments via paymentService.
 // Business (product/counter-sale) payments load from the billing domain
@@ -71,19 +72,14 @@ export default function Payments() {
   const [year, setYear] = useState("All");
   const [date, setDate] = useState("");
   const [selected, setSelected] = useState(null);
-  const [showManual, setShowManual] = useState(false);
-  const [enrollmentNo, setEnrollmentNo] = useState("");
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("CASH");
-  const [advance, setAdvance] = useState("1 month (regular)");
-  const [remarks, setRemarks] = useState("");
+  const [showManual, setShowManual] = useState(false); // scheme manual payment
+  const [showBizManual, setShowBizManual] = useState(false); // business sale payment
   const [applied, setApplied] = useState({ search: "", status: "All Payments", month: "All", year: "All", date: "", dateFilter: "This Month" });
   const [schemeRows, setSchemeRows] = useState([]);
   const [businessRows, setBusinessRows] = useState([]);
   const [loading, setLoading] = useState(true);
   usePageMotion(scope, [loading]);
   const [loadError, setLoadError] = useState("");
-  const [saving, setSaving] = useState(false);
 
   const loadPayments = useCallback(async () => {
     setLoading(true);
@@ -148,7 +144,7 @@ export default function Payments() {
           ))}
         </div>
         {/* Primary action — Record Manual Payment on upper-right, blue filled with plus */}
-        <Button size="sm" variant="default" onClick={() => setShowManual(true)} className="bg-accent hover:bg-accent-strong">
+        <Button size="sm" variant="default" onClick={() => (tab === "business" ? setShowBizManual(true) : setShowManual(true))} className="bg-accent hover:bg-accent-strong">
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Record Manual Payment
         </Button>
       </div>
@@ -248,107 +244,10 @@ export default function Payments() {
       <div className="mt-3 text-xs font-semibold text-muted">Showing {rows.length} of {source.length} payments</div>
 
       {showManual && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Dark/blurred background overlay */}
-          <button className="absolute inset-0 bg-ink/50 backdrop-blur-sm" onClick={() => setShowManual(false)} aria-label="Close modal" />
-          {/* Large white rounded container */}
-          <div className="relative w-full max-w-[560px] rounded-2xl border border-line bg-white shadow-2xl">
-            {/* Header with Close × in top-right, separated by divider */}
-            <div className="flex items-center justify-between px-6 py-4">
-              <h3 className="text-base font-extrabold tracking-tight">Record Manual Payment</h3>
-              <button onClick={() => setShowManual(false)} aria-label="Close" className="grid h-8 w-8 place-items-center rounded-full border border-line text-muted hover:bg-canvas hover:text-ink transition-colors">
-                <span className="text-lg leading-none">×</span>
-              </button>
-            </div>
-            <div className="h-px bg-line" />
-            {/* Form fields */}
-            <div className="px-6 py-5 space-y-4">
-              {/* 1. Enrollment Number * - full-width */}
-              <div>
-                <label className="mb-1.5 block text-xs font-bold">Enrollment Number <span className="text-danger">*</span></label>
-                <Input placeholder="e.g. ENR-2025-0142" value={enrollmentNo} onChange={e => setEnrollmentNo(e.target.value)} />
-                <p className="mt-1.5 text-xs text-muted">Use the enrollment number from the customer&apos;s enrollment in the Enrollments tab.</p>
-              </div>
-              {/* 2. Amount + 3. Method - two-column row */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-bold">Amount (₹) <span className="text-danger">*</span></label>
-                  <Input type="number" inputMode="numeric" placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-bold">Method <span className="text-danger">*</span></label>
-                  <Select value={method} onValueChange={setMethod} options={["CASH", "UPI", "Card", "Online", "Cheque", "Bank Transfer"]} placeholder="Select method" />
-                </div>
-              </div>
-              {/* 4. Advance (Months) - full-width dropdown */}
-              <div>
-                <label className="mb-1.5 block text-xs font-bold">Advance (Months)</label>
-                <Select
-                  value={advance}
-                  onValueChange={setAdvance}
-                  options={[
-                    "1 month (regular)",
-                    "2 months (advance)",
-                    "3 months (advance)",
-                    "6 months (advance)",
-                    "11 months (full)",
-                  ]}
-                />
-              </div>
-              {/* 5. Remarks - full-width text input */}
-              <div>
-                <label className="mb-1.5 block text-xs font-bold">Remarks</label>
-                <Input placeholder="e.g. Counter cash collection — verified by manager" value={remarks} onChange={e => setRemarks(e.target.value)} />
-              </div>
-            </div>
-            {/* Bottom actions - two buttons aligned right: Cancel secondary, Record Payment primary blue */}
-            <div className="flex items-center justify-end gap-2 border-t border-line px-6 py-4">
-              <Button size="sm" variant="outline" onClick={() => setShowManual(false)}>Cancel</Button>
-              <Button
-                size="sm"
-                variant="default"
-                disabled={saving}
-                className="bg-accent hover:bg-accent-strong"
-                onClick={async () => {
-                  if (!enrollmentNo.trim() || !amount.trim() || !method) {
-                    toast("Please fill Enrollment Number, Amount and Method");
-                    return;
-                  }
-                  const amt = Number(amount);
-                  if (Number.isNaN(amt) || amt <= 0) {
-                    toast("Please enter a valid amount");
-                    return;
-                  }
-                  const monthsCovered = parseInt(advance, 10) || undefined;
-                  setSaving(true);
-                  try {
-                    await paymentService.recordManualPayment({
-                      enrollmentNumber: enrollmentNo.trim(),
-                      amount: amt,
-                      method,
-                      monthsCovered,
-                      remarks: remarks.trim() || undefined,
-                    });
-                    setShowManual(false);
-                    setEnrollmentNo("");
-                    setAmount("");
-                    setRemarks("");
-                    setMethod("CASH");
-                    setAdvance("1 month (regular)");
-                    await loadPayments();
-                    toast(`Payment of ₹${amt.toLocaleString("en-IN")} recorded for ${enrollmentNo.trim()}`);
-                  } catch (err) {
-                    toast(err?.message || "Payment failed");
-                  } finally {
-                    setSaving(false);
-                  }
-                }}
-              >
-                {saving ? "Recording…" : "Record Payment"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <SchemeManualPaymentModal
+          onClose={() => setShowManual(false)}
+          onRecorded={loadPayments}
+        />
       )}
 
       {selected && (
@@ -369,6 +268,13 @@ export default function Payments() {
             <div className="border-t border-line p-4 flex justify-end"><Button size="sm" variant="outline" onClick={() => setSelected(null)}>Close</Button></div>
           </div>
         </div>
+      )}
+
+      {showBizManual && (
+        <BusinessManualPaymentModal
+          onClose={() => setShowBizManual(false)}
+          onRecorded={loadPayments}
+        />
       )}
     </div>
   );

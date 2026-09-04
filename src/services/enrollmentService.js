@@ -48,9 +48,13 @@ function mapRow(raw) {
 }
 
 export const enrollmentService = {
-  /** GET /api/v1/enrollments — admin list. */
-  async getEnrollments() {
-    const res = await apiClient.get("/enrollments", { auth: true });
+  /**
+   * GET /api/v1/enrollments — admin list. Pass customerId to scope to one
+   * customer's enrollments (backend customer_id filter); omit for the full list.
+   */
+  async getEnrollments(customerId = "") {
+    const q = customerId ? `?customer_id=${encodeURIComponent(customerId)}` : "";
+    const res = await apiClient.get(`/enrollments${q}`, { auth: true });
     return (res.data?.enrollments ?? []).map(mapRow);
   },
 
