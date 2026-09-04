@@ -157,6 +157,45 @@ export const billingService = {
   },
 
   /**
+   * GET /api/v1/billing/dashboard-summary — backend-authoritative money-in
+   * collection for a period. Reads data.selected_period.cash_collected and
+   * .collected_by_method directly (no frontend row reduction). The backend
+   * already excludes SCHEME_REDEMPTION and REFUND from both figures and groups
+   * the split by payment_method (source=GATEWAY never overrides the method), so
+   * the parts sum to cash_collected. Mapping: Offline = CASH; Online = UPI +
+   * CARD + BANK_TRANSFER; Other = remainder (OTHER / any other method); Total =
+   * cash_collected. Returns null when the summary is unavailable.
+   *
+   * Accepts one backend-supported named period (today/this_week/this_month/
+   * last_month/…) OR a custom { dateFrom, dateTo } range (both required); the
+   * backend resolves the calendar window. dateFrom/dateTo win over period.
+   */
+  async getBusinessCollectionSummary({ period = "today", dateFrom = "", dateTo = "" } = {}) {
+    const params = new URLSearchParams();
+    if (dateFrom && dateTo) {
+      params.set("date_from", dateFrom);
+      params.set("date_to", dateTo);
+    } else {
+      params.set("period", period);
+    }
+    const res = await apiClient.get(
+      `/billing/dashboard-summary?${params.toString()}`,
+      { auth: true }
+    );
+    const sp = res.data?.selected_period ?? null;
+    if (!sp) return null;
+    const m = sp.collected_by_method ?? {};
+    const val = (k) => Number(m[k]) || 0;
+    const offline = val("CASH");
+    const online = val("UPI") + val("CARD") + val("BANK_TRANSFER");
+    const total = Number(sp.cash_collected) || 0;
+    // Other is the residual so the parts always sum to cash_collected even if
+    // the backend introduces a new method key — never recomputed from rows.
+    const other = Math.max(0, Number((total - offline - online).toFixed(2)));
+    return { offline, online, other, total, label: res.data?.selected_period_label ?? "" };
+  },
+
+  /**
    * GET /api/v1/billing/sales — sales-history list. Amounts, weights and
    * statuses are backend authoritative. Returns already-mapped rows plus the
    * real total count for the footer.

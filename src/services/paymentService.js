@@ -48,6 +48,39 @@ export const paymentService = {
   },
 
   /**
+   * GET /api/v1/payments/summary — backend-authoritative Scheme money-in for a
+   * period. Reads data.total_collected and data.collected_by_method directly
+   * (no frontend row reduction). The backend already counts SUCCESS scheme
+   * payments only (PENDING/FAILED/CANCELLED/REFUNDED excluded) and groups the
+   * split by payment_method (scheme Payment has no source field). Mapping:
+   * Offline = CASH; Online = UPI + CARD + BANK_TRANSFER; Other = remainder
+   * (CHEQUE/ONLINE/any other method); Total = total_collected. Accepts one
+   * named period OR a custom { dateFrom, dateTo } range (both required;
+   * date_from/date_to win over period). Returns null when unavailable.
+   */
+  async getSchemePaymentSummary({ period = "today", dateFrom = "", dateTo = "" } = {}) {
+    const params = new URLSearchParams();
+    if (dateFrom && dateTo) {
+      params.set("date_from", dateFrom);
+      params.set("date_to", dateTo);
+    } else {
+      params.set("period", period);
+    }
+    const res = await apiClient.get(`/payments/summary?${params.toString()}`, { auth: true });
+    const d = res.data ?? null;
+    if (!d) return null;
+    const m = d.collected_by_method ?? {};
+    const val = (k) => Number(m[k]) || 0;
+    const offline = val("CASH");
+    const online = val("UPI") + val("CARD") + val("BANK_TRANSFER");
+    const total = Number(d.total_collected) || 0;
+    // Other is the residual so the parts always sum to total_collected even if
+    // the backend returns a method key we haven't classified — never row-derived.
+    const other = Math.max(0, Number((total - offline - online).toFixed(2)));
+    return { offline, online, other, total, label: d.period ?? "" };
+  },
+
+  /**
    * POST /api/v1/payments/manual — canonical scheme manual payment. The caller
    * supplies the backend enrollment id (chosen in the customer-first picker), so
    * no enrollment lookup happens here. Amount, months coverage and maturity caps

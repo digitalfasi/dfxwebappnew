@@ -44,6 +44,21 @@ function mapBusinessRow(s) {
   };
 }
 
+// Business KPI period buttons -> backend dashboard-summary named periods
+// (verified in billing_service._resolve_period_range). "Custom" uses
+// date_from/date_to instead of a named period.
+const UI_PERIOD_TO_BACKEND = {
+  Today: "today",
+  "This Week": "this_week",
+  "This Month": "this_month",
+  "Last Month": "last_month",
+};
+
+// Fallback KPI sublabel before the backend selected_period_label arrives.
+function periodPfxNote(f) {
+  return f === "Custom" ? "Custom" : f;
+}
+
 const STATUS_FILTERS = ["All Payments", "SUCCESS", "Paid", "Partial", "Pending", "Outstanding"];
 const TONE = { SUCCESS: "success", Paid: "success", Completed: "success", Partial: "warning", Pending: "info", Outstanding: "danger", Failed: "danger" };
 
@@ -67,7 +82,8 @@ export default function Payments() {
   const [tab, setTab] = useState("scheme");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All Payments");
-  const [dateFilter, setDateFilter] = useState("This Month");
+  const [dateFilter, setDateFilter] = useState("Today"); // default period = Today (drives Business KPI)
+  const [bizRange, setBizRange] = useState({ from: "", to: "" }); // Custom KPI range
   const [month, setMonth] = useState("All");
   const [year, setYear] = useState("All");
   const [date, setDate] = useState("");
@@ -77,6 +93,17 @@ export default function Payments() {
   const [applied, setApplied] = useState({ search: "", status: "All Payments", month: "All", year: "All", date: "", dateFilter: "This Month" });
   const [schemeRows, setSchemeRows] = useState([]);
   const [businessRows, setBusinessRows] = useState([]);
+  // Backend-authoritative business money-in collection KPI (Offline/Online/
+  // Other/Total from /billing/dashboard-summary). Never derived from rows.
+  const [bizKpi, setBizKpi] = useState(null);
+  const [bizKpiLoading, setBizKpiLoading] = useState(false);
+  const [bizKpiError, setBizKpiError] = useState("");
+  // Backend-authoritative scheme money-in collection KPI (Offline/Online/Other/
+  // Total from /payments/summary). Never derived from rows.
+  const [schemeKpi, setSchemeKpi] = useState(null);
+  const [schemeKpiLoading, setSchemeKpiLoading] = useState(false);
+  const [schemeKpiError, setSchemeKpiError] = useState("");
+  const [kpiTick, setKpiTick] = useState(0); // bump to force a KPI refresh (e.g. after recording)
   const [loading, setLoading] = useState(true);
   usePageMotion(scope, [loading]);
   const [loadError, setLoadError] = useState("");
@@ -102,19 +129,50 @@ export default function Payments() {
     loadPayments();
   }, [loadPayments]);
 
-  const source = tab === "business" ? businessRows : schemeRows;
+  // Business KPI period follows the date-filter buttons (named period) or the
+  // Custom from/to range. Own effect (not the row loader) so changing period
+  // refetches ONLY the KPI, never the payment rows. Fetches only on the
+  // business tab; a stale-response guard drops out-of-order replies.
+  const kpiReq = useRef("");
+  useEffect(() => {
+    if (tab !== "business") return;
+    const isCustom = dateFilter === "Custom";
+    const opts = isCustom
+      ? (bizRange.from && bizRange.to ? { dateFrom: bizRange.from, dateTo: bizRange.to } : null)
+      : { period: UI_PERIOD_TO_BACKEND[dateFilter] || "today" };
+    if (!opts) { setBizKpi(null); setBizKpiError(""); return; } // Custom awaiting both dates
+    const key = JSON.stringify(opts);
+    kpiReq.current = key;
+    setBizKpiLoading(true);
+    setBizKpiError("");
+    billingService.getBusinessCollectionSummary(opts)
+      .then((k) => { if (kpiReq.current === key) setBizKpi(k); })
+      .catch((e) => { if (kpiReq.current === key) { setBizKpi(null); setBizKpiError(e?.message || "Could not load collection summary"); } })
+      .finally(() => { if (kpiReq.current === key) setBizKpiLoading(false); });
+  }, [tab, dateFilter, bizRange, kpiTick]);
 
-  const totals = useMemo(() => {
-    const totalValue = source.reduce((s, r) => s + r.amount, 0);
-    const totalCount = source.length;
-    const completedRows = source.filter(r => r.status === "SUCCESS" || r.status === "Paid");
-    const completedCount = completedRows.length;
-    const completedValue = completedRows.reduce((s, r) => s + r.paid, 0);
-    const outstanding = source.reduce((s, r) => s + (r.outstanding || 0), 0);
-    // overdue currently derived from outstanding; for demo keep separate
-    const overdueAmount = outstanding > 0 ? outstanding : 0;
-    return { totalValue, totalCount, completedCount, completedValue, outstanding, overdueAmount };
-  }, [source]);
+  // Scheme KPI period follows the SAME date-filter control. Own effect, fetches
+  // only on the scheme tab, backend-authoritative (/payments/summary). Mirrors
+  // the business KPI pattern; a stale-response guard drops out-of-order replies.
+  const schemeKpiReq = useRef("");
+  useEffect(() => {
+    if (tab !== "scheme") return;
+    const isCustom = dateFilter === "Custom";
+    const opts = isCustom
+      ? (bizRange.from && bizRange.to ? { dateFrom: bizRange.from, dateTo: bizRange.to } : null)
+      : { period: UI_PERIOD_TO_BACKEND[dateFilter] || "today" };
+    if (!opts) { setSchemeKpi(null); setSchemeKpiError(""); return; } // Custom awaiting both dates
+    const key = JSON.stringify(opts);
+    schemeKpiReq.current = key;
+    setSchemeKpiLoading(true);
+    setSchemeKpiError("");
+    paymentService.getSchemePaymentSummary(opts)
+      .then((k) => { if (schemeKpiReq.current === key) setSchemeKpi(k); })
+      .catch((e) => { if (schemeKpiReq.current === key) { setSchemeKpi(null); setSchemeKpiError(e?.message || "Could not load collection summary"); } })
+      .finally(() => { if (schemeKpiReq.current === key) setSchemeKpiLoading(false); });
+  }, [tab, dateFilter, bizRange, kpiTick]);
+
+  const source = tab === "business" ? businessRows : schemeRows;
 
   const rows = useMemo(() => {
     return source.filter(r => {
@@ -153,7 +211,8 @@ export default function Payments() {
       <div className="mb-4 flex flex-wrap items-center gap-2" data-motion="toolbar">
         <SearchInput placeholder="Search by customer, invoice, mobile, payment ID..." value={search} onChange={e => setSearch(e.target.value)} className="min-w-[260px] flex-1" />
         <Select value={status} onValueChange={setStatus} options={["All Payments", "SUCCESS", "Paid", "Pending", "Outstanding"]} variant="accent" className="w-40" />
-        {/* Date filters: Today / This Week / This Month — selected / Last Month / Custom + Clear */}
+        {/* Date filters: Today / This Week / This Month / Last Month / Custom.
+            On the Business tab these drive the backend KPI period. */}
         <div className="flex flex-wrap items-center gap-1.5">
           {["Today", "This Week", "This Month", "Last Month", "Custom"].map(f => (
             <button
@@ -164,28 +223,105 @@ export default function Payments() {
               {f}
             </button>
           ))}
-          <Button size="sm" variant="outline" onClick={() => { setSearch(""); setDate(""); setMonth("All"); setYear("All"); setStatus("All Payments"); setDateFilter("This Month"); setApplied({ search: "", status: "All Payments", month: "All", year: "All", date: "", dateFilter: "This Month" }); }}>Clear</Button>
+          <Button size="sm" variant="outline" onClick={() => { setSearch(""); setDate(""); setMonth("All"); setYear("All"); setStatus("All Payments"); setDateFilter("Today"); setBizRange({ from: "", to: "" }); setApplied({ search: "", status: "All Payments", month: "All", year: "All", date: "", dateFilter: "Today" }); }}>Clear</Button>
         </div>
       </div>
 
-      {/* Summary cards — 3 horizontal metric cards */}
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3" data-motion="stat">
-        <Card className="p-4">
-          <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">{tab === "scheme" ? "Total Scheme Payments" : "Total Business Payments"}</div>
-          <div className="num mt-1 text-2xl font-extrabold">{totals.totalCount}</div>
-          <div className="mt-1 text-xs font-semibold text-muted">₹{totals.totalValue.toLocaleString("en-IN")} total value</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Completed / Paid</div>
-          <div className="num mt-1 text-2xl font-extrabold text-emerald-700">{totals.completedCount}</div>
-          <div className="mt-1 text-xs font-semibold text-emerald-700/70">₹{totals.completedValue.toLocaleString("en-IN")} collected</div>
-        </Card>
-        <Card className="p-4 border-danger-line bg-danger-soft/40">
-          <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-danger">Overdue Amount</div>
-          <div className="num mt-1 text-2xl font-extrabold text-danger">₹{totals.overdueAmount.toLocaleString("en-IN")}</div>
-          <div className="mt-1 text-xs font-semibold text-danger/70">{totals.overdueAmount > 0 ? "Requires immediate follow-up" : "No overdue — all clear"}</div>
-        </Card>
-      </div>
+      {/* Custom KPI range — shared by both tabs; feeds date_from/date_to to the
+          backend summary (dashboard-summary for business, /payments/summary for
+          scheme). Does not touch the payment table filter. */}
+      {dateFilter === "Custom" && (
+        <div className="mb-4 flex flex-wrap items-center gap-2" data-motion="toolbar">
+          <label className="flex items-center gap-1.5 text-xs font-bold text-muted">From
+            <input type="date" value={bizRange.from} max={bizRange.to || undefined} onChange={e => setBizRange(r => ({ ...r, from: e.target.value }))} className="rounded-lg border border-line bg-surface px-2 py-1.5 text-xs font-semibold text-ink" />
+          </label>
+          <label className="flex items-center gap-1.5 text-xs font-bold text-muted">To
+            <input type="date" value={bizRange.to} min={bizRange.from || undefined} onChange={e => setBizRange(r => ({ ...r, to: e.target.value }))} className="rounded-lg border border-line bg-surface px-2 py-1.5 text-xs font-semibold text-ink" />
+          </label>
+          {(!bizRange.from || !bizRange.to) && <span className="text-xs font-semibold text-muted">Pick both dates to load collection.</span>}
+        </div>
+      )}
+
+      {/* Summary cards — backend-authoritative money-in collection for BOTH
+          tabs (Offline/Online/Other/Total), never reduced from payment rows.
+          Business: /billing/dashboard-summary. Scheme: /payments/summary. */}
+      {tab === "business" ? (
+        <div className="mb-4" data-motion="stat">
+          {bizKpiError && (
+            <div className="mb-2 flex items-center justify-between rounded-lg border border-danger-line bg-danger-soft/40 px-3 py-2 text-xs font-semibold text-danger">
+              <span>Couldn’t load collection summary: {bizKpiError}</span>
+              <button onClick={() => setKpiTick(t => t + 1)} className="font-bold underline">Retry</button>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {(() => {
+              const note = bizKpiLoading ? "Loading…" : (bizKpi?.label || periodPfxNote(dateFilter));
+              return (
+                <>
+                  <Card className="p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Offline (Cash)</div>
+                    <div className="num mt-1 text-2xl font-extrabold">₹{(bizKpi?.offline ?? 0).toLocaleString("en-IN")}</div>
+                    <div className="mt-1 text-xs font-semibold text-muted">{note} · CASH</div>
+                  </Card>
+                  <Card className="p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Online</div>
+                    <div className="num mt-1 text-2xl font-extrabold text-emerald-700">₹{(bizKpi?.online ?? 0).toLocaleString("en-IN")}</div>
+                    <div className="mt-1 text-xs font-semibold text-emerald-700/70">{note} · UPI + Card + Bank</div>
+                  </Card>
+                  <Card className="p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Other</div>
+                    <div className="num mt-1 text-2xl font-extrabold">₹{(bizKpi?.other ?? 0).toLocaleString("en-IN")}</div>
+                    <div className="mt-1 text-xs font-semibold text-muted">{note} · Other methods</div>
+                  </Card>
+                  <Card className="p-4 border-accent-line bg-accent-soft/40">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent">Total Collected</div>
+                    <div className="num mt-1 text-2xl font-extrabold text-accent">₹{(bizKpi?.total ?? 0).toLocaleString("en-IN")}</div>
+                    <div className="mt-1 text-xs font-semibold text-accent/70">{note} · money in (excl. scheme &amp; refunds)</div>
+                  </Card>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4" data-motion="stat">
+          {schemeKpiError && (
+            <div className="mb-2 flex items-center justify-between rounded-lg border border-danger-line bg-danger-soft/40 px-3 py-2 text-xs font-semibold text-danger">
+              <span>Couldn’t load collection summary: {schemeKpiError}</span>
+              <button onClick={() => setKpiTick(t => t + 1)} className="font-bold underline">Retry</button>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {(() => {
+              const note = schemeKpiLoading ? "Loading…" : (schemeKpi?.label || periodPfxNote(dateFilter));
+              return (
+                <>
+                  <Card className="p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Offline (Cash)</div>
+                    <div className="num mt-1 text-2xl font-extrabold">₹{(schemeKpi?.offline ?? 0).toLocaleString("en-IN")}</div>
+                    <div className="mt-1 text-xs font-semibold text-muted">{note} · CASH</div>
+                  </Card>
+                  <Card className="p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Online</div>
+                    <div className="num mt-1 text-2xl font-extrabold text-emerald-700">₹{(schemeKpi?.online ?? 0).toLocaleString("en-IN")}</div>
+                    <div className="mt-1 text-xs font-semibold text-emerald-700/70">{note} · UPI + Card + Bank</div>
+                  </Card>
+                  <Card className="p-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Other</div>
+                    <div className="num mt-1 text-2xl font-extrabold">₹{(schemeKpi?.other ?? 0).toLocaleString("en-IN")}</div>
+                    <div className="mt-1 text-xs font-semibold text-muted">{note} · Other methods</div>
+                  </Card>
+                  <Card className="p-4 border-accent-line bg-accent-soft/40">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent">Total Collected</div>
+                    <div className="num mt-1 text-2xl font-extrabold text-accent">₹{(schemeKpi?.total ?? 0).toLocaleString("en-IN")}</div>
+                    <div className="mt-1 text-xs font-semibold text-accent/70">{note} · scheme money in (excl. refunds)</div>
+                  </Card>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Payment history table */}
       <Card data-motion="reveal" className="overflow-hidden">
@@ -246,7 +382,7 @@ export default function Payments() {
       {showManual && (
         <SchemeManualPaymentModal
           onClose={() => setShowManual(false)}
-          onRecorded={loadPayments}
+          onRecorded={() => { loadPayments(); setKpiTick(t => t + 1); }}
         />
       )}
 
@@ -273,7 +409,7 @@ export default function Payments() {
       {showBizManual && (
         <BusinessManualPaymentModal
           onClose={() => setShowBizManual(false)}
-          onRecorded={loadPayments}
+          onRecorded={() => { loadPayments(); setKpiTick(t => t + 1); }}
         />
       )}
     </div>
