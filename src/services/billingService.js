@@ -161,7 +161,7 @@ export const billingService = {
    * statuses are backend authoritative. Returns already-mapped rows plus the
    * real total count for the footer.
    */
-  async listSales({ search = "", limit = 200 } = {}) {
+  async listSales({ search = "", limit = 100 } = {}) {
     const params = new URLSearchParams({ page: "1", limit: String(limit) });
     if (search) params.set("search", search);
     const res = await apiClient.get(`/billing/sales?${params.toString()}`, { auth: true });
@@ -171,6 +171,39 @@ export const billingService = {
       totalGoldWeightGrams: res.data?.total_gold_weight_grams ?? 0,
       totalOutstanding: res.data?.total_outstanding ?? 0,
     };
+  },
+
+  /**
+   * GET /api/v1/billing/sales/{sale_id}/payments — backend-authoritative payment
+   * ledger for one business sale. Outstanding, paid amount and payment status are
+   * ledger-derived server-side; nothing is recomputed here.
+   */
+  async getSalePayments(saleId) {
+    const res = await apiClient.get(`/billing/sales/${saleId}/payments`, { auth: true });
+    const raw = res.data?.paymentHistory ?? res.data?.payment_history ?? res.data ?? {};
+    return mapPaymentHistory(raw);
+  },
+
+  /**
+   * POST /api/v1/billing/sales/{sale_id}/payments — record a collection against an
+   * existing sale. The backend row-locks the sale, re-derives outstanding, rejects
+   * overpayment and returned/cancelled sales, and derives PAID/PARTIAL. Returns the
+   * refreshed authoritative payment history.
+   */
+  async recordSalePayment(saleId, { amount, paymentDate, paymentMethod, referenceNo, remarks } = {}) {
+    const res = await apiClient.post(
+      `/billing/sales/${saleId}/payments`,
+      {
+        amount,
+        payment_date: paymentDate,
+        payment_method: paymentMethod,
+        reference_no: referenceNo || null,
+        remarks: remarks || null,
+      },
+      { auth: true }
+    );
+    const raw = res.data?.paymentHistory ?? res.data?.payment_history ?? res.data ?? {};
+    return mapPaymentHistory(raw);
   },
 
   /** GET /api/v1/billing/sales/{id}/invoice.pdf — download one invoice PDF. */
@@ -207,6 +240,31 @@ const METHOD_LABEL = {
   BANK_TRANSFER: "Bank Transfer",
   OTHER: "Other",
 };
+
+/** GET/POST /billing/sales/{id}/payments -> the payment-ledger shape the invoice
+ *  detail panel renders. All money figures are backend authoritative. */
+function mapPaymentHistory(raw = {}) {
+  return {
+    saleId: raw.sale_id,
+    invoiceNumber: raw.invoice_number,
+    finalAmount: raw.final_amount ?? 0,
+    amountPaid: raw.amount_paid ?? 0,
+    amountOutstanding: raw.amount_outstanding ?? 0,
+    paymentStatus: raw.payment_status ?? "",
+    payments: (raw.payments ?? []).map((p) => ({
+      id: p.id,
+      amount: p.amount ?? 0,
+      paymentDate: p.payment_date ?? null,
+      paymentMethod: p.payment_method ?? "",
+      methodLabel: METHOD_LABEL[String(p.payment_method || "").toUpperCase()] ?? (p.payment_method || "—"),
+      source: p.source ?? "",
+      referenceNo: p.reference_no ?? null,
+      remarks: p.remarks ?? null,
+      recordedByName: p.recorded_by_name ?? null,
+      createdAt: p.created_at ?? null,
+    })),
+  };
+}
 
 /** GET /billing/sales item -> the row shape the Sales History table renders.
  *  One sale = one jewellery piece, so items is always 1. */
