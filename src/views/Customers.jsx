@@ -510,8 +510,8 @@ export default function Customers() {
               <div className="grid gap-2.5 rounded-xl border border-line bg-canvas/40 p-4 text-sm">
                 <div><div className="text-xs text-muted">Customer</div><div className="font-semibold">{deleting.name}</div></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><div className="text-xs text-muted">Mobile</div><div className="num font-semibold">{orNP(deleting.phone)}</div></div>
-                  <div><div className="text-xs text-muted">Email</div><div className="font-semibold break-all">{orNP(deleting.email)}</div></div>
+                  <div><div className="text-xs text-muted">Mobile</div><div className="num font-semibold">{deleting.phone || "Not provided"}</div></div>
+                  <div><div className="text-xs text-muted">Email</div><div className="font-semibold break-all">{deleting.email || "Not provided"}</div></div>
                 </div>
               </div>
             </div>
