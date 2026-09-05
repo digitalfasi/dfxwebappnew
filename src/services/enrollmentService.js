@@ -91,4 +91,29 @@ export const enrollmentService = {
     const res = await apiClient.post(`/enrollments/${id}/close`, { reason }, { auth: true });
     return res.data?.balance ?? null;
   },
+
+  /**
+   * POST /api/v1/billing/sales/{saleId}/redeem-schemes/request-otp — send a
+   * single-use, 5-minute code to the customer's app authorising scheme
+   * redemption against this sale. Returns the challenge metadata.
+   */
+  async requestRedemptionOtp(saleId) {
+    const res = await apiClient.post(`/billing/sales/${saleId}/redeem-schemes/request-otp`, {}, { auth: true });
+    return res.data?.otp ?? null;
+  },
+
+  /**
+   * POST /api/v1/billing/sales/{saleId}/redeem-schemes — settle one invoice from
+   * several scheme balances in ONE atomic backend transaction (all-or-nothing).
+   * `items` is [{ enrollmentId, amount }]; the OTP is verified + consumed
+   * server-side before any balance is touched. Never chain single redeems.
+   */
+  async redeemSchemes(saleId, items, otpCode) {
+    const res = await apiClient.post(
+      `/billing/sales/${saleId}/redeem-schemes`,
+      { items: items.map((i) => ({ enrollment_id: i.enrollmentId, amount: i.amount })), otp_code: otpCode },
+      { auth: true }
+    );
+    return res.data?.settlement ?? null;
+  },
 };

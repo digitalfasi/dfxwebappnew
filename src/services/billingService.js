@@ -113,41 +113,81 @@ export const billingService = {
    * quote for one inventory piece. All pricing (gold value, making, wastage,
    * tax, final amount) is computed server-side; nothing is recomputed here.
    */
-  async getSaleQuote(productCode) {
+  async getSaleQuote(productCode, {
+    discountAmount = 0, gstApplied = true, appliedRatePerGram,
+    makingChargeValue, makingChargeType, wastageValue, wastageType,
+  } = {}) {
+    const params = new URLSearchParams();
+    if (discountAmount) params.set("discount_amount", String(discountAmount));
+    params.set("gst_applied", String(gstApplied));
+    if (appliedRatePerGram != null && appliedRatePerGram !== "") params.set("applied_rate_per_gram", String(appliedRatePerGram));
+    // A value override must travel with its own type so a FIXED amount is never
+    // reinterpreted as a PERCENTAGE by the backend engine.
+    if (makingChargeValue != null && makingChargeValue !== "") { params.set("making_charge_value", String(makingChargeValue)); if (makingChargeType) params.set("making_charge_type", makingChargeType); }
+    if (wastageValue != null && wastageValue !== "") { params.set("wastage_value", String(wastageValue)); if (wastageType) params.set("wastage_type", wastageType); }
     const res = await apiClient.get(
-      `/billing/sell/quote/${encodeURIComponent(productCode)}`,
+      `/billing/sell/quote/${encodeURIComponent(productCode)}?${params.toString()}`,
       { auth: true }
     );
-    const item = res.data?.inventory_item ?? {};
-    const b = res.data?.breakdown ?? {};
-    return {
-      productCode: item.product_code ?? productCode,
-      name: item.product_name ?? "",
-      category: item.category ?? "",
-      purity: item.purity ?? "",
-      netGoldWeightGrams: item.net_gold_weight_grams ?? 0,
-      grossWeightGrams: item.gross_weight_grams ?? 0,
-      vendorName: item.vendor_name ?? "",
-      // Purity-adjusted rate the backend actually applied (₹/g).
-      goldRateApplied: b.gold_rate_applied ?? null,
-      finalAmount: b.final_amount ?? 0,
-    };
+    return mapSaleQuote(res.data ?? {}, productCode, gstApplied);
   },
 
   /**
    * POST /api/v1/billing/sell — finalize a real sale for one piece. The backend
-   * recomputes every figure, marks the item SOLD and issues an invoice.
-   * Payment defaults to CASH/PAID (walk-in) — the current UI collects no
-   * customer or payment method.
+   * recomputes every figure authoritatively, marks the item SOLD, issues an
+   * invoice and seeds the payment ledger. A buyer (existing customer_id or a
+   * walk-in customer_name[+phone]) is required by the backend.
    */
-  async createSale({ productCode }) {
-    const res = await apiClient.post(
-      "/billing/sell",
-      { product_code: productCode, payment_method: "CASH", payment_status: "PAID", gst_applied: true },
-      { auth: true }
-    );
+  async createSale({
+    productCode, customerId, customerName, customerPhone,
+    discountAmount = 0, gstApplied = true, appliedRatePerGram,
+    makingChargeValue, makingChargeType, wastageValue, wastageType,
+    paymentMethod = "CASH", paymentStatus = "PAID",
+    initialPaymentAmount, paymentReferenceNo,
+  }) {
+    const body = {
+      product_code: productCode,
+      gst_applied: gstApplied,
+      payment_method: paymentMethod,
+      payment_status: paymentStatus,
+    };
+    if (customerId) body.customer_id = customerId;
+    if (customerName) body.customer_name = customerName;
+    if (customerPhone) body.customer_phone = customerPhone;
+    if (discountAmount) body.discount_amount = discountAmount;
+    if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
+    if (makingChargeValue != null && makingChargeValue !== "") { body.making_charge_value = Number(makingChargeValue); if (makingChargeType) body.making_charge_type = makingChargeType; }
+    if (wastageValue != null && wastageValue !== "") { body.wastage_value = Number(wastageValue); if (wastageType) body.wastage_type = wastageType; }
+    if (paymentStatus === "PARTIAL") body.initial_payment_amount = initialPaymentAmount;
+    if (paymentReferenceNo) body.payment_reference_no = paymentReferenceNo;
+    const res = await apiClient.post("/billing/sell", body, { auth: true });
     const s = res.data?.sale ?? {};
     return { id: s.id, invoiceNumber: s.invoice_number, finalAmount: s.final_amount };
+  },
+
+  /**
+   * POST /api/v1/billing/quotation — a "sample bill" using the SAME authoritative
+   * pricing engine. Nothing is sold, no scheme balance is spent (scheme_amounts
+   * is a read-only preview). Returns the created quotation number + breakdown.
+   */
+  async generateQuotation({
+    productCode, customerId, customerName, customerPhone,
+    discountAmount = 0, gstApplied = true, appliedRatePerGram,
+    makingChargeValue, makingChargeType, wastageValue, wastageType, schemeAmounts, note,
+  }) {
+    const body = { product_code: productCode, gst_applied: gstApplied };
+    if (customerId) body.customer_id = customerId;
+    if (customerName) body.customer_name = customerName;
+    if (customerPhone) body.customer_phone = customerPhone;
+    if (discountAmount) body.discount_amount = discountAmount;
+    if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
+    if (makingChargeValue != null && makingChargeValue !== "") { body.making_charge_value = Number(makingChargeValue); if (makingChargeType) body.making_charge_type = makingChargeType; }
+    if (wastageValue != null && wastageValue !== "") { body.wastage_value = Number(wastageValue); if (wastageType) body.wastage_type = wastageType; }
+    if (schemeAmounts && Object.keys(schemeAmounts).length) body.scheme_amounts = schemeAmounts;
+    if (note) body.note = note;
+    const res = await apiClient.post("/billing/quotation", body, { auth: true });
+    const q = res.data?.quotation ?? {};
+    return { id: q.id, quotationNumber: q.quotation_number, finalAmount: q.final_amount, outstandingAmount: q.outstanding_amount };
   },
 
   /** GET /api/v1/billing/dashboard-summary?period=today — today's 24K gold rate. */
@@ -304,6 +344,44 @@ function mapPaymentHistory(raw = {}) {
       recordedByName: p.recorded_by_name ?? null,
       createdAt: p.created_at ?? null,
     })),
+  };
+}
+
+/** GET /billing/sell/quote -> the shape New Sale renders. Vendor cost/name is
+ *  deliberately NOT mapped — never customer-facing at sale. Every money figure
+ *  is backend-authoritative; the UI only renders it. */
+function mapSaleQuote(data = {}, productCode = "", gstApplied = true) {
+  const item = data.inventory_item ?? {};
+  const b = data.breakdown ?? {};
+  return {
+    productCode: item.product_code ?? productCode,
+    huid: item.huid ?? "",
+    name: item.product_name ?? "",
+    category: item.category ?? "",
+    subcategory: item.subcategory ?? "",
+    purity: item.purity ?? "",
+    netGoldWeightGrams: item.net_gold_weight_grams ?? 0,
+    grossWeightGrams: item.gross_weight_grams ?? 0,
+    stockStatus: item.stock_status ?? "",
+    goldRate24k: b.gold_rate_24k ?? null,
+    goldRateApplied: b.gold_rate_applied ?? null,        // applicable purity ₹/g
+    goldValueAmount: b.gold_value_amount ?? 0,
+    makingChargeType: b.making_charge_type ?? "",
+    makingChargeValue: b.making_charge_value ?? 0,
+    makingChargeAmount: b.making_charge_amount ?? 0,
+    wastageType: b.wastage_type ?? "",
+    wastageValue: b.wastage_value ?? 0,
+    wastageAmount: b.wastage_amount ?? 0,
+    goldProfitPercent: b.gold_profit_percent ?? null,    // internal — not shown as a line
+    goldProfitAmount: b.gold_profit_amount ?? null,      // discount ceiling; null for Staff
+    stoneChargeAmount: b.stone_charge_amount ?? 0,
+    otherChargesAmount: b.other_charges_amount ?? 0,
+    subtotalBeforeTax: b.subtotal_before_tax ?? 0,
+    gstApplied: b.gst_applied ?? gstApplied,
+    taxRatePercent: b.tax_rate_percent ?? 0,
+    taxAmount: b.tax_amount ?? 0,
+    discountAmount: b.discount_amount ?? 0,
+    finalAmount: b.final_amount ?? 0,
   };
 }
 
