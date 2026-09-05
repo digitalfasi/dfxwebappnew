@@ -98,7 +98,7 @@ export default function NewSale() {
   const seedPct = (ownType, ownValue, defType, defValue) => {
     if (ownType === "PERCENTAGE" && ownValue != null) return String(ownValue);
     if (defType === "PERCENTAGE" && defValue !== "" && defValue != null) return String(defValue);
-    return "0";
+    return ""; // blank (treated as 0 by the backend) — easy to type into, no "0" to fight
   };
 
   const discountNum = num(discount);
@@ -375,20 +375,20 @@ export default function NewSale() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5">
                   <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
-                  <Input type="number" inputMode="decimal" min="0" value={rate} onChange={(e) => setRate(e.target.value)} />
+                  <NumberInput min="0" value={rate} onChange={(e) => setRate(e.target.value)} />
                 </label>
                 <label className="grid gap-1.5">
                   <span className="text-xs font-bold">Gold Profit %</span>
-                  <Input type="number" inputMode="decimal" min="0" max="100" value={goldProfitPct} onChange={(e) => setGoldProfitPct(e.target.value)} placeholder="10" />
+                  <NumberInput min="0" max="100" value={goldProfitPct} onChange={(e) => setGoldProfitPct(e.target.value)} placeholder="10" />
                 </label>
                 <label className="grid gap-1.5">
                   <span className="text-xs font-bold">Making %</span>
-                  <Input type="number" inputMode="decimal" min="0" value={makingVal} onChange={(e) => setMakingVal(e.target.value)} placeholder="0" />
+                  <NumberInput min="0" value={makingVal} onChange={(e) => setMakingVal(e.target.value)} placeholder="0" />
                   <span className="text-[11px] text-muted">= {money(product.makingChargeAmount)}</span>
                 </label>
                 <label className="grid gap-1.5">
                   <span className="text-xs font-bold">Wastage %</span>
-                  <Input type="number" inputMode="decimal" min="0" value={wastageVal} onChange={(e) => setWastageVal(e.target.value)} placeholder="0" />
+                  <NumberInput min="0" value={wastageVal} onChange={(e) => setWastageVal(e.target.value)} placeholder="0" />
                   <span className="text-[11px] text-muted">= {money(product.wastageAmount)}</span>
                 </label>
                 <label className="grid gap-1.5 sm:col-span-2">
@@ -407,7 +407,7 @@ export default function NewSale() {
                       <span className="text-xs font-bold">Discount (₹)</span>
                       <button type="button" className="text-[11px] font-semibold text-muted hover:text-ink" onClick={() => { setDiscount(""); setShowDiscount(false); }}>Remove</button>
                     </div>
-                    <Input type="number" inputMode="decimal" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" autoFocus />
+                    <NumberInput min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" autoFocus />
                     {discountState && <DiscountGuide state={discountState} ceiling={goldProfitCeiling} buffer={discountBuffer} />}
                   </div>
                 )}
@@ -448,7 +448,7 @@ export default function NewSale() {
                               <div className="text-xs text-muted">Available {money(s.available)}</div>
                             </div>
                             <label className="grid gap-1">
-                              <Input type="number" step="0.01" min="0" className="w-[150px]" placeholder="Redeem ₹" value={schemeAmounts[s.enrollmentId] ?? ""} onChange={(e) => setSchemeAmounts((p) => ({ ...p, [s.enrollmentId]: e.target.value }))} error={over ? "Over balance" : undefined} />
+                              <NumberInput min="0" className="w-[150px]" placeholder="Redeem ₹" value={schemeAmounts[s.enrollmentId] ?? ""} onChange={(e) => setSchemeAmounts((p) => ({ ...p, [s.enrollmentId]: e.target.value }))} error={over ? "Over balance" : undefined} />
                               {over && <span className="text-[11px] font-semibold text-danger">Max {money(s.available)}</span>}
                             </label>
                           </div>
@@ -493,7 +493,7 @@ export default function NewSale() {
                 </label>
                 {payStatus === "PARTIAL" && (
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Paid now (₹) *</span>
-                    <Input type="number" step="0.01" value={partialAmount} onChange={(e) => setPartialAmount(e.target.value)} error={partialInvalid ? "Must be > 0 and < remaining" : undefined} />
+                    <NumberInput value={partialAmount} onChange={(e) => setPartialAmount(e.target.value)} error={partialInvalid ? "Must be > 0 and < remaining" : undefined} />
                     {partialInvalid && <span className="text-[11px] font-semibold text-danger">Between {money(0)} and {money(remaining)}</span>}
                   </label>
                 )}
@@ -600,6 +600,21 @@ function OtpDialog({ otp, onClose, onDone }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Numeric field: no spinner (global CSS), no accidental change from mouse-wheel
+ *  (blur on wheel), and select-all on focus so a seeded value is instantly
+ *  replaceable (no "03"/"30" fighting). */
+function NumberInput(props) {
+  return (
+    <Input
+      type="number"
+      inputMode="decimal"
+      {...props}
+      onWheel={(e) => e.currentTarget.blur()}
+      onFocus={(e) => e.currentTarget.select()}
+    />
   );
 }
 
