@@ -60,6 +60,9 @@ export default function SalesHistory() {
   const scope = useRef(null);
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
+  const [fCat, setFCat] = useState("All Categories");
+  const [fSub, setFSub] = useState("All Sub-categories");
+  const [fPurity, setFPurity] = useState("All Purity");
   const [bills, setBills] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -102,9 +105,17 @@ export default function SalesHistory() {
     return bills.filter((b) => {
       const matchesTab = tab === "all" || b.status.toLowerCase() === tab;
       const matchesQuery = !q || [b.inv, b.customer, String(b.amount)].join(" ").toLowerCase().includes(q);
-      return matchesTab && matchesQuery;
+      const matchesCat = fCat === "All Categories" || b.category === fCat;
+      const matchesSub = fSub === "All Sub-categories" || b.subcategory === fSub;
+      const matchesPurity = fPurity === "All Purity" || b.purity === fPurity;
+      return matchesTab && matchesQuery && matchesCat && matchesSub && matchesPurity;
     });
-  }, [bills, tab, query]);
+  }, [bills, tab, query, fCat, fSub, fPurity]);
+
+  // Filter option sets, built from the real sales data present.
+  const catOptions = useMemo(() => [...new Set(bills.map(b => b.category).filter(Boolean))].sort(), [bills]);
+  const subOptions = useMemo(() => [...new Set(bills.map(b => b.subcategory).filter(Boolean))].sort(), [bills]);
+  const purityOptions = useMemo(() => [...new Set(bills.map(b => b.purity).filter(Boolean))].sort(), [bills]);
 
   const handleExport = async () => {
     if (exporting) return;
@@ -198,6 +209,25 @@ export default function SalesHistory() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
 
+  // Net-gold sold total + Category/Purity composition of the currently filtered
+  // sales rows. Real backend data (per-sale category/purity/net weight); display
+  // aggregation only — no financial calculation.
+  const totalGoldSold = useMemo(() => rows.reduce((s, b) => s + (b.netGoldWeightGrams || 0), 0), [rows]);
+  const soldByCategory = fCat !== "All Categories" || fSub !== "All Sub-categories";
+  const soldComposition = useMemo(() => {
+    const map = new Map();
+    rows.forEach(b => {
+      if (!(b.netGoldWeightGrams > 0)) return;
+      const key = soldByCategory ? `${b.category || "Uncategorised"}|${b.purity || "—"}` : (b.purity || "—");
+      map.set(key, (map.get(key) || 0) + b.netGoldWeightGrams);
+    });
+    return [...map.entries()]
+      .map(([k, g]) => soldByCategory
+        ? (() => { const [cat, pur] = k.split("|"); return { cat, pur, g }; })()
+        : { cat: null, pur: k, g })
+      .sort((a, b) => b.g - a.g);
+  }, [rows, soldByCategory]);
+
   return (
     <div ref={scope} className="mx-auto max-w-[1200px]">
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -216,6 +246,42 @@ export default function SalesHistory() {
           </Button>
           <Button size="sm" onClick={() => toast("New sale started")}>New sale</Button>
         </div>
+      </div>
+
+      <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(220px,280px)_1fr]">
+        <Card data-motion="stat" className="p-4">
+          <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Gold Sold</div>
+          <div className="num mt-1 text-2xl font-extrabold">{totalGoldSold.toFixed(2)} g</div>
+          <div className="text-xs text-muted">Net gold · current view</div>
+        </Card>
+        <Card data-motion="stat" className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Gold Sold Composition</div>
+            <div className="text-[11px] text-muted">{soldByCategory ? "Category · Purity · grams" : "Purity-wise · grams"}</div>
+          </div>
+          {soldComposition.length === 0 ? (
+            <div className="mt-2 text-sm text-muted">No sold gold in the current view.</div>
+          ) : soldByCategory ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {soldComposition.map(({ cat, pur, g }) => (
+                <span key={`${cat}-${pur}`} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas/50 px-2.5 py-1 text-xs">
+                  <span className="font-bold uppercase tracking-wide">{cat}</span>
+                  <Badge tone="neutral">{pur}</Badge>
+                  <span className="num font-mono font-semibold">{g.toFixed(2)} g</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
+              {soldComposition.map(({ pur, g }) => (
+                <div key={pur} className="flex items-baseline justify-between border-b border-line-soft pb-1">
+                  <span className="text-sm font-bold">{pur}</span>
+                  <span className="num font-mono text-sm font-semibold tabular-nums">{g.toFixed(2)} g</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       </div>
 
       <div data-motion="toolbar" className="mb-4">
@@ -238,14 +304,20 @@ export default function SalesHistory() {
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchInput
-          className="w-full max-w-md"
+          className="min-w-[220px] flex-1"
           placeholder="Search invoice, customer, or amount..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search sales"
         />
+        <Select value={fCat} onValueChange={setFCat} options={["All Categories", ...catOptions]} className="w-[150px]" />
+        <Select value={fSub} onValueChange={setFSub} options={["All Sub-categories", ...subOptions]} className="w-[170px]" />
+        <Select value={fPurity} onValueChange={setFPurity} options={["All Purity", ...purityOptions]} className="w-[130px]" />
+        {(fCat !== "All Categories" || fSub !== "All Sub-categories" || fPurity !== "All Purity") && (
+          <button onClick={() => { setFCat("All Categories"); setFSub("All Sub-categories"); setFPurity("All Purity"); }} className="text-xs font-bold text-accent underline">Clear</button>
+        )}
       </div>
 
       <Card data-motion="reveal" className="overflow-hidden">

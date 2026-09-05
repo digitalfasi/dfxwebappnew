@@ -17,6 +17,7 @@ import Support from "./views/Support";
 import Notifications from "./views/Notifications";
 import Settings from "./views/Settings";
 import Inventory from "./views/Inventory";
+import Vendors from "./views/Vendors";
 import NewSale from "./views/NewSale";
 import ReportsAnalytics from "./views/ReportsAnalytics";
 import SalesHistory from "./views/SalesHistory";
@@ -25,24 +26,25 @@ import { subscribe } from "./lib/toast";
 import { INITIAL_PROMOTIONS } from "./lib/promotionStore";
 
 const PAGES = {
-  dashboard: { title: "Dashboard", crumb: "Overview", component: Dashboard },
-  "gold-rate": { title: "Gold Rate", crumb: "Overview", component: GoldRate, action: "Publish update" },
-  customers: { title: "Customers", crumb: "People", component: Customers },
-  schemes: { title: "Schemes", crumb: "Schemes", component: Schemes },
-  "scheme-management": { title: "Scheme Management", crumb: "Schemes", component: SchemeManagement },
-  payments: { title: "Payments", crumb: "Billing", component: Payments },
-  inventory: { title: "Inventory", crumb: "Billing", component: Inventory },
-  "new-sale": { title: "New Sale", crumb: "Billing", component: NewSale },
-  "sales-history": { title: "Sales History", crumb: "Billing", component: SalesHistory, action: "New sale" },
-  catalogue: { title: "Catalogue Studio", crumb: "Growth", component: CatalogueStudio },
-  marketing: { title: "Promotion Banners", crumb: "Growth", component: PromotionBanners },
-  "promotion-create": { title: "Create Promotion", crumb: "Growth", component: PromotionCreate },
-  reports: { title: "Reports & Analytics", crumb: "Growth", component: ReportsAnalytics },
-  branches: { title: "Branches", crumb: "Operations", component: Branches },
-  "staff-users": { title: "Staff Users", crumb: "Operations", component: StaffUsers },
-  support: { title: "Support", crumb: "System", component: Support },
-  notifications: { title: "Notifications", crumb: "System", component: Notifications },
-  settings: { title: "Settings", crumb: "System", component: Settings },
+  dashboard: { title: "Dashboard", component: Dashboard },
+  "gold-rate": { title: "Gold Rate", component: GoldRate, action: "Publish update" },
+  customers: { title: "Customers", component: Customers },
+  schemes: { title: "Schemes", component: Schemes },
+  "scheme-management": { title: "Enrollment Management", component: SchemeManagement },
+  payments: { title: "Payments", component: Payments },
+  inventory: { title: "Purchase", component: Inventory },
+  vendors: { title: "Purchase History", component: Vendors },
+  "new-sale": { title: "New Sale", component: NewSale },
+  "sales-history": { title: "Sales History", component: SalesHistory, action: "New sale" },
+  catalogue: { title: "Catalogue Studio", component: CatalogueStudio },
+  marketing: { title: "Promotion Banners", component: PromotionBanners },
+  "promotion-create": { title: "Create Promotion", component: PromotionCreate },
+  reports: { title: "Reports & Analytics", component: ReportsAnalytics },
+  branches: { title: "Branches", component: Branches },
+  "staff-users": { title: "Staff Users", component: StaffUsers },
+  support: { title: "Support", component: Support },
+  notifications: { title: "Notifications", component: Notifications },
+  settings: { title: "Settings", component: Settings },
 };
 
 function Toast({ onRef }) {

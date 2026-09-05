@@ -34,18 +34,28 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    label: "Schemes",
+    label: "Plans",
     collapsible: true,
+    headerIcon: <Icon d={<><circle cx="8" cy="8" r="5" /><circle cx="15" cy="12" r="3" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></>} />,
     items: [
-      { id: "schemes", name: "Plans", icon: <Icon d={<><circle cx="8" cy="8" r="5" /><circle cx="15" cy="12" r="3" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></>} /> },
+      { id: "schemes", name: "Schemes", icon: <Icon d={<><circle cx="8" cy="8" r="5" /><circle cx="15" cy="12" r="3" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></>} /> },
       { id: "scheme-management", name: "Enrollment Management", icon: <Icon d={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="3" /><path d="M18 8a2.5 2.5 0 0 1 2.5 2.5V12" /><circle cx="18" cy="5" r="1.5" /></>} /> },
+    ],
+  },
+  {
+    label: "Procurement",
+    collapsible: true,
+    headerIcon: <Icon d={<><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /></>} />,
+    items: [
+      { id: "inventory", name: "Purchase", icon: <Icon d={<><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /></>} /> },
+      { id: "vendors", name: "Purchase History", icon: <Icon d={<><path d="M8 2v4M16 2v4" /><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18" /></>} /> },
     ],
   },
   {
     label: "Billing",
     collapsible: true,
+    headerIcon: <Icon d={<><path d="M4 4h16v16l-3-2-3 2-3-2-3 2z" /><path d="M8 9h8M8 13h5" /></>} />,
     items: [
-      { id: "inventory", name: "Inventory", icon: <Icon d={<><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /></>} /> },
       { id: "new-sale", name: "New Sale", icon: <Icon d={<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M8 12h8M12 8v8" /><path d="M3 10h18" /></>} /> },
       { id: "sales-history", name: "Sales History", icon: <Icon d={<><path d="M8 2v4M16 2v4" /><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18" /></>} /> },
     ],
@@ -84,7 +94,7 @@ export const NAV_SECTIONS = [
 export default function Sidebar({ page, onNavigate, open, onClose }) {
   const { user, tenantName } = useAuth();
   const storeName = tenantName || "DFX Solution";
-  const [openMap, setOpenMap] = useState({ Schemes: true, Billing: true });
+  const [openMap, setOpenMap] = useState({ Plans: true, Procurement: true, Billing: true });
   // Sidebar search removed; nav renders unfiltered (query stays empty).
   const query = "";
   return (
@@ -129,10 +139,8 @@ export default function Sidebar({ page, onNavigate, open, onClose }) {
               const isActive = section.items.some((i) => i.id === page);
               const qActive = query.trim().length > 0;
               const isOpen = qActive ? true : (openMap[section.label] ?? true);
-              const headerIcon = section.label === "Schemes"
-                ? <Icon d={<><circle cx="8" cy="8" r="5" /><circle cx="15" cy="12" r="3" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></>} />
-                : <Icon d={<><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /></>} />;
-              const headerLabel = section.label === "Schemes" ? "Plans" : section.label;
+              const headerIcon = section.headerIcon;
+              const headerLabel = section.label;
               return (
                 <div key={section.label} className="mb-1">
                   <button

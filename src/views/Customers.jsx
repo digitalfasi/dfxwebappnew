@@ -45,13 +45,17 @@ function fmtDob(dob) {
 
 const SCHEME_OPTIONS = ["No scheme", "Gold Saver 11+1", "Silver Flexi", "Diamond Plus"];
 
+// Meaningful empty states in place of bare "-" / "—".
+const isBlank = (v) => v == null || v === "" || v === "—" || v === "-";
+const orNP = (v) => (isBlank(v) ? "Not provided" : v);
+const orNS = (v) => (isBlank(v) ? "Not submitted" : v);
+
 export default function Customers() {
   const scope = useRef(null);
   usePressFeedback(scope);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All Types");
   const [kycFilter, setKycFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
   const [selected, setSelected] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +68,7 @@ export default function Customers() {
   const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", scheme: "No scheme" });
   const [errors, setErrors] = useState({});
   const [editing, setEditing] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", password: "", status: "Active" });
+  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", password: "" });
   const [editErrors, setEditErrors] = useState({});
   // KYC review (integrated — replaces the standalone KYC Review module).
   const [kycReview, setKycReview] = useState(null); // customer under review
@@ -126,17 +130,17 @@ export default function Customers() {
       const matchesQuery = !q || [c.name, c.code, c.email, c.phone, c.city].join(" ").toLowerCase().includes(q);
       const matchesType = filter === "All Types" || c.type === filter;
       const matchesKyc = kycFilter === "All" || (kycFilter === "Pending" ? c.kyc === "Pending Review" : c.kyc === kycFilter);
-      const matchesStatus = statusFilter === "All" || c.status === statusFilter;
-      return matchesQuery && matchesType && matchesKyc && matchesStatus;
+      return matchesQuery && matchesType && matchesKyc;
     });
-  }, [customers, query, filter, kycFilter, statusFilter]);
+  }, [customers, query, filter, kycFilter]);
 
   function validate() {
     const e = {};
     if (!form.name.trim()) e.name = "Name is required";
     if (!form.password || form.password.length < 8) e.password = "Min. 8 characters";
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Invalid email";
-    if (form.phone && !/^[0-9]{10}$/.test(form.phone.replace(/\D/g, ""))) e.phone = "Enter 10-digit phone";
+    if (!form.phone.trim()) e.phone = "Phone is required";
+    else if (!/^[0-9]{10}$/.test(form.phone.replace(/\D/g, ""))) e.phone = "Enter 10-digit phone";
     return e;
   }
 
@@ -152,7 +156,7 @@ export default function Customers() {
       const created = await customerService.createCustomer({
         name: form.name.trim(),
         password: form.password,
-        phone: form.phone.trim() || undefined,
+        phone: form.phone.trim(),
         email: form.email.trim() || undefined,
       });
       setShowAdd(false);
@@ -175,7 +179,7 @@ export default function Customers() {
 
   function openEdit(c) {
     setEditing(c);
-    setEditForm({ name: c.name, phone: c.phone === "—" ? "" : c.phone, email: c.email === "—" ? "" : c.email, password: "", status: c.status });
+    setEditForm({ name: c.name, phone: c.phone === "—" ? "" : c.phone, email: c.email === "—" ? "" : c.email, password: "" });
     setEditErrors({});
   }
   async function handleSaveEdit() {
@@ -192,7 +196,6 @@ export default function Customers() {
         name: editForm.name.trim(),
         phone: editForm.phone.trim() || undefined,
         email: editForm.email.trim() || undefined,
-        isActive: editForm.status === "Active",
       });
       const code = editing.code;
       setEditing(null);
@@ -295,7 +298,7 @@ export default function Customers() {
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4" data-motion="stat">
         {[
           { label: "Total customers", value: customers.length, sub: "All time" },
-          { label: "Active", value: customers.filter(c => c.status === "Active").length, sub: "Currently active" },
+          { label: "Walk-in", value: customers.filter(c => c.type === "Walk-in").length, sub: "Walk-in customers" },
           { label: "KYC pending", value: customers.filter(c => c.kyc === "Pending Review").length, sub: "Needs review" },
           { label: "Scheme enrolled", value: customers.filter(c => c.type === "Scheme Customer" || c.type === "Hybrid").length, sub: "With live schemes" },
         ].map(s => (
@@ -321,12 +324,8 @@ export default function Customers() {
           {["All", "Verified", "Pending"].map(k => (
             <button key={k} onClick={() => setKycFilter(k)} className={`rounded-full border px-3 py-1 font-semibold ${kycFilter === k ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted hover:border-line"}`}>{k}</button>
           ))}
-          <span className="ml-3 font-bold text-muted">Status:</span>
-          {["All", "Active", "Inactive"].map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)} className={`rounded-full border px-3 py-1 font-semibold ${statusFilter === s ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted"}`}>{s}</button>
-          ))}
-          {(kycFilter !== "All" || statusFilter !== "All" || filter !== "All Types" || query) && (
-            <button onClick={() => { setQuery(""); setFilter("All Types"); setKycFilter("All"); setStatusFilter("All"); }} className="ml-2 font-bold text-accent underline">Clear</button>
+          {(kycFilter !== "All" || filter !== "All Types" || query) && (
+            <button onClick={() => { setQuery(""); setFilter("All Types"); setKycFilter("All"); }} className="ml-2 font-bold text-accent underline">Clear</button>
           )}
         </div>
       </div>
@@ -336,7 +335,7 @@ export default function Customers() {
           <table className="w-full min-w-[980px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Customer</th><th className="py-3">Code</th><th className="py-3">Contact</th><th className="py-3">Type</th><th className="py-3">KYC</th><th className="py-3">Member Since</th><th className="py-3">Status</th><th className="py-3 text-right pr-6">Actions</th>
+                <th className="px-6 py-3">Customer</th><th className="py-3">Code</th><th className="py-3">Contact</th><th className="py-3">Type</th><th className="py-3">KYC</th><th className="py-3">Member Since</th><th className="py-3 text-right pr-6">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -353,13 +352,13 @@ export default function Customers() {
                           if (c.dob && fmtDob(c.dob) !== "—") parts.push(fmtDob(c.dob));
                           if (age != null) parts.push(`${age}y`);
                           if (c.city) parts.push(c.city);
-                          return parts.length ? parts.join(" · ") : "—";
+                          return parts.length ? parts.join(" · ") : "Not provided";
                         })()}</span>
                       </span>
                     </button>
                   </td>
                   <td className="py-3.5 font-mono text-xs font-semibold">{c.code}</td>
-                  <td className="py-3.5"><div className="text-[13px] leading-tight">{c.email}</div><div className="num text-xs text-muted">{c.phone}</div></td>
+                  <td className="py-3.5"><div className="text-[13px] leading-tight">{orNP(c.email)}</div><div className="num text-xs text-muted">{orNP(c.phone)}</div></td>
                   <td className="py-3.5"><Badge tone={TYPE_TONE[c.type]}>{c.type}</Badge></td>
                   <td className="py-3.5">
                     <div className="flex items-center gap-2">
@@ -370,7 +369,6 @@ export default function Customers() {
                     </div>
                   </td>
                   <td className="py-3.5 text-muted">{c.since}</td>
-                  <td className="py-3.5"><Badge tone={c.status === "Active" ? "success" : "neutral"} dot>{c.status}</Badge></td>
                   <td className="py-3.5 pr-6 text-right">
                     <div className="flex justify-end gap-1.5">
                       <button onClick={() => openCustomer(c)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent-line hover:bg-accent-soft hover:text-accent" aria-label={`View ${c.name}`} title="View 360">
@@ -421,12 +419,12 @@ export default function Customers() {
                 {errors.name && <span className="text-xs font-semibold text-danger">{errors.name}</span>}
               </label>
               <label className="grid gap-1.5">
-                <span className="text-xs font-bold">Phone <span className="font-normal text-muted">— Optional for walk-in</span></span>
+                <span className="text-xs font-bold">Phone<span className="text-danger">*</span> <span className="font-normal text-muted">— 10-digit mobile number</span></span>
                 <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="10-digit mobile number" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.phone ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
                 {errors.phone && <span className="text-xs font-semibold text-danger">{errors.phone}</span>}
               </label>
               <label className="grid gap-1.5">
-                <span className="text-xs font-bold">Email <span className="font-normal text-muted">— Optional for walk-in</span></span>
+                <span className="text-xs font-bold">Email <span className="font-normal text-muted">— Optional</span></span>
                 <input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="customer@email.com" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.email ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
                 {errors.email && <span className="text-xs font-semibold text-danger">{errors.email}</span>}
               </label>
@@ -439,7 +437,7 @@ export default function Customers() {
                 <span className="text-xs font-bold">Enroll in Scheme <span className="font-normal text-muted">(Optional) — No scheme</span></span>
                 <Select value={form.scheme} onValueChange={(v) => setForm({ ...form, scheme: v })} options={SCHEME_OPTIONS} />
               </label>
-              <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">Note: Leave phone and email blank to create a walk-in customer — a Customer ID is generated either way.</p>
+              <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">Note: Phone is required. Leave email blank for a walk-in customer — a Customer ID is generated either way.</p>
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" onClick={() => setShowAdd(false)}>Cancel</Button>
@@ -482,10 +480,6 @@ export default function Customers() {
                 <input type="password" value={editForm.password} onChange={e => setEditForm({ ...editForm, password: e.target.value })} placeholder="••••••••" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${editErrors.password ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
                 {editErrors.password && <span className="text-xs font-semibold text-danger">{editErrors.password}</span>}
               </label>
-              <label className="grid gap-1.5">
-                <span className="text-xs font-bold">Status</span>
-                <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v })} options={["Active", "Inactive"]} />
-              </label>
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
@@ -510,8 +504,8 @@ export default function Customers() {
               <div className="grid gap-2.5 rounded-xl border border-line bg-canvas/40 p-4 text-sm">
                 <div><div className="text-xs text-muted">Customer</div><div className="font-semibold">{deleting.name}</div></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><div className="text-xs text-muted">Mobile</div><div className="num font-semibold">{deleting.phone || "Not provided"}</div></div>
-                  <div><div className="text-xs text-muted">Email</div><div className="font-semibold break-all">{deleting.email || "Not provided"}</div></div>
+                  <div><div className="text-xs text-muted">Mobile</div><div className="num font-semibold">{orNP(deleting.phone)}</div></div>
+                  <div><div className="text-xs text-muted">Email</div><div className="font-semibold break-all">{orNP(deleting.email)}</div></div>
                 </div>
               </div>
             </div>
@@ -594,15 +588,14 @@ export default function Customers() {
                     <div className="font-mono text-xs text-muted">{selected.code} · {selected.type}</div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <Badge tone={KYC_TONE[selected.kyc] ?? "neutral"} dot>{selected.kyc}</Badge>
-                      <Badge tone={selected.status === "Active" ? "success" : "neutral"} dot>{selected.status}</Badge>
-                      <Badge tone="neutral">{selected.city}</Badge>
+                      {selected.city && <Badge tone="neutral">{selected.city}</Badge>}
                     </div>
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-3 text-center">
                   <div className="rounded-xl bg-white border border-accent-line p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">DOB</div><div className="mt-0.5 text-sm font-bold">{fmtDob(selected.dob)}</div><div className="text-xs text-muted">{ageFromDob(selected.dob) != null ? `${ageFromDob(selected.dob)} years` : "—"}</div></div>
-                  <div className="rounded-xl bg-white border border-line p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">Member Since</div><div className="mt-0.5 text-sm font-bold">{selected.since}</div><div className="text-xs text-muted">{selected.status}</div></div>
-                  <div className="rounded-xl bg-white border border-line p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">Schemes</div><div className="mt-0.5 text-sm font-bold">{selected.schemes.length || "—"}</div><div className="text-xs text-muted">{selected.schemes.length ? "Active" : "None"}</div></div>
+                  <div className="rounded-xl bg-white border border-line p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">Member Since</div><div className="mt-0.5 text-sm font-bold">{selected.since}</div><div className="text-xs text-muted">{selected.type}</div></div>
+                  <div className="rounded-xl bg-white border border-line p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">Schemes</div><div className="mt-0.5 text-sm font-bold">{selected.schemes.length || 0}</div><div className="text-xs text-muted">{selected.schemes.length ? "Active" : "No active schemes"}</div></div>
                 </div>
               </div>
 
@@ -611,14 +604,14 @@ export default function Customers() {
                   <h4 className="text-xs font-extrabold uppercase tracking-widest text-ink">Customer Information</h4>
                   <div className="mt-3 grid gap-3 rounded-xl border border-line bg-canvas/40 p-4 text-sm">
                     <div className="grid grid-cols-2 gap-3">
-                      <div><div className="text-xs text-muted">Phone</div><div className="num font-semibold">{selected.phone}</div></div>
-                      <div><div className="text-xs text-muted">Gender</div><div className="font-semibold">{selected.gender}</div></div>
+                      <div><div className="text-xs text-muted">Phone</div><div className="num font-semibold">{orNP(selected.phone)}</div></div>
+                      <div><div className="text-xs text-muted">Gender</div><div className="font-semibold">{orNP(selected.gender)}</div></div>
                     </div>
-                    <div><div className="text-xs text-muted">Email</div><div className="font-semibold break-all">{selected.email}</div></div>
-                    <div><div className="text-xs text-muted">Address</div><div className="font-semibold leading-snug">{selected.address}</div></div>
+                    <div><div className="text-xs text-muted">Email</div><div className="font-semibold break-all">{orNP(selected.email)}</div></div>
+                    <div><div className="text-xs text-muted">Address</div><div className="font-semibold leading-snug">{orNP(selected.address)}</div></div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><div className="text-xs text-muted">ID Proof</div><div className="font-semibold">{selected.idType} · {selected.idNo}</div></div>
-                      <div><div className="text-xs text-muted">Occupation</div><div className="font-semibold">{selected.occupation}</div></div>
+                      <div><div className="text-xs text-muted">ID Proof</div><div className="font-semibold">{isBlank(selected.idType) && isBlank(selected.idNo) ? "Not submitted" : `${orNS(selected.idType)} · ${orNS(selected.idNo)}`}</div></div>
+                      <div><div className="text-xs text-muted">Occupation</div><div className="font-semibold">{orNP(selected.occupation)}</div></div>
                     </div>
                   </div>
                 </section>
@@ -647,6 +640,9 @@ export default function Customers() {
 
                 <section>
                   <h4 className="text-xs font-extrabold uppercase tracking-widest text-ink">Customer History</h4>
+                  {!selected.history?.length ? (
+                    <div className="mt-3 rounded-xl border border-dashed border-line bg-canvas/30 p-6 text-center text-sm text-muted">No customer history yet.</div>
+                  ) : (
                   <div className="mt-3 relative pl-6">
                     <div className="absolute left-1.5 top-2 bottom-2 w-px bg-line" />
                     <div className="grid gap-3">
@@ -662,12 +658,12 @@ export default function Customers() {
                       ))}
                     </div>
                   </div>
+                  )}
                 </section>
               </div>
             </div>
             <div className="border-t border-line p-4 flex gap-2">
-              <Button size="sm" className="flex-1" onClick={() => toast(`Message sent to ${selected.name}`)}>Message</Button>
-              <Button size="sm" variant="outline" onClick={() => openEdit(selected)}>Edit profile</Button>
+              <Button size="sm" className="flex-1" variant="outline" onClick={() => openEdit(selected)}>Edit profile</Button>
             </div>
           </div>
         </div>

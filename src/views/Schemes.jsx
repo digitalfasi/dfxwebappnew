@@ -78,7 +78,7 @@ export default function Schemes() {
     if (!form.amount || Number(form.amount) <= 0) e.amount = "Enter valid amount";
     // Tiers are only collected on create; edit updates scalar fields only.
     const cleanTiers = [];
-    if (!editingId) {
+    if (!editingId && form.type === "MONTHLY") {
       const seen = new Set();
       for (const t of tiers) {
         const ma = Number(t.monthlyAmount);
@@ -119,7 +119,7 @@ export default function Schemes() {
           tiers: cleanTiers,
         });
         setShow(false);
-        setForm({ title: "", description: "", duration: "11", amount: "1000", bonus: "" });
+        setForm({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonus: "" });
         setTiers([]);
         setErrors({});
         await loadSchemes();
@@ -254,7 +254,7 @@ export default function Schemes() {
               <label className="grid gap-1.5"><span className="text-xs font-bold">Duration (Months)<span className="text-danger">*</span> — 11</span><input type="number" value={form.duration} onChange={e => setForm({ ...form, duration: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.duration ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.duration && <span className="text-xs font-semibold text-danger">{errors.duration}</span>}</label>
               <label className="grid gap-1.5"><span className="text-xs font-bold">Monthly Amount (₹)<span className="text-danger">*</span> — 1000</span><input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.amount ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.amount && <span className="text-xs font-semibold text-danger">{errors.amount}</span>}</label>
               <label className="grid gap-1.5"><span className="text-xs font-bold">Bonus Description — e.g. 8% bonus on maturity</span><input value={form.bonus} onChange={e => setForm({ ...form, bonus: e.target.value })} placeholder="8% bonus on maturity" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
-              {!editingId && <div className="grid gap-2">
+              {!editingId && form.type === "MONTHLY" && <div className="grid gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold">Tiers — additional monthly amount / duration options</span>
                   <Button variant="outline" size="sm" onClick={addTier}>Add tier</Button>

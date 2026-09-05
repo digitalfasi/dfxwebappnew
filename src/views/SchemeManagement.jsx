@@ -183,7 +183,7 @@ export default function SchemeManagement() {
     <div ref={scope} className="mx-auto max-w-[1200px]">
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-extrabold tracking-tight">Scheme Management</h2>
+          <h2 className="text-2xl font-extrabold tracking-tight">Enrollment Management</h2>
           <p className="mt-1 max-w-[62ch] text-sm text-muted">Which customers are enrolled in which schemes, and the current state of each enrollment — passbook, payments and remarks in one place.</p>
         </div>
         <Button variant="outline" size="sm" onClick={loadRows}>
