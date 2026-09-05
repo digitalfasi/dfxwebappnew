@@ -24,16 +24,16 @@ const PAYMENT_METHOD_LABEL = { CASH: "Cash", UPI: "UPI", CARD: "Card", BANK_TRAN
 const PAYMENT_STATUSES = ["PAID", "PARTIAL", "PENDING"];
 const PAYMENT_STATUS_LABEL = { PAID: "Paid in full", PARTIAL: "Partial", PENDING: "Pending (unpaid)" };
 
-const money = (n) => "₹" + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Presentation only — the backend keeps full precision. Bill/charge amounts are
+// shown as whole rupees to keep the counter readable; a rate/g keeps up to two
+// decimals but drops a trailing .00.
+const money = (n) => "₹" + Math.round(Number(n || 0)).toLocaleString("en-IN");
+const rateFmt = (n) => {
+  const v = Number(n || 0);
+  return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+};
 const grams = (n) => `${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 })} g`;
 const num = (s) => (s === "" || s == null ? 0 : Math.max(0, Number(s) || 0));
-
-/** Charge label for a Making/Wastage row: "3%", "₹120.00/g" or "" (fixed). */
-function chargePct(type, value) {
-  if (type === "PERCENTAGE") return `${Number(value)}%`;
-  if (type === "PER_GRAM") return `${money(value)}/g`;
-  return "";
-}
 
 export default function NewSale() {
   const scope = useRef(null);
@@ -43,16 +43,20 @@ export default function NewSale() {
   const [productCode, setProductCode] = useState("");
   const [product, setProduct] = useState(null);
   const [goldRate, setGoldRate] = useState(null);
+  const [storeDefaults, setStoreDefaults] = useState(null); // store pricing defaults (making/wastage/gold-profit %)
   const [loading, setLoading] = useState(false);
   const [requoting, setRequoting] = useState(false);
   const [lookupError, setLookupError] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // Editable pricing inputs (seeded once from the first quote).
+  // Editable pricing inputs (seeded once from the first quote). Making/Wastage/
+  // Gold Profit are percentages for New Sale; the backend recomputes amounts.
   const [rate, setRate] = useState("");
+  const [goldProfitPct, setGoldProfitPct] = useState("");
   const [makingVal, setMakingVal] = useState("");
   const [wastageVal, setWastageVal] = useState("");
   const [discount, setDiscount] = useState("");
+  const [showDiscount, setShowDiscount] = useState(false);
   const [gst, setGst] = useState(true);
 
   // Customer
@@ -83,12 +87,34 @@ export default function NewSale() {
   useEffect(() => {
     let alive = true;
     billingService.getTodayGoldRate24k().then((r) => { if (alive) setGoldRate(r); }).catch(() => { if (alive) setGoldRate(null); });
+    billingService.getStoreDefaults().then((d) => { if (alive) setStoreDefaults(d); }).catch(() => { if (alive) setStoreDefaults(null); });
     return () => { alive = false; };
   }, []);
+
+  // The percentage to seed a New Sale charge with: the item's own value when it
+  // is already percentage-based, else the store's percentage default, else 0.
+  // New Sale is percentage-only — a stored FIXED/PER_GRAM charge is never
+  // silently carried through.
+  const seedPct = (ownType, ownValue, defType, defValue) => {
+    if (ownType === "PERCENTAGE" && ownValue != null) return String(ownValue);
+    if (defType === "PERCENTAGE" && defValue !== "" && defValue != null) return String(defValue);
+    return "0";
+  };
 
   const discountNum = num(discount);
   const goldProfitCeiling = product && product.goldProfitAmount != null ? product.goldProfitAmount : null;
   const discountExceedsProfit = goldProfitCeiling != null && discountNum > goldProfitCeiling + 1e-6;
+  // Discount buffer + state. The ONLY real limit is the backend Gold Profit
+  // ceiling; the SAFE/NEAR/AT/OVER split is a UI hint (NEAR is a cosmetic
+  // proximity cue, not a business threshold).
+  const discountBuffer = goldProfitCeiling != null ? Math.max(0, goldProfitCeiling - discountNum) : null;
+  const discountState =
+    goldProfitCeiling == null ? null
+    : discountExceedsProfit ? "OVER"
+    : discountNum === 0 ? "IDLE"
+    : discountBuffer <= 1e-6 ? "AT"
+    : discountBuffer < goldProfitCeiling * 0.1 ? "NEAR"
+    : "SAFE";
 
   // First HUID lookup — confirm a real sellable item and seed edit fields.
   const handleFind = useCallback(async () => {
@@ -97,21 +123,25 @@ export default function NewSale() {
     if (loading) return;
     setLoading(true); setLookupError("");
     setProduct(null); setProductCode("");
-    setDiscount(""); setGst(true);
+    setDiscount(""); setShowDiscount(false); setGst(true);
     try {
       const q = await billingService.getSaleQuote(key, { discountAmount: 0, gstApplied: true });
       setProduct(q);
       setProductCode(q.productCode);
       setRate(q.goldRateApplied != null ? String(q.goldRateApplied) : "");
-      setMakingVal(q.makingChargeValue != null ? String(q.makingChargeValue) : "");
-      setWastageVal(q.wastageValue != null ? String(q.wastageValue) : "");
+      setGoldProfitPct(q.goldProfitPercent != null ? String(q.goldProfitPercent) : (storeDefaults?.goldProfit != null && storeDefaults?.goldProfit !== "" ? String(storeDefaults.goldProfit) : ""));
+      // New Sale is percentage-only for Making/Wastage. Seed a concrete % — the
+      // item's own % if percentage-based, else the store default %, else 0 — so a
+      // stored FIXED/PER_GRAM charge is never silently carried into the sale.
+      setMakingVal(seedPct(q.makingChargeType, q.makingChargeValue, storeDefaults?.makingType, storeDefaults?.makingValue));
+      setWastageVal(seedPct(q.wastageType, q.wastageValue, storeDefaults?.wastageType, storeDefaults?.wastageValue));
       toast(`Found ${q.huid || key}`);
     } catch (err) {
       setLookupError(err?.message || `No sellable item found for ${key}`);
     } finally {
       setLoading(false);
     }
-  }, [code, loading]);
+  }, [code, loading, storeDefaults]);
 
   // Re-quote authoritatively when any pricing input changes (debounced). The
   // backend recomputes; an over-ceiling discount is rejected server-side and we
@@ -125,10 +155,13 @@ export default function NewSale() {
           discountAmount: discountNum,
           gstApplied: gst,
           appliedRatePerGram: rate === "" ? undefined : num(rate),
-          makingChargeValue: makingVal === "" ? undefined : num(makingVal),
-          makingChargeType: product?.makingChargeType || undefined,
-          wastageValue: wastageVal === "" ? undefined : num(wastageVal),
-          wastageType: product?.wastageType || undefined,
+          goldProfitPercent: goldProfitPct === "" ? undefined : num(goldProfitPct),
+          // New Sale is percentage-only for Making/Wastage — always send the type
+          // + value (0 when blank) so a stored FIXED/PER_GRAM charge is never used.
+          makingChargeValue: num(makingVal),
+          makingChargeType: "PERCENTAGE",
+          wastageValue: num(wastageVal),
+          wastageType: "PERCENTAGE",
         });
         setProduct(q);
       } catch {
@@ -139,7 +172,7 @@ export default function NewSale() {
     }, 450);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productCode, rate, makingVal, wastageVal, discountNum, gst]);
+  }, [productCode, rate, goldProfitPct, makingVal, wastageVal, discountNum, gst]);
 
   // Existing-customer search (debounced).
   useEffect(() => {
@@ -210,10 +243,11 @@ export default function NewSale() {
     discountAmount: discountNum,
     gstApplied: gst,
     appliedRatePerGram: rate === "" ? undefined : num(rate),
-    makingChargeValue: makingVal === "" ? undefined : num(makingVal),
-    makingChargeType: product.makingChargeType || undefined,
-    wastageValue: wastageVal === "" ? undefined : num(wastageVal),
-    wastageType: product.wastageType || undefined,
+    goldProfitPercent: goldProfitPct === "" ? undefined : num(goldProfitPct),
+    makingChargeValue: num(makingVal),
+    makingChargeType: "PERCENTAGE",
+    wastageValue: num(wastageVal),
+    wastageType: "PERCENTAGE",
   });
 
   const canCreate =
@@ -222,7 +256,7 @@ export default function NewSale() {
 
   const resetAll = () => {
     setProduct(null); setProductCode(""); setCode("");
-    setRate(""); setMakingVal(""); setWastageVal(""); setDiscount(""); setGst(true);
+    setRate(""); setGoldProfitPct(""); setMakingVal(""); setWastageVal(""); setDiscount(""); setShowDiscount(false); setGst(true);
     clearCustomer(); setCustQuery(""); setCustResults([]); setWalkinName(""); setWalkinPhone("");
     setPayMethod("CASH"); setPayStatus("PAID"); setPartialAmount(""); setPayRef("");
     setLookupError(""); setOtp(null);
@@ -299,10 +333,7 @@ export default function NewSale() {
 
       {/* HUID lookup */}
       <Card data-motion="reveal" className="p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-extrabold">Find product by HUID</h3>
-          <Badge tone="neutral">{goldRate != null ? `Today 24K ₹${goldRate.toLocaleString("en-IN")}/g` : "Today 24K —"}</Badge>
-        </div>
+        <h3 className="text-sm font-extrabold">Find product by HUID</h3>
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1.5 flex-1 min-w-[220px]">
             <span className="text-xs font-bold">HUID *</span>
@@ -332,9 +363,8 @@ export default function NewSale() {
                 <MiniField label="Purity" value={product.purity || "Not provided"} />
                 <MiniField label="Net Weight" value={grams(product.netGoldWeightGrams)} />
                 <div className="rounded-xl border border-line bg-canvas/40 p-3">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{product.purity ? `${product.purity} ` : ""}Applicable Sale Rate</div>
-                  <div className="mt-0.5 num text-sm font-extrabold text-accent-strong">{money(num(rate) || product.goldRateApplied || 0)}<span className="text-[11px] font-semibold text-muted">/g</span></div>
-                  <div className="text-[10px] text-muted">24K ref {product.goldRate24k != null ? money(product.goldRate24k) : (goldRate != null ? money(goldRate) : "—")}</div>
+                  <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Sale Rate</div>
+                  <div className="mt-0.5 num text-sm font-extrabold text-accent-strong">{rateFmt(num(rate) || product.goldRateApplied || 0)}<span className="text-[11px] font-semibold text-muted">/g</span></div>
                 </div>
               </div>
             </Card>
@@ -345,59 +375,44 @@ export default function NewSale() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5">
                   <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
-                  <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} />
-                  <span className="text-[11px] text-muted">Applicable purity rate. Default {product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} (24K × purity). Editable.</span>
+                  <Input type="number" inputMode="decimal" min="0" value={rate} onChange={(e) => setRate(e.target.value)} />
                 </label>
                 <label className="grid gap-1.5">
-                  <span className="text-xs font-bold">GST</span>
-                  <Select value={gst ? "Apply GST" : "No GST"} onValueChange={(v) => setGst(v === "Apply GST")} options={["Apply GST", "No GST"]} />
-                  <span className="text-[11px] text-muted">{product.taxRatePercent ? `${product.taxRatePercent}% when applied` : "Backend tax rate"}</span>
+                  <span className="text-xs font-bold">Gold Profit %</span>
+                  <Input type="number" inputMode="decimal" min="0" max="100" value={goldProfitPct} onChange={(e) => setGoldProfitPct(e.target.value)} placeholder="10" />
                 </label>
                 <label className="grid gap-1.5">
-                  <span className="text-xs font-bold">Making Charge {chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}</span>
-                  <Input type="number" step="0.01" min="0" value={makingVal} onChange={(e) => setMakingVal(e.target.value)} />
+                  <span className="text-xs font-bold">Making %</span>
+                  <Input type="number" inputMode="decimal" min="0" value={makingVal} onChange={(e) => setMakingVal(e.target.value)} placeholder="0" />
                   <span className="text-[11px] text-muted">= {money(product.makingChargeAmount)}</span>
                 </label>
                 <label className="grid gap-1.5">
-                  <span className="text-xs font-bold">Wastage {chargePct(product.wastageType, wastageVal || product.wastageValue)}</span>
-                  <Input type="number" step="0.01" min="0" value={wastageVal} onChange={(e) => setWastageVal(e.target.value)} />
+                  <span className="text-xs font-bold">Wastage %</span>
+                  <Input type="number" inputMode="decimal" min="0" value={wastageVal} onChange={(e) => setWastageVal(e.target.value)} placeholder="0" />
                   <span className="text-[11px] text-muted">= {money(product.wastageAmount)}</span>
                 </label>
                 <label className="grid gap-1.5 sm:col-span-2">
-                  <span className="text-xs font-bold">Discount (₹)</span>
-                  <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" />
-                  {goldProfitCeiling != null ? (
-                    <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
-                      {discountExceedsProfit ? `Max discount ${money(goldProfitCeiling)} — a discount may only reduce Gold Profit.` : `Up to ${money(goldProfitCeiling)} can be absorbed from Gold Profit.`}
-                    </span>
-                  ) : <span className="text-[11px] text-muted">A discount may only reduce Gold Profit.</span>}
+                  <span className="text-xs font-bold">GST</span>
+                  <Select value={gst ? "Apply GST" : "No GST"} onValueChange={(v) => setGst(v === "Apply GST")} options={["Apply GST", "No GST"]} />
                 </label>
               </div>
-            </Card>
 
-            {/* Safe discount guidance — ONLY about Gold Profit. No purchase cost,
-                no minimum selling price, no making/wastage reduction. */}
-            {goldProfitCeiling != null && (
-              <Card className={`p-5 ${discountExceedsProfit ? "border-danger-line bg-danger-soft/40" : ""}`}>
-                <h3 className="text-xs font-extrabold uppercase tracking-widest text-muted">Safe discount from Gold Profit</h3>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <MiniField label="Available Gold Profit" value={money(goldProfitCeiling)} />
-                  {discountNum > 0 ? (
-                    <MiniField label="Additional Safe Discount" value={money(Math.max(0, Number((goldProfitCeiling - discountNum).toFixed(2))))} />
-                  ) : (
-                    <MiniField label="Maximum Safe Discount" value={money(goldProfitCeiling)} />
-                  )}
-                </div>
-                {discountNum > 0 && (
-                  <div className="mt-2 text-[11px] text-muted">Discount applied {money(discountNum)} · remaining Gold Profit buffer {money(Math.max(0, Number((goldProfitCeiling - discountNum).toFixed(2))))}.</div>
+              {/* Discount — hidden until the jeweller chooses to give one. */}
+              <div className="border-t border-line pt-4">
+                {!showDiscount && discountNum === 0 ? (
+                  <Button size="sm" variant="outline" onClick={() => setShowDiscount(true)}>+ Add Discount</Button>
+                ) : (
+                  <div className="grid gap-1.5 sm:max-w-[280px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold">Discount (₹)</span>
+                      <button type="button" className="text-[11px] font-semibold text-muted hover:text-ink" onClick={() => { setDiscount(""); setShowDiscount(false); }}>Remove</button>
+                    </div>
+                    <Input type="number" inputMode="decimal" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" autoFocus />
+                    {discountState && <DiscountGuide state={discountState} ceiling={goldProfitCeiling} buffer={discountBuffer} />}
+                  </div>
                 )}
-                <div className={`mt-2 text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
-                  {discountExceedsProfit
-                    ? `Discount exceeds available Gold Profit (max ${money(goldProfitCeiling)}).`
-                    : "Discounts come only from Gold Profit — Making, Wastage and GST are never reduced."}
-                </div>
-              </Card>
-            )}
+              </div>
+            </Card>
 
             {/* Customer */}
             <Card className="p-5 space-y-4">
@@ -497,8 +512,8 @@ export default function NewSale() {
               </div>
               <div className="mt-3 space-y-0.5">
                 <Row label="Gold Value" value={money(goldValueLine)} />
-                <Row label={`Making Charge${chargePct(product.makingChargeType, makingVal || product.makingChargeValue) ? ` ${chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}` : ""}`} value={money(product.makingChargeAmount)} />
-                <Row label={`Wastage${chargePct(product.wastageType, wastageVal || product.wastageValue) ? ` ${chargePct(product.wastageType, wastageVal || product.wastageValue)}` : ""}`} value={money(product.wastageAmount)} />
+                <Row label="Making Charge" value={money(product.makingChargeAmount)} />
+                <Row label="Wastage" value={money(product.wastageAmount)} />
                 {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
                 {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
                 <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
@@ -585,6 +600,24 @@ function OtpDialog({ otp, onClose, onDone }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Contextual discount guidance — Gold Profit only; no purchase cost / profit-loss.
+ *  The real cap is `ceiling`; states are presentation cues. */
+function DiscountGuide({ state, ceiling, buffer }) {
+  const map = {
+    IDLE: { tone: "text-muted", title: "", msg: `Up to ${money(ceiling)} can be discounted from Gold Profit.` },
+    SAFE: { tone: "text-emerald-700", title: "Good to go", msg: `${money(buffer)} more can be discounted from Gold Profit.` },
+    NEAR: { tone: "text-amber-600", title: "You're close to the limit", msg: `Only ${money(buffer)} more can be discounted from Gold Profit.` },
+    AT: { tone: "text-amber-600", title: "At the safe limit", msg: "No additional discount is available from Gold Profit." },
+    OVER: { tone: "text-danger", title: "⚠ You're over the limit", msg: `Maximum discount from Gold Profit is ${money(ceiling)}.` },
+  };
+  const g = map[state] || map.IDLE;
+  return (
+    <span className={`text-[11px] ${g.tone} ${state === "OVER" || state === "AT" || state === "NEAR" ? "font-semibold" : ""}`}>
+      {g.title ? `${g.title} — ` : ""}{g.msg}
+    </span>
   );
 }
 

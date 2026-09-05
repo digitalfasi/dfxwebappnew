@@ -111,3 +111,16 @@ body { margin: 0; }
   }
   html { scroll-behavior: auto; }
 }
+
+/* Hide native number-input spinner arrows across the admin UI. Inputs stay
+   numeric (validation + mobile numeric keyboard preserved) — only the
+   increment/decrement chrome is removed. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

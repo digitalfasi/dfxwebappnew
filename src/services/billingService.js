@@ -354,13 +354,14 @@ export const billingService = {
    * tax, final amount) is computed server-side; nothing is recomputed here.
    */
   async getSaleQuote(productCode, {
-    discountAmount = 0, gstApplied = true, appliedRatePerGram,
+    discountAmount = 0, gstApplied = true, appliedRatePerGram, goldProfitPercent,
     makingChargeValue, makingChargeType, wastageValue, wastageType,
   } = {}) {
     const params = new URLSearchParams();
     if (discountAmount) params.set("discount_amount", String(discountAmount));
     params.set("gst_applied", String(gstApplied));
     if (appliedRatePerGram != null && appliedRatePerGram !== "") params.set("applied_rate_per_gram", String(appliedRatePerGram));
+    if (goldProfitPercent != null && goldProfitPercent !== "") params.set("gold_profit_percent", String(goldProfitPercent));
     // A value override must travel with its own type so a FIXED amount is never
     // reinterpreted as a PERCENTAGE by the backend engine.
     if (makingChargeValue != null && makingChargeValue !== "") { params.set("making_charge_value", String(makingChargeValue)); if (makingChargeType) params.set("making_charge_type", makingChargeType); }
@@ -380,7 +381,7 @@ export const billingService = {
    */
   async createSale({
     productCode, customerId, customerName, customerPhone,
-    discountAmount = 0, gstApplied = true, appliedRatePerGram,
+    discountAmount = 0, gstApplied = true, appliedRatePerGram, goldProfitPercent,
     makingChargeValue, makingChargeType, wastageValue, wastageType,
     paymentMethod = "CASH", paymentStatus = "PAID",
     initialPaymentAmount, paymentReferenceNo,
@@ -396,6 +397,7 @@ export const billingService = {
     if (customerPhone) body.customer_phone = customerPhone;
     if (discountAmount) body.discount_amount = discountAmount;
     if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
+    if (goldProfitPercent != null && goldProfitPercent !== "") body.gold_profit_percent = Number(goldProfitPercent);
     if (makingChargeValue != null && makingChargeValue !== "") { body.making_charge_value = Number(makingChargeValue); if (makingChargeType) body.making_charge_type = makingChargeType; }
     if (wastageValue != null && wastageValue !== "") { body.wastage_value = Number(wastageValue); if (wastageType) body.wastage_type = wastageType; }
     if (paymentStatus === "PARTIAL") body.initial_payment_amount = initialPaymentAmount;
@@ -412,7 +414,7 @@ export const billingService = {
    */
   async generateQuotation({
     productCode, customerId, customerName, customerPhone,
-    discountAmount = 0, gstApplied = true, appliedRatePerGram,
+    discountAmount = 0, gstApplied = true, appliedRatePerGram, goldProfitPercent,
     makingChargeValue, makingChargeType, wastageValue, wastageType, schemeAmounts, note,
   }) {
     const body = { product_code: productCode, gst_applied: gstApplied };
@@ -421,6 +423,7 @@ export const billingService = {
     if (customerPhone) body.customer_phone = customerPhone;
     if (discountAmount) body.discount_amount = discountAmount;
     if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
+    if (goldProfitPercent != null && goldProfitPercent !== "") body.gold_profit_percent = Number(goldProfitPercent);
     if (makingChargeValue != null && makingChargeValue !== "") { body.making_charge_value = Number(makingChargeValue); if (makingChargeType) body.making_charge_type = makingChargeType; }
     if (wastageValue != null && wastageValue !== "") { body.wastage_value = Number(wastageValue); if (wastageType) body.wastage_type = wastageType; }
     if (schemeAmounts && Object.keys(schemeAmounts).length) body.scheme_amounts = schemeAmounts;
