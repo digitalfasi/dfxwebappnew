@@ -331,7 +331,11 @@ export default function NewSale() {
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <MiniField label="Purity" value={product.purity || "Not provided"} />
                 <MiniField label="Net Weight" value={grams(product.netGoldWeightGrams)} />
-                <MiniField label="Live 24K" value={product.goldRate24k != null ? money(product.goldRate24k) : (goldRate != null ? money(goldRate) : "—")} />
+                <div className="rounded-xl border border-line bg-canvas/40 p-3">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{product.purity ? `${product.purity} ` : ""}Applicable Sale Rate</div>
+                  <div className="mt-0.5 num text-sm font-extrabold text-accent-strong">{money(num(rate) || product.goldRateApplied || 0)}<span className="text-[11px] font-semibold text-muted">/g</span></div>
+                  <div className="text-[10px] text-muted">24K ref {product.goldRate24k != null ? money(product.goldRate24k) : (goldRate != null ? money(goldRate) : "—")}</div>
+                </div>
               </div>
             </Card>
 
@@ -370,6 +374,30 @@ export default function NewSale() {
                 </label>
               </div>
             </Card>
+
+            {/* Safe discount guidance — ONLY about Gold Profit. No purchase cost,
+                no minimum selling price, no making/wastage reduction. */}
+            {goldProfitCeiling != null && (
+              <Card className={`p-5 ${discountExceedsProfit ? "border-danger-line bg-danger-soft/40" : ""}`}>
+                <h3 className="text-xs font-extrabold uppercase tracking-widest text-muted">Safe discount from Gold Profit</h3>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <MiniField label="Available Gold Profit" value={money(goldProfitCeiling)} />
+                  {discountNum > 0 ? (
+                    <MiniField label="Additional Safe Discount" value={money(Math.max(0, Number((goldProfitCeiling - discountNum).toFixed(2))))} />
+                  ) : (
+                    <MiniField label="Maximum Safe Discount" value={money(goldProfitCeiling)} />
+                  )}
+                </div>
+                {discountNum > 0 && (
+                  <div className="mt-2 text-[11px] text-muted">Discount applied {money(discountNum)} · remaining Gold Profit buffer {money(Math.max(0, Number((goldProfitCeiling - discountNum).toFixed(2))))}.</div>
+                )}
+                <div className={`mt-2 text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
+                  {discountExceedsProfit
+                    ? `Discount exceeds available Gold Profit (max ${money(goldProfitCeiling)}).`
+                    : "Discounts come only from Gold Profit — Making, Wastage and GST are never reduced."}
+                </div>
+              </Card>
+            )}
 
             {/* Customer */}
             <Card className="p-5 space-y-4">
@@ -473,7 +501,6 @@ export default function NewSale() {
                 <Row label={`Wastage${chargePct(product.wastageType, wastageVal || product.wastageValue) ? ` ${chargePct(product.wastageType, wastageVal || product.wastageValue)}` : ""}`} value={money(product.wastageAmount)} />
                 {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
                 {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
-                <Row label="Subtotal" value={money(product.subtotalBeforeTax)} divider />
                 <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
                 {product.discountAmount > 0 && <Row label="Discount" value={`− ${money(product.discountAmount)}`} tone="text-emerald-700" />}
                 <Row label="Bill Total" value={money(billTotal)} strong />
