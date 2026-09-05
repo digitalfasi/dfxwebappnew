@@ -32,7 +32,7 @@ const PAGES = {
   schemes: { title: "Schemes", component: Schemes },
   "scheme-management": { title: "Enrollment Management", component: SchemeManagement },
   payments: { title: "Payments", component: Payments },
-  inventory: { title: "Purchase", component: Inventory },
+  inventory: { title: "Inventory", component: Inventory },
   vendors: { title: "Purchase History", component: Vendors },
   "new-sale": { title: "New Sale", component: NewSale },
   "sales-history": { title: "Sales History", component: SalesHistory, action: "New sale" },
