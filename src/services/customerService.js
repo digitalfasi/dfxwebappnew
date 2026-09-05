@@ -96,6 +96,17 @@ export const customerService = {
     return res.data?.customer;
   },
 
+  /**
+   * DELETE /api/v1/admin/customers/{id}/test — UAT-only permanent delete.
+   * Backend gates this to the designated UAT tenant (UAT_TENANT_SLUG); a normal
+   * tenant receives 403 regardless of the UI. On success the customer's
+   * mobile/email are released for reuse.
+   */
+  async deleteTestCustomer(id) {
+    const res = await apiClient.delete(`/admin/customers/${id}/test`, { auth: true });
+    return res.data?.deleted;
+  },
+
   /** GET /api/v1/admin/customers/{id}/overview — Customer 360 for the drawer. */
   async getOverview(id) {
     const res = await apiClient.get(`/admin/customers/${id}/overview`, { auth: true });

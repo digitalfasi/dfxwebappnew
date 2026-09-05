@@ -7,6 +7,13 @@ import { Select } from "../components/ui/select";
 import { usePageMotion, usePressFeedback } from "../hooks/usePageMotion";
 import { toast } from "../lib/toast";
 import { customerService } from "../services/customerService";
+import { useAuth } from "../context/AuthContext";
+
+// UAT-only test-customer deletion is exposed only for the designated UAT tenant
+// (NEXT_PUBLIC_UAT_TENANT_ID matched against the signed-in user's tenant). This
+// is a convenience gate ONLY — the backend independently enforces the same
+// restriction (UAT_TENANT_SLUG) and 403s every other tenant regardless of the UI.
+const UAT_TENANT_ID = (process.env.NEXT_PUBLIC_UAT_TENANT_ID || "").trim();
 
 // Real customer data is loaded from the DFX backend via customerService.
 // No mock/demo records remain as an active source or fallback.
@@ -65,6 +72,11 @@ export default function Customers() {
   const [kycLoading, setKycLoading] = useState(false);
   const [kycError, setKycError] = useState("");
   const [kycBusy, setKycBusy] = useState(false);
+  // UAT-only test-customer deletion.
+  const { tenantId } = useAuth();
+  const uatDeleteEnabled = !!UAT_TENANT_ID && tenantId === UAT_TENANT_ID;
+  const [deleting, setDeleting] = useState(null); // customer pending permanent delete
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => {
     if (!selected) return;
@@ -191,6 +203,23 @@ export default function Customers() {
       toast(err?.message || "Update failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDeleteTest() {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    try {
+      await customerService.deleteTestCustomer(deleting.id);
+      const label = deleting.code || deleting.name;
+      setDeleting(null);
+      if (selected && selected.id === deleting.id) setSelected(null);
+      await loadCustomers();
+      toast(`Test customer deleted — ${label}. Mobile & email freed for reuse.`);
+    } catch (err) {
+      toast(err?.message || "Delete failed");
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -350,6 +379,11 @@ export default function Customers() {
                       <button onClick={() => openEdit(c)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent-line hover:bg-accent-soft hover:text-accent" aria-label={`Edit ${c.name}`}>
                         <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
                       </button>
+                      {uatDeleteEnabled && (
+                        <button onClick={() => setDeleting(c)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-danger hover:bg-danger/10 hover:text-danger" aria-label={`Delete test customer ${c.name}`} title="Delete Test Customer (UAT)">
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M10 11v6M14 11v6" /></svg>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -456,6 +490,34 @@ export default function Customers() {
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
               <Button size="sm" disabled={saving} onClick={handleSaveEdit}>{saving ? "Saving…" : "Save Changes"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={() => !deleteBusy && setDeleting(null)} aria-label="Close modal" />
+          <div className="relative w-full max-w-[460px] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between border-b border-line px-6 py-4">
+              <h3 className="text-lg font-extrabold">Delete Test Customer?</h3>
+              <button onClick={() => !deleteBusy && setDeleting(null)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-muted">
+                This permanently removes this UAT customer&apos;s test data, including their mobile number and email, so they can be reused for testing.
+              </p>
+              <div className="grid gap-2.5 rounded-xl border border-line bg-canvas/40 p-4 text-sm">
+                <div><div className="text-xs text-muted">Customer</div><div className="font-semibold">{deleting.name}</div></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><div className="text-xs text-muted">Mobile</div><div className="num font-semibold">{orNP(deleting.phone)}</div></div>
+                  <div><div className="text-xs text-muted">Email</div><div className="font-semibold break-all">{orNP(deleting.email)}</div></div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+              <Button variant="outline" size="sm" disabled={deleteBusy} onClick={() => setDeleting(null)}>Cancel</Button>
+              <Button variant="danger" size="sm" disabled={deleteBusy} onClick={handleDeleteTest}>{deleteBusy ? "Deleting…" : "Delete Test Customer"}</Button>
             </div>
           </div>
         </div>
