@@ -26,15 +26,31 @@ export const goldRateService = {
     return res.data?.rate ?? null;
   },
 
+  /** GET /api/v1/gold-rates/history — recent published rates (newest first,
+   *  all purities + silver). Powers the trend chart + history table. */
+  async getHistory(limit = 30) {
+    const res = await apiClient.get(`/gold-rates/history?limit=${limit}`, { auth: true });
+    return res.data?.history ?? [];
+  },
+
   /** POST /api/v1/gold-rates/today — first set of the day. */
   async createTodayRate(rates) {
     const res = await apiClient.post("/gold-rates/today", toBody(rates), { auth: true });
+    notifyRatePublished();
     return res.data?.rate;
   },
 
   /** PUT /api/v1/gold-rates/today — update today's rate. */
   async updateTodayRate(rates) {
     const res = await apiClient.put("/gold-rates/today", toBody(rates), { auth: true });
+    notifyRatePublished();
     return res.data?.rate;
   },
 };
+
+// Broadcast that today's rate changed so the global TopBar bullion strip
+// re-fetches immediately after an admin publishes, without a page reload.
+export const RATE_PUBLISHED_EVENT = "dfx:rate-published";
+function notifyRatePublished() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(RATE_PUBLISHED_EVENT));
+}
