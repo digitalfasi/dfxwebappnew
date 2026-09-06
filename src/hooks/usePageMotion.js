@@ -68,7 +68,17 @@ export function usePageMotion(scopeRef, deps = []) {
       });
     }, scope);
 
-    return () => ctx.revert();
+    // Fail-safe: gsap.from() applies autoAlpha:0 immediately, so if an entrance
+    // run stalls or is interrupted on a slow/backgrounded device, the elements
+    // (e.g. the KPI stat cards) can stay stranded invisible. Guarantee every
+    // motion element is shown after the entrance window. On a normal run they
+    // are already visible by now, so this is a no-op (no flicker).
+    const safety = setTimeout(() => {
+      const els = scope.querySelectorAll("[data-motion]");
+      if (els.length) _gsap.set(els, { autoAlpha: 1, clearProps: "transform" });
+    }, 1600);
+
+    return () => { clearTimeout(safety); ctx.revert(); };
   }, deps);
 }
 
