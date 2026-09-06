@@ -2,7 +2,16 @@ import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { SearchInput } from "./ui/input";
 
-export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLogout, hideTitle, search, onSearch, searchPlaceholder }) {
+function BullionStat({ label, value }) {
+  return (
+    <span className="flex items-center gap-1 whitespace-nowrap">
+      <span className="font-bold text-muted">{label}:</span>
+      <span className="num font-extrabold text-ink">{value != null ? `₹${Number(value).toLocaleString("en-IN")}/g` : "—/g"}</span>
+    </span>
+  );
+}
+
+export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLogout, hideTitle, search, onSearch, searchPlaceholder, bullion }) {
   // Current day, resolved client-side to avoid an SSR/client mismatch. Updates
   // automatically whenever the component mounts on a new day.
   const [today, setToday] = useState("");
@@ -47,6 +56,20 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
               onChange={(e) => onSearch(e.target.value)}
               aria-label="Search"
             />
+          </div>
+        )}
+
+        {/* Live bullion rate — global across every module, fills the header
+            middle when there's no search. Always shown (—/g until today's rate is
+            published). Hidden on small screens to stay clean. */}
+        {!showSearch && (
+          <div className="hidden min-w-0 flex-1 items-center gap-x-4 overflow-hidden text-[11px] lg:flex xl:gap-x-6">
+            <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap font-bold text-ink">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />Live Rate
+            </span>
+            <BullionStat label="24K" value={bullion?.rate_24k} />
+            <BullionStat label="22K" value={bullion?.rate_22k} />
+            <BullionStat label="Silver 999" value={bullion?.silver_999} />
           </div>
         )}
 

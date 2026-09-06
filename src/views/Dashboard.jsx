@@ -7,7 +7,7 @@ import { formatINR } from "../lib/utils";
 import { apiClient } from "../lib/apiClient";
 import { billingService } from "../services/billingService";
 import { enrollmentService } from "../services/enrollmentService";
-import { goldRateService } from "../services/goldRateService";
+import { LineChart } from "../components/ui/LineChart";
 
 const BUSINESS_ACCENT = "var(--color-accent)";
 const SCHEME_ACCENT = "#b8934a"; // refined champagne, not bright orange
@@ -21,10 +21,10 @@ const QUICK_ACTIONS = [
   { title: "New Sale", page: "new-sale", icon: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0" },
   { title: "Add Customer", page: "customers", icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
   { title: "Record Payment", page: "payments", icon: "M1 4h22v16H1zM1 10h22" },
-  { title: "New Enrollment", page: "enrollments", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6" },
+  { title: "New Enrollment", page: "scheme-management", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6" },
   { title: "Add Scheme", page: "schemes", icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
   { title: "Add Catalogue", page: "catalogue", icon: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" },
-  { title: "Generate Report", page: "reports", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8" },
+  { title: "Generate Report", report: true, icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8" },
 ];
 
 const PERIOD_TABS = [
@@ -195,6 +195,15 @@ function CustomRange({ value, onApply, accent }) {
   );
 }
 
+function ReportRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-0.5">
+      <span className="font-medium text-muted">{label}</span>
+      <span className="num font-extrabold text-ink">{value}</span>
+    </div>
+  );
+}
+
 function KpiCard({ title, value, growth, danger, onClick }) {
   const g = formatGrowth(growth);
   const up = g === null ? true : !String(g).startsWith("-");
@@ -208,44 +217,6 @@ function KpiCard({ title, value, growth, danger, onClick }) {
       <div data-motion="count" className={`num mt-1.5 text-xl font-extrabold tracking-tight ${danger ? "text-danger" : "text-ink"}`}>{value}</div>
       <span className="mt-2 self-end inline-flex items-center gap-0.5 text-[10px] font-bold text-accent-strong transition-all group-hover:gap-1">View <span aria-hidden="true">→</span></span>
     </button>
-  );
-}
-
-/** Line/area chart with real X labels and Y ticks/gridlines. Uniform scaling
- *  (no preserveAspectRatio="none") so axis text stays crisp on any width. */
-function TrendChart({ series, unit = "inr", accent, gradId }) {
-  const pts = (series ?? []).filter((p) => p && Number.isFinite(Number(p.y)));
-  const max = pts.length ? Math.max(...pts.map((p) => Number(p.y) || 0)) : 0;
-  if (pts.length < 2 || max <= 0) {
-    return <div className="flex h-44 items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">No data in this period</div>;
-  }
-  const W = 640, H = 232, padL = 46, padR = 12, padT = 12, padB = 26;
-  const x0 = padL, x1 = W - padR, yTop = padT, yBot = H - padB;
-  const plotW = x1 - x0, plotH = yBot - yTop;
-  const niceMax = max;
-  const px = (i) => x0 + (i / (pts.length - 1)) * plotW;
-  const py = (v) => yBot - (Number(v) / niceMax) * plotH;
-  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${px(i).toFixed(1)},${py(p.y).toFixed(1)}`).join(" ");
-  const area = `${line} L${x1},${yBot} L${x0},${yBot} Z`;
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ v: niceMax * f, y: yBot - f * plotH }));
-  const step = Math.max(1, Math.ceil(pts.length / 6));
-  const xTicks = pts.map((p, i) => ({ i, label: p.x })).filter((t) => t.i % step === 0 || t.i === pts.length - 1);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-48 w-full" role="img" aria-label="Trend chart">
-      <defs><linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={accent} stopOpacity="0.18" /><stop offset="100%" stopColor={accent} stopOpacity="0" /></linearGradient></defs>
-      {yTicks.map((t, i) => (
-        <g key={i}>
-          <line x1={x0} y1={t.y} x2={x1} y2={t.y} stroke="var(--color-line-soft)" strokeWidth="1" />
-          <text x={x0 - 6} y={t.y + 3} textAnchor="end" className="fill-muted" fontSize="9" fontWeight="600">{axisFmt(t.v, unit)}</text>
-        </g>
-      ))}
-      <path d={area} fill={`url(#${gradId})`} />
-      <path d={line} fill="none" stroke={accent} strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" data-motion="draw" />
-      {pts.map((p, i) => <circle key={i} cx={px(i)} cy={py(p.y)} r="2.2" fill={accent} />)}
-      {xTicks.map((t) => (
-        <text key={t.i} x={px(t.i)} y={yBot + 16} textAnchor="middle" className="fill-muted" fontSize="9" fontWeight="600">{t.label}</text>
-      ))}
-    </svg>
   );
 }
 
@@ -307,8 +278,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const nav = (page) => onNavigate && onNavigate(page);
 
   const [loading, setLoading] = useState(true);
-  const [goldRate, setGoldRate] = useState(null);
-  const [bullion, setBullion] = useState(null); // today's full rate row (rate_22k, silver_999)
+  const [showReport, setShowReport] = useState(false);    // Generate Report popup
   const [outstanding, setOutstanding] = useState(null);   // business product dues (all-time)
   const [overdue, setOverdue] = useState(null);           // scheme installment dues (all-time)
   const [invoices, setInvoices] = useState([]);
@@ -346,19 +316,15 @@ export default function Dashboard({ onNavigate, search = "" }) {
     const today = isoDate(new Date());
     const allTime = buildQuery({ date_from: "2020-01-01", date_to: today });
     (async () => {
-      const [payAll, billing, enr, cds, todayRate] = await Promise.all([
+      const [payAll, billing, enr, cds] = await Promise.all([
         getSummary(`/reports/payment-summary${allTime}`),
         billingService.listSales({ limit: 5 }).catch(() => null),
         enrollmentService.getEnrollments().catch(() => []),
         apiClient.get("/reports/dashboard-cards", { auth: true }).then((r) => r.data).catch(() => null),
-        goldRateService.getTodayRate().catch(() => null),
       ]);
       if (!alive) return;
-      // Single gold-rate source: derive the 24K headline from today's rate row
-      // instead of a second /billing/dashboard-summary fetch. Same "today 24K"
-      // figure, one fewer request on first paint.
-      setBullion(todayRate);
-      setGoldRate(todayRate?.rate_24k ?? null);
+      // Bullion rate now lives in the global TopBar (fetched once in App), so the
+      // Dashboard no longer fetches or renders it here.
       setOverdue(payAll?.outstanding_dues ?? null);
       setInvoices(billing?.sales ?? []);
       setOutstanding(billing ? billing.totalOutstanding : null);
@@ -454,26 +420,18 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const shownEnroll = q ? enrollList.filter((e) => [e.customer, e.scheme].join(" ").toLowerCase().includes(q)) : enrollList;
 
   const alerts = [];
-  if (cards.overdue_customers) alerts.push({ id: "overdue", tone: "danger", title: `${cards.overdue_customers} customer(s) with overdue payments`, detail: "Review collections", page: "collections" });
+  if (cards.overdue_customers) alerts.push({ id: "overdue", tone: "danger", title: `${cards.overdue_customers} customer(s) with overdue payments`, detail: "Review collections", page: "payments" });
   if (cards.pending_inspection) alerts.push({ id: "inspect", tone: "warning", title: `${cards.pending_inspection} item(s) pending inspection`, detail: "Inspect returned inventory", page: "inventory" });
   if (cards.pending_kyc) alerts.push({ id: "kyc", tone: "warning", title: `${cards.pending_kyc} pending KYC`, detail: "Verify customers", page: "customers" });
 
   return (
     <div ref={scope} className="mx-auto w-full max-w-[1440px]">
-      {/* GOLD RATE STRIP */}
-      <div data-motion="reveal" className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-1.5 rounded-2xl border border-line bg-surface px-4 py-2.5 text-xs">
-        <span className="flex items-center gap-2 font-bold text-ink"><span className="h-2 w-2 animate-pulse rounded-full bg-accent" />Today&apos;s Live Bullion Rate (IBJA):</span>
-        <span className="flex items-center gap-1.5"><span className="font-bold text-muted">24K Gold:</span><span className="font-extrabold text-ink">{goldRate != null ? `₹${goldRate.toLocaleString("en-IN")} / g` : "— / g"}</span></span>
-        <span className="flex items-center gap-1.5"><span className="font-bold text-muted">22K Gold:</span><span className="font-extrabold text-ink">{bullion?.rate_22k != null ? `₹${Number(bullion.rate_22k).toLocaleString("en-IN")} / g` : "— / g"}</span></span>
-        <span className="flex items-center gap-1.5"><span className="font-bold text-muted">Silver 999:</span><span className="font-extrabold text-ink">{bullion?.silver_999 != null ? `₹${Number(bullion.silver_999).toLocaleString("en-IN")} / g` : "— / g"}</span></span>
-      </div>
-
       {/* QUICK ACTIONS */}
       <Card data-motion="reveal" className="mb-4 p-3.5">
         <CardTitle className="mb-3 text-xs font-bold">Quick Actions</CardTitle>
         <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-7">
           {QUICK_ACTIONS.map((qa) => (
-            <button key={qa.page} onClick={() => nav(qa.page)}
+            <button key={qa.title} onClick={() => (qa.report ? setShowReport(true) : nav(qa.page))}
               className="flex flex-col items-center gap-1.5 rounded-xl border border-line p-2.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line hover:shadow-sm">
               <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-accent">
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={qa.icon} /></svg>
@@ -513,7 +471,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             {bizPeriod === "custom" && <CustomRange value={bizCustom} onApply={setBizCustom} accent={BUSINESS_ACCENT} />}
             {bizPeriod === "custom" && (!bizCustom.from || !bizCustom.to)
               ? <div className="flex h-40 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
-              : <TrendChart series={bizSeries} unit={bizUnit} accent="#059669" gradId="bizArea" />}
+              : <LineChart series={bizSeries} accent="#059669" gradId="bizArea" fmtY={(v) => axisFmt(v, bizUnit)} />}
           </Card>
 
           {/* Top Selling Categories */}
@@ -568,10 +526,10 @@ export default function Dashboard({ onNavigate, search = "" }) {
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">
-            <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} growth={paySummary?.total_revenue_growth_percent} onClick={() => nav("collections")} />
-            <KpiCard title={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} onClick={() => nav("enrollments")} />
-            <KpiCard title={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} onClick={() => nav("enrollments")} />
-            <KpiCard title="Overdue Amount" value={fmtCurrency(overdue)} danger onClick={() => nav("collections")} />
+            <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} growth={paySummary?.total_revenue_growth_percent} onClick={() => nav("payments")} />
+            <KpiCard title={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} onClick={() => nav("scheme-management")} />
+            <KpiCard title={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} onClick={() => nav("scheme-management")} />
+            <KpiCard title="Overdue Amount" value={fmtCurrency(overdue)} danger onClick={() => nav("payments")} />
           </div>
 
           {/* Collections Trend */}
@@ -586,7 +544,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             {schemePeriod === "custom" && <CustomRange value={schemeCustom} onApply={setSchemeCustom} accent={SCHEME_ACCENT} />}
             {schemePeriod === "custom" && (!schemeCustom.from || !schemeCustom.to)
               ? <div className="flex h-40 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
-              : <TrendChart series={schemeSeries} unit={schemeUnit} accent={SCHEME_ACCENT} gradId="schemeArea" />}
+              : <LineChart series={schemeSeries} accent={SCHEME_ACCENT} gradId="schemeArea" fmtY={(v) => axisFmt(v, schemeUnit)} />}
           </Card>
 
           {/* Popular Schemes */}
@@ -607,7 +565,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
           <Card className="p-3.5">
             <div className="mb-2 flex items-center justify-between">
               <CardTitle className="text-xs font-bold">Recent Scheme Enrollments</CardTitle>
-              <button onClick={() => nav("enrollments")} className="text-[10px] font-bold text-warn hover:underline">View All</button>
+              <button onClick={() => nav("scheme-management")} className="text-[10px] font-bold text-warn hover:underline">View All</button>
             </div>
             {shownEnroll.length === 0 ? <p className="py-5 text-center text-xs font-medium text-muted">{q ? "No matching enrollments" : "No enrollments yet"}</p> : (
               <div className="overflow-x-auto">
@@ -628,35 +586,59 @@ export default function Dashboard({ onNavigate, search = "" }) {
                 </table>
               </div>
             )}
-            <Button onClick={() => nav("enrollments")} variant="outline" size="sm" className="mt-2.5 w-full text-xs font-bold">+ New Enrollment</Button>
+            <Button onClick={() => nav("scheme-management")} variant="outline" size="sm" className="mt-2.5 w-full text-xs font-bold">+ New Enrollment</Button>
           </Card>
         </section>
       </div>
 
-      {/* REMINDERS + ALERTS */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card data-motion="reveal" className="p-3.5">
-          <div className="mb-2 flex items-center justify-between"><CardTitle className="text-xs font-bold">Today&apos;s Reminders</CardTitle><button onClick={() => nav("notifications")} className="text-[10px] font-bold text-muted hover:underline">View All</button></div>
-          <div className="flex items-center justify-center py-6 text-xs font-medium text-faint">No reminders today</div>
-        </Card>
-        <Card data-motion="reveal" className="p-3.5">
-          <div className="mb-2 flex items-center justify-between"><CardTitle className="text-xs font-bold">Alerts &amp; Notifications</CardTitle><button onClick={() => nav("notifications")} className="text-[10px] font-bold text-muted hover:underline">View All</button></div>
-          {alerts.length === 0 ? <div className="flex items-center justify-center py-6 text-xs font-medium text-faint">No active alerts</div> : (
-            <ul className="space-y-2">
-              {alerts.map((a) => (
-                <li key={a.id}>
-                  <button onClick={() => nav(a.page)} className="flex w-full items-start gap-3 rounded-xl p-2.5 text-left transition-colors hover:bg-canvas/60">
-                    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${a.tone === "danger" ? "bg-danger-soft text-danger" : "bg-warn-soft text-warn"}`}>
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
-                    </span>
-                    <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-ink">{a.title}</span><span className="block text-[11px] font-medium leading-snug text-muted">{a.detail}</span></span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
+      {/* ACTION CENTER — real operational alerts (overdue payments, pending KYC,
+          items to inspect). Each row deep-links to the module that resolves it. */}
+      <Card data-motion="reveal" className="p-3.5">
+        <CardTitle className="mb-2 text-xs font-bold">Action Center</CardTitle>
+        {alerts.length === 0 ? (
+          <div className="flex items-center justify-center py-6 text-xs font-medium text-faint">All clear — no pending actions</div>
+        ) : (
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {alerts.map((a) => (
+              <li key={a.id}>
+                <button onClick={() => nav(a.page)} className="flex w-full items-start gap-3 rounded-xl border border-line p-2.5 text-left transition-colors hover:bg-canvas/60">
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${a.tone === "danger" ? "bg-danger-soft text-danger" : "bg-warn-soft text-warn"}`}>
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+                  </span>
+                  <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-ink">{a.title}</span><span className="block text-[11px] font-medium leading-snug text-muted">{a.detail}</span></span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {/* GENERATE REPORT — a snapshot of the dashboard's own live figures for the
+          currently-selected periods. No navigation; Print/Save PDF via the browser. */}
+      {showReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={() => setShowReport(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-extrabold text-ink">Dashboard Report</h3>
+              <button onClick={() => setShowReport(false)} className="grid h-7 w-7 place-items-center rounded-full text-muted hover:bg-canvas hover:text-ink" aria-label="Close">✕</button>
+            </div>
+            <div className="text-xs">
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-faint">Store Business</div>
+              <ReportRow label={`${bizPfx} Sales`} value={fmtCurrency(bizSummary?.total_revenue)} />
+              <ReportRow label={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} />
+              <ReportRow label={`${bizPfx} Profit`} value={fmtCurrency(profit)} />
+              <ReportRow label="Outstanding Amount" value={fmtCurrency(outstanding)} />
+              <div className="my-2.5 border-t border-line" />
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-faint">Schemes</div>
+              <ReportRow label={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} />
+              <ReportRow label={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} />
+              <ReportRow label={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} />
+              <ReportRow label="Overdue Amount" value={fmtCurrency(overdue)} />
+            </div>
+            <button onClick={() => window.print()} className="mt-4 w-full rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-accent-strong">Print / Save PDF</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

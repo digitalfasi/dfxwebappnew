@@ -24,10 +24,11 @@ import SalesHistory from "./views/SalesHistory";
 import ComingSoon from "./views/ComingSoon";
 import { subscribe } from "./lib/toast";
 import { INITIAL_PROMOTIONS } from "./lib/promotionStore";
+import { goldRateService } from "./services/goldRateService";
 
 const PAGES = {
   dashboard: { title: "Dashboard", component: Dashboard },
-  "gold-rate": { title: "Gold Rate", component: GoldRate, action: "Publish update" },
+  "gold-rate": { title: "Gold Rate", component: GoldRate },
   customers: { title: "Customers", component: Customers },
   schemes: { title: "Schemes", component: Schemes },
   "scheme-management": { title: "Enrollment Management", component: SchemeManagement },
@@ -81,6 +82,18 @@ export default function App() {
   useEffect(() => { setSearch(""); }, [page]);
   const [promotions, setPromotions] = useState(INITIAL_PROMOTIONS);
   const [editingPromo, setEditingPromo] = useState(null);
+  // Today's live bullion rate — fetched once here so the TopBar can show it on
+  // every module, not just the Dashboard.
+  const [bullion, setBullion] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => goldRateService.getTodayRate().then((r) => { if (alive) setBullion(r); }).catch(() => {});
+    load();
+    // Re-fetch the moment an admin publishes a new rate (Gold Rate screen), so
+    // the TopBar strip updates without a reload.
+    window.addEventListener("dfx:rate-published", load);
+    return () => { alive = false; window.removeEventListener("dfx:rate-published", load); };
+  }, []);
   const meta = PAGES[page] ?? NAV_SECTIONS.flatMap((s) => s.items).find((i) => i.id === page) ?? { title: "Dashboard" };
   const Page = meta.component;
 
@@ -93,6 +106,7 @@ export default function App() {
           onMenu={() => setNavOpen(true)}
           onNavigate={setPage}
           onLogout={logout}
+          bullion={bullion}
           hideTitle
           action={
             meta.action && (
