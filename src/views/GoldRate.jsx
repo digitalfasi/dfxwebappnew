@@ -187,7 +187,7 @@ export default function GoldRate() {
           </p>
         </div>
         <Badge tone={liveErr ? "danger" : "info"} dot>
-          {liveErr ? "Live source offline" : live?.fetchedAt ? "Live · KJPL + MJDTA" : "Connecting to live…"}
+          {liveErr ? "Live source offline" : live?.fetchedAt ? "Live Sync" : "Connecting to live…"}
         </Badge>
       </div>
 
@@ -283,7 +283,7 @@ export default function GoldRate() {
                 <span className="text-[11px] text-red-500">Live: {liveErr}</span>
               ) : live?.fetchedAt ? (
                 <span className="text-[11px] text-muted">
-                  Live · KJPL + MJDTA · auto 60s · {new Date(live.fetchedAt).toLocaleTimeString()}
+                  Live Sync · auto 60s · {new Date(live.fetchedAt).toLocaleTimeString()}
                 </span>
               ) : null}
             </div>
