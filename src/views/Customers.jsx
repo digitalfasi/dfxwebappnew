@@ -70,7 +70,7 @@ export default function Customers() {
   const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", dob: "", scheme: "No scheme" });
   const [errors, setErrors] = useState({});
   const [editing, setEditing] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "" });
+  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", password: "" });
   const [editErrors, setEditErrors] = useState({});
   // KYC review (integrated — replaces the standalone KYC Review module).
   const [kycReview, setKycReview] = useState(null); // customer under review
@@ -224,7 +224,7 @@ export default function Customers() {
 
   function openEdit(c) {
     setEditing(c);
-    setEditForm({ name: c.name, phone: c.phone === "—" ? "" : c.phone, email: c.email === "—" ? "" : c.email });
+    setEditForm({ name: c.name, phone: c.phone === "—" ? "" : c.phone, email: c.email === "—" ? "" : c.email, password: "" });
     setEditErrors({});
   }
   async function handleSaveEdit() {
@@ -559,6 +559,11 @@ export default function Customers() {
                 <span className="text-xs font-bold">Email</span>
                 <input value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${editErrors.email ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
                 {editErrors.email && <span className="text-xs font-semibold text-danger">{editErrors.email}</span>}
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">New Password <span className="font-normal text-muted">— Leave blank to keep current password</span></span>
+                <input type="password" value={editForm.password} onChange={e => setEditForm({ ...editForm, password: e.target.value })} placeholder="••••••••" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${editErrors.password ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
+                {editErrors.password && <span className="text-xs font-semibold text-danger">{editErrors.password}</span>}
               </label>
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">

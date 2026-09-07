@@ -34,11 +34,11 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    label: "Schemes",
+    label: "Plans",
     collapsible: true,
     headerIcon: <Icon d={<><circle cx="8" cy="8" r="5" /><circle cx="15" cy="12" r="3" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></>} />,
     items: [
-      { id: "schemes", name: "Plans", icon: <Icon d={<><circle cx="8" cy="8" r="5" /><circle cx="15" cy="12" r="3" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></>} /> },
+      { id: "schemes", name: "Schemes", icon: <Icon d={<><circle cx="8" cy="8" r="5" /><circle cx="15" cy="12" r="3" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></>} /> },
       { id: "scheme-management", name: "Enrollment Management", icon: <Icon d={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="3" /><path d="M18 8a2.5 2.5 0 0 1 2.5 2.5V12" /><circle cx="18" cy="5" r="1.5" /></>} /> },
     ],
   },
@@ -94,7 +94,7 @@ export const NAV_SECTIONS = [
 export default function Sidebar({ page, onNavigate, open, onClose }) {
   const { user, tenantName } = useAuth();
   const storeName = tenantName || "DFX Solution";
-  const [openMap, setOpenMap] = useState({ Schemes: true, Procurement: true, Billing: true });
+  const [openMap, setOpenMap] = useState({ Plans: true, Procurement: true, Billing: true });
   // Sidebar search removed; nav renders unfiltered (query stays empty).
   const query = "";
   return (

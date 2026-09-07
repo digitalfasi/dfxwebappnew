@@ -22,7 +22,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
   const showSearch = typeof onSearch === "function";
 
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-[#efe7d3] shadow-sm backdrop-blur-xl">
+    <header className="sticky top-0 z-20 border-b border-line bg-line-soft/70 shadow-sm backdrop-blur-xl">
       <div className="flex items-center gap-3 px-4 py-3 sm:gap-4 sm:px-8">
         <div className="flex shrink-0 items-center gap-3">
           <button
@@ -63,13 +63,12 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
             middle when there's no search. Always shown (—/g until today's rate is
             published). Hidden on small screens to stay clean. */}
         {!showSearch && (
-          <div className="hidden h-9 min-w-0 shrink-0 items-center gap-x-4 rounded-full border border-line bg-surface px-4 text-[11px] shadow-sm lg:flex xl:gap-x-5">
+          <div className="hidden min-w-0 flex-1 items-center gap-x-4 overflow-hidden text-[11px] lg:flex xl:gap-x-6">
             <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap font-bold text-ink">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />Live Rate
             </span>
             <BullionStat label="24K" value={bullion?.rate_24k} />
             <BullionStat label="22K" value={bullion?.rate_22k} />
-            <BullionStat label="18K" value={bullion?.rate_18k} />
             <BullionStat label="Silver 999" value={bullion?.silver_999} />
           </div>
         )}
