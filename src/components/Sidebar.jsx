@@ -28,7 +28,7 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    label: "People",
+    label: "",
     items: [
       { id: "customers", name: "Customers", icon: <Icon d={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /></>} /> },
     ],
@@ -67,7 +67,7 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    label: "Growth",
+    label: "",
     items: [
       { id: "catalogue", name: "Catalogue Studio", icon: <Icon d={<><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" /><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /></>} /> },
       { id: "marketing", name: "Marketing", icon: <Icon d={<><path d="m3 11 18-5v12L3 14v-3z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></>} /> },
@@ -75,14 +75,14 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    label: "Operations",
+    label: "",
     items: [
       { id: "branches", name: "Branches", icon: <Icon d={<><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M9 22V12h6v10" /></>} /> },
       { id: "staff-users", name: "Staff Users", icon: <Icon d={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 11a3 3 0 0 0-3 3 3 3 0 0 0-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3z" /></>} /> },
     ],
   },
   {
-    label: "System",
+    label: "",
     items: [
       { id: "support", name: "Support", icon: <Icon d={<><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" /><path d="M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10A15 15 0 0 1 12 2z" /></>} /> },
       { id: "notifications", name: "Notifications", icon: <Icon d={<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>} /> },

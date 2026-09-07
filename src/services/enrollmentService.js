@@ -43,6 +43,9 @@ function mapRow(raw) {
     // Redemptions are not on the list payload; enriched from balance on open.
     alreadyRedeemed: 0,
     nextDue: raw.next_due_date,
+    // Backend-derived overdue (ACTIVE + past next_due_date only). 0 otherwise.
+    overdueDays: raw.overdue_days ?? 0,
+    overdueAmount: raw.overdue_amount ?? 0,
     remarks: raw.remarks ?? "",
   };
 }
@@ -83,6 +86,18 @@ export const enrollmentService = {
   /** PATCH /api/v1/enrollments/{id}/remarks */
   async updateRemarks(id, remarks) {
     const res = await apiClient.patch(`/enrollments/${id}/remarks`, { remarks }, { auth: true });
+    return res.data?.enrollment;
+  },
+
+  /**
+   * POST /api/v1/admin/customers/{customerId}/enrollments — admin enrolls a
+   * chosen customer of their tenant into an active scheme. Backend mirrors the
+   * customer self-enroll rules (active scheme, no duplicate active enrollment in
+   * the same scheme; different schemes allowed). scheme_tier_id is optional.
+   */
+  async adminEnrollCustomer(customerId, { schemeId, schemeTierId } = {}) {
+    const body = { scheme_id: schemeId, ...(schemeTierId ? { scheme_tier_id: schemeTierId } : {}) };
+    const res = await apiClient.post(`/admin/customers/${customerId}/enrollments`, body, { auth: true });
     return res.data?.enrollment;
   },
 

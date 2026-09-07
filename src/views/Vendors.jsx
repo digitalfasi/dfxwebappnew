@@ -14,8 +14,9 @@ import { billingService } from "../services/billingService";
 // but the backend recomputes and returns the authoritative values on save — the
 // preview is never persisted or trusted.
 
-const PERIODS = ["Today", "This Week", "This Month", "Last Month"];
-const UI_PERIOD_TO_BACKEND = { Today: "today", "This Week": "this_week", "This Month": "this_month", "Last Month": "last_month" };
+const PERIODS = ["Today", "This Week", "This Month", "Last Month", "This Year", "Custom"];
+// "Custom" carries no backend period keyword — it sends date_from/date_to instead.
+const UI_PERIOD_TO_BACKEND = { Today: "today", "This Week": "this_week", "This Month": "this_month", "Last Month": "last_month", "This Year": "this_year" };
 // Payment MODE is the vendor-facing choice for an actual payment: Offline vs
 // Online. It is separate from Payment TYPE (CASH/CREDIT/PARTIAL). The backend
 // ledger stores a concrete payment_method enum, so each mode maps onto it and
@@ -42,6 +43,33 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 /** Sum backend-authoritative per-purchase figures into per-vendor display totals.
  *  Each figure summed is itself backend-computed; this is a display rollup, not a
  *  re-derivation of financial truth. */
+// Local date window for a selected period, mirroring the backend keywords the
+// KPI summary uses (Monday-start week, calendar month/last-month/year). Returns
+// null = no filter (all-time). Custom needs both dates or it stays null.
+function periodWindow(period, customFrom, customTo) {
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+  const at = (yy, mm, dd) => { const x = new Date(yy, mm, dd); x.setHours(0, 0, 0, 0); return x; };
+  switch (period) {
+    case "Today": return { from: at(y, m, d), to: now };
+    case "This Week": { const dow = (now.getDay() + 6) % 7; return { from: at(y, m, d - dow), to: now }; }
+    case "This Month": return { from: at(y, m, 1), to: now };
+    case "Last Month": { const lastPrev = at(y, m, 0); return { from: at(lastPrev.getFullYear(), lastPrev.getMonth(), 1), to: lastPrev }; }
+    case "This Year": return { from: at(y, 0, 1), to: now };
+    case "Custom": return (customFrom && customTo) ? { from: at(...customFrom.split("-").map((n, i) => i === 1 ? Number(n) - 1 : Number(n))), to: at(...customTo.split("-").map((n, i) => i === 1 ? Number(n) - 1 : Number(n))) } : null;
+    default: return null;
+  }
+}
+function inWindow(dateStr, win) {
+  if (!win) return true;
+  if (!dateStr) return false;
+  const s = String(dateStr).slice(0, 10).split("-");
+  if (s.length !== 3) return false;
+  const dt = new Date(Number(s[0]), Number(s[1]) - 1, Number(s[2]));
+  dt.setHours(0, 0, 0, 0);
+  return dt >= win.from && dt <= win.to;
+}
+
 function rollupByVendor(purchases) {
   const m = new Map();
   for (const p of purchases) {
@@ -67,6 +95,8 @@ export default function Vendors() {
   const [summaryLoading, setSummaryLoading] = useState(false);
 
   const [period, setPeriod] = useState("This Month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
 
@@ -96,23 +126,34 @@ export default function Vendors() {
   }, []);
 
   const loadSummary = useCallback(async () => {
+    // Custom needs both dates before it can query; until then, leave the last
+    // summary in place rather than firing an incomplete request.
+    if (period === "Custom" && (!customFrom || !customTo)) return;
     setSummaryLoading(true);
     try {
-      const s = await billingService.getVendorSummary({ period: UI_PERIOD_TO_BACKEND[period] });
+      const s = period === "Custom"
+        ? await billingService.getVendorSummary({ dateFrom: customFrom, dateTo: customTo })
+        : await billingService.getVendorSummary({ period: UI_PERIOD_TO_BACKEND[period] });
       setSummary(s);
     } catch {
       setSummary(null);
     } finally {
       setSummaryLoading(false);
     }
-  }, [period]);
+  }, [period, customFrom, customTo]);
 
   useEffect(() => { loadCore(); }, [loadCore]);
   useEffect(() => { loadSummary(); }, [loadSummary]);
 
   const refreshAll = useCallback(async () => { await Promise.all([loadCore(), loadSummary()]); }, [loadCore, loadSummary]);
 
-  const rollup = useMemo(() => rollupByVendor(purchases), [purchases]);
+  // Vendor-list totals honour the SAME period the KPI cards use, so the table
+  // and the cards move together. Filter each vendor's purchases to the period
+  // window (by purchase date), then roll up.
+  const rollup = useMemo(() => {
+    const win = periodWindow(period, customFrom, customTo);
+    return rollupByVendor(purchases.filter((p) => inWindow(p.purchaseDate, win)));
+  }, [purchases, period, customFrom, customTo]);
 
   const filteredVendors = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -145,7 +186,16 @@ export default function Vendors() {
       {/* KPI cards — backend-authoritative vendor summary */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2" data-motion="toolbar">
         <div className="text-xs font-bold text-muted">Purchase &amp; payment summary</div>
-        <Select value={period} onValueChange={setPeriod} options={PERIODS} className="w-[150px]" />
+        <div className="flex flex-wrap items-center gap-2">
+          {period === "Custom" && (
+            <>
+              <Input type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} className="w-[150px]" aria-label="From date" />
+              <span className="text-xs text-muted">to</span>
+              <Input type="date" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)} className="w-[150px]" aria-label="To date" />
+            </>
+          )}
+          <Select value={period} onValueChange={setPeriod} options={PERIODS} className="w-[150px]" />
+        </div>
       </div>
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5" data-motion="stat">
         {kpis.map((k) => (
@@ -170,8 +220,8 @@ export default function Vendors() {
         <CardContent className="overflow-x-auto px-0 pb-0">
           <table className="w-full min-w-[900px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Vendor</th><th className="py-3">Contact</th><th className="py-3">Status</th><th className="py-3">Charge %</th>
+              <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
+                <th className="px-6 py-3">Vendor</th><th className="py-3">Contact</th><th className="py-3">Status</th><th className="py-3">Tunch</th>
                 <th className="py-3 text-right">Total Purchases</th><th className="py-3 text-right">Paid</th><th className="py-3 text-right">Outstanding</th><th className="py-3 text-right pr-6">Actions</th>
               </tr>
             </thead>
@@ -188,14 +238,14 @@ export default function Vendors() {
                       <div className="text-xs text-muted">{v.phone || "Not provided"}</div>
                     </td>
                     <td className="py-3.5"><Badge tone={v.isActive ? "success" : "neutral"} dot>{v.isActive ? "Active" : "Inactive"}</Badge></td>
-                    <td className="py-3.5 font-mono text-xs">{Number(v.vendorChargePercent).toFixed(2)}%</td>
-                    <td className="py-3.5 text-right num font-semibold">{money(r.purchases)}</td>
-                    <td className="py-3.5 text-right num text-emerald-700">{money(r.paid)}</td>
-                    <td className="py-3.5 text-right num font-bold text-accent">{money(r.outstanding)}</td>
+                    <td className="py-3.5 font-mono text-xs whitespace-nowrap">{Number(v.vendorChargePercent).toFixed(2)}%</td>
+                    <td className="py-3.5 text-right num font-semibold whitespace-nowrap">{money(r.purchases)}</td>
+                    <td className="py-3.5 text-right num text-emerald-700 whitespace-nowrap">{money(r.paid)}</td>
+                    <td className="py-3.5 text-right num font-bold text-accent whitespace-nowrap">{money(r.outstanding)}</td>
                     <td className="py-3.5 pr-6">
                       <div className="flex justify-end">
                         {r.outstanding > 0 ? (
-                          <Button size="sm" variant="outline" onClick={() => { setDetailTab("outstanding"); setDetailVendor(v); }}>Clear Outstanding</Button>
+                          <Button size="sm" variant="outline" onClick={() => { setDetailTab("purchases"); setDetailVendor(v); }}>Clear Outstanding</Button>
                         ) : (
                           <Button size="sm" variant="outline" disabled title="Nothing outstanding">Clear Outstanding</Button>
                         )}
@@ -269,8 +319,12 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
   useEffect(() => { load(); }, [load, reloadTick]);
 
   // Lazy-load the combined payment ledger only when the Payments tab opens.
+  // NOTE: ledgerLoading must NOT be a dependency — setting it re-ran the effect,
+  // whose cleanup flipped `alive` to false, so the in-flight resolve then skipped
+  // both setLedger and setLedgerLoading(false) → stuck on "Loading ledger…".
   useEffect(() => {
-    if (tab !== "payments" || ledger || ledgerLoading || !rows.length) return;
+    if (tab !== "payments" || ledger || loading) return;
+    if (!rows.length) { setLedger([]); return; }
     let alive = true;
     setLedgerLoading(true);
     Promise.all(rows.map((r) => billingService.getVendorPurchasePayments(r.id).catch(() => ({ payments: [] }))))
@@ -282,14 +336,15 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
       })
       .finally(() => { if (alive) setLedgerLoading(false); });
     return () => { alive = false; };
-  }, [tab, rows, ledger, ledgerLoading]);
+  }, [tab, rows, ledger, loading]);
 
   const totals = useMemo(() => rows.reduce((a, p) => ({
     purchases: a.purchases + p.purchaseAmount, paid: a.paid + p.amountPaid, outstanding: a.outstanding + p.amountOutstanding,
   }), { purchases: 0, paid: 0, outstanding: 0 }), [rows]);
-  const outstandingRows = useMemo(() => rows.filter((p) => p.amountOutstanding > 0), [rows]);
-
-  const TABS = [["overview", "Overview"], ["purchases", `Purchases (${rows.length})`], ["payments", "Payments"], ["outstanding", `Outstanding (${outstandingRows.length})`]];
+  // The Purchases tab already carries the Outstanding column + Record Payment,
+  // so a separate Outstanding tab was a duplicate view — removed. Purchases is
+  // the single, complete list.
+  const TABS = [["overview", "Overview"], ["purchases", `Purchases (${rows.length})`], ["payments", "Payments"]];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -301,7 +356,7 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
               <h3 className="text-base font-extrabold">{vendor.name}</h3>
               <Badge tone={vendor.isActive ? "success" : "neutral"} dot>{vendor.isActive ? "Active" : "Inactive"}</Badge>
             </div>
-            <p className="mt-0.5 text-xs text-muted">Default vendor charge {Number(vendor.vendorChargePercent).toFixed(2)}% · applied to base gold amount</p>
+            <p className="mt-0.5 text-xs text-muted">Default tunch {Number(vendor.vendorChargePercent).toFixed(2)}% · applied to base gold amount</p>
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={onEdit}>Edit</Button>
@@ -342,10 +397,6 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
             <PurchaseTable rows={rows} loading={loading} onRecordPayment={onRecordPayment} emptyHint="No purchases recorded for this vendor yet." />
           )}
 
-          {tab === "outstanding" && (
-            <PurchaseTable rows={outstandingRows} loading={loading} onRecordPayment={onRecordPayment} emptyHint="No outstanding purchases — all settled." />
-          )}
-
           {tab === "payments" && (
             <div className="overflow-x-auto rounded-xl border border-line">
               <table className="w-full min-w-[620px] border-collapse text-sm">
@@ -372,30 +423,34 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
   );
 }
 
-function PurchaseTable({ rows, loading, onRecordPayment, emptyHint }) {
+// hideOutstanding drops the Outstanding column in the Outstanding tab (the whole
+// tab is outstanding — the column is redundant there) and frees that width for
+// the remaining columns, so Outstanding/Status no longer collide.
+function PurchaseTable({ rows, loading, onRecordPayment, emptyHint, hideOutstanding }) {
+  const cols = hideOutstanding ? 7 : 8;
   return (
     <div className="overflow-x-auto rounded-xl border border-line">
-      <table className="w-full min-w-[780px] border-collapse text-sm">
+      <table className={`w-full ${hideOutstanding ? "min-w-[700px]" : "min-w-[820px]"} border-collapse text-sm`}>
         <thead>
-          <tr className="bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-            <th className="px-4 py-2.5">Date</th><th className="py-2.5">Invoice</th><th className="py-2.5 text-right">Weight</th><th className="py-2.5 text-right">Purchase</th><th className="py-2.5 text-right">Paid</th><th className="py-2.5 text-right">Outstanding</th><th className="py-2.5">Status</th><th className="py-2.5 pr-4"></th>
+          <tr className="whitespace-nowrap bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
+            <th className="px-4 py-2.5">Date</th><th className="py-2.5">Invoice</th><th className="py-2.5 text-right">Weight</th><th className="py-2.5 text-right">Purchase</th><th className="py-2.5 text-right">Paid</th>{!hideOutstanding && <th className="py-2.5 text-right">Outstanding</th>}<th className="py-2.5 pl-6">Status</th><th className="py-2.5 pr-4"></th>
           </tr>
         </thead>
         <tbody>
-          {loading && <tr><td colSpan={8} className="px-4 py-10 text-center text-muted font-bold">Loading…</td></tr>}
+          {loading && <tr><td colSpan={cols} className="px-4 py-10 text-center text-muted font-bold">Loading…</td></tr>}
           {!loading && rows.map((p) => (
             <tr key={p.id} className="border-t border-line-soft align-middle">
-              <td className="px-4 py-2.5">{fmtDate(p.purchaseDate)}</td>
+              <td className="px-4 py-2.5 whitespace-nowrap">{fmtDate(p.purchaseDate)}</td>
               <td className="py-2.5 text-xs">{p.invoiceRef || "Not provided"}</td>
-              <td className="py-2.5 text-right num">{grams(p.weightGrams)}</td>
-              <td className="py-2.5 text-right num font-semibold">{money(p.purchaseAmount)}</td>
-              <td className="py-2.5 text-right num text-emerald-700">{money(p.amountPaid)}</td>
-              <td className="py-2.5 text-right num font-bold text-accent">{money(p.amountOutstanding)}</td>
-              <td className="py-2.5"><Badge tone={STATUS_TONE[p.paymentStatus] || "neutral"}>{STATUS_LABEL[p.paymentStatus] || p.paymentStatus}</Badge></td>
+              <td className="py-2.5 text-right num whitespace-nowrap">{grams(p.weightGrams)}</td>
+              <td className="py-2.5 text-right num font-semibold whitespace-nowrap">{money(p.purchaseAmount)}</td>
+              <td className="py-2.5 text-right num text-emerald-700 whitespace-nowrap">{money(p.amountPaid)}</td>
+              {!hideOutstanding && <td className="py-2.5 text-right num font-bold text-accent whitespace-nowrap">{money(p.amountOutstanding)}</td>}
+              <td className="py-2.5 pl-6"><Badge tone={STATUS_TONE[p.paymentStatus] || "neutral"}>{STATUS_LABEL[p.paymentStatus] || p.paymentStatus}</Badge></td>
               <td className="py-2.5 pr-4 text-right">{p.amountOutstanding > 0 && <Button size="sm" variant="outline" onClick={() => onRecordPayment(p)}>Record Payment</Button>}</td>
             </tr>
           ))}
-          {!loading && rows.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-muted">{emptyHint}</td></tr>}
+          {!loading && rows.length === 0 && <tr><td colSpan={cols} className="px-4 py-10 text-center text-muted">{emptyHint}</td></tr>}
         </tbody>
       </table>
     </div>
@@ -430,6 +485,7 @@ function VendorForm({ vendor, onClose, onSaved }) {
 
   const submit = async () => {
     if (f.name.trim().length < 2) { toast("Vendor name is required (min 2 characters)"); return; }
+    if (!f.phone.trim()) { toast("Phone number is required"); return; }
     setSaving(true);
     try {
       const payload = { ...f, name: f.name.trim() };
@@ -449,13 +505,13 @@ function VendorForm({ vendor, onClose, onSaved }) {
           <label className="grid gap-1.5"><span className="text-xs font-bold">Vendor Name *</span><Input value={f.name} onChange={set("name")} placeholder="e.g. Malabar Gold" /></label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5"><span className="text-xs font-bold">Contact Person</span><Input value={f.contactPerson} onChange={set("contactPerson")} /></label>
-            <label className="grid gap-1.5"><span className="text-xs font-bold">Phone</span><Input value={f.phone} onChange={set("phone")} /></label>
+            <label className="grid gap-1.5"><span className="text-xs font-bold">Phone *</span><Input value={f.phone} onChange={set("phone")} /></label>
             <label className="grid gap-1.5"><span className="text-xs font-bold">Email</span><Input type="email" value={f.email} onChange={set("email")} /></label>
             <label className="grid gap-1.5"><span className="text-xs font-bold">GST Number</span><Input value={f.gstNumber} onChange={set("gstNumber")} /></label>
           </div>
           <label className="grid gap-1.5"><span className="text-xs font-bold">Address</span><Input value={f.address} onChange={set("address")} /></label>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5"><span className="text-xs font-bold">Default Vendor Charge %</span><Input type="number" step="0.01" value={f.vendorChargePercent} onChange={set("vendorChargePercent")} /><span className="text-[11px] text-muted">Applied to base gold amount, not the rate/g. Default 4%.</span></label>
+            <label className="grid gap-1.5"><span className="text-xs font-bold">Default Tunch %</span><Input type="number" step="0.01" value={f.vendorChargePercent} onChange={set("vendorChargePercent")} /><span className="text-[11px] text-muted">Applied to base gold amount, not the rate/g. Default 4%.</span></label>
             {editing && (
               <label className="grid gap-1.5"><span className="text-xs font-bold">Status</span><Select value={f.isActive ? "Active" : "Inactive"} onValueChange={(v) => setF({ ...f, isActive: v === "Active" })} options={["Active", "Inactive"]} /></label>
             )}
@@ -496,9 +552,9 @@ function RecordPayment({ purchase, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
-      <div className="relative w-full max-w-[520px] rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
+      <div className="relative flex max-h-[92vh] w-full max-w-[520px] flex-col rounded-2xl border border-line bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">Record Vendor Payment</h3><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
-        <div className="px-6 py-5 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
             <div className="flex items-center justify-between text-xs"><span className="font-bold text-muted">{purchase.vendorName}{purchase.invoiceRef ? ` · ${purchase.invoiceRef}` : ""}</span><Badge tone={STATUS_TONE[purchase.paymentStatus] || "neutral"}>{STATUS_LABEL[purchase.paymentStatus] || purchase.paymentStatus}</Badge></div>
             <div className="mt-2 grid grid-cols-3 gap-2">

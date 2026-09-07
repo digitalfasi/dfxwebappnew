@@ -37,6 +37,10 @@ function mapRow(raw) {
     method: raw.payment_method,
     date: fmtDate(raw.payment_date),
     time: fmtTime(raw.payment_date),
+    // Enrollment overdue tracking (backend-authoritative when present on the
+    // payload; 0 when the payments endpoint doesn't carry it).
+    overdueDays: raw.overdue_days ?? 0,
+    overdueAmount: raw.overdue_amount ?? 0,
   };
 }
 

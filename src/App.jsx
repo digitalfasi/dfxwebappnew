@@ -74,9 +74,26 @@ function Toast({ onRef }) {
   );
 }
 
+// Current module id from the URL hash, so a browser refresh restores the same
+// page instead of falling back to the Dashboard. "#/payments" -> "payments".
+function pageFromHash() {
+  const h = window.location.hash.replace(/^#\/?/, "").trim();
+  return h || "dashboard";
+}
+
 export default function App() {
   const { logout } = useAuth();
-  const [page, setPage] = useState("dashboard");
+  const [page, setPageState] = useState(pageFromHash);
+  // Navigate = update state AND the URL hash, so refresh/back/forward keep the page.
+  const setPage = (p) => setPageState((prev) => (typeof p === "function" ? p(prev) : p));
+  useEffect(() => {
+    if (pageFromHash() !== page) window.location.hash = `/${page}`;
+  }, [page]);
+  useEffect(() => {
+    const onHash = () => setPageState(pageFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
   useEffect(() => { setSearch(""); }, [page]);

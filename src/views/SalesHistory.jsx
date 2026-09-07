@@ -9,18 +9,20 @@ import { toast } from "../lib/toast";
 import { formatINR } from "../lib/utils";
 import { billingService } from "../services/billingService";
 
-const TABS = [
-  { key: "all", label: "All bills" },
-  { key: "paid", label: "Paid" },
-  { key: "partial", label: "Partial" },
-  { key: "pending", label: "Pending" },
-  { key: "returned", label: "Returned" },
-  { key: "canceled", label: "Canceled" },
-];
-
 const STATUS_TONE = { Paid: "success", Partial: "warning", Pending: "danger", Returned: "info", Canceled: "neutral" };
-
+const PAY_STATUS_TONE = { PAID: "success", PARTIAL: "warning", PENDING: "danger" };
 const PAGE_LIMIT = 100; // backend caps /billing/sales at limit<=100
+
+// Named periods the backend resolves server-side, plus a Custom range.
+const PERIODS = [
+  { value: "all", label: "All time" },
+  { value: "today", label: "Today" },
+  { value: "this_week", label: "This Week" },
+  { value: "this_month", label: "This Month" },
+  { value: "last_month", label: "Last Month" },
+  { value: "this_year", label: "This Year" },
+  { value: "custom", label: "Custom" },
+];
 
 // Backend payment_method enum -> label for the Record Payment form.
 const PAY_METHODS = [
@@ -31,13 +33,16 @@ const PAY_METHODS = [
   { value: "OTHER", label: "Other" },
 ];
 
-const PAY_STATUS_TONE = { PAID: "success", PARTIAL: "warning", PENDING: "danger" };
+const RETURN_TYPES = [
+  { value: "RETURN", label: "Return" },
+  { value: "CANCELLATION", label: "Cancellation" },
+];
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function formatPaymentDate(iso) {
+function formatDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
@@ -49,35 +54,32 @@ function formatWeight(grams) {
   return `${Number.isFinite(n) ? n.toFixed(3) : "0.000"} g`;
 }
 
-function formatSaleDate(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+// Charge label like the PDF: "(11%)" / "(Rs.600.00/g)" / "(fixed)".
+function chargeLabel(type, value) {
+  const t = String(type || "").toUpperCase();
+  if (t === "PERCENTAGE") return `(${value}%)`;
+  if (t === "PER_GRAM") return `(₹${Number(value).toFixed(2)}/g)`;
+  return "(fixed)";
 }
 
 export default function SalesHistory() {
   const scope = useRef(null);
-  const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
+  const [period, setPeriod] = useState("this_month");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [fCat, setFCat] = useState("All Categories");
   const [fSub, setFSub] = useState("All Sub-categories");
   const [fPurity, setFPurity] = useState("All Purity");
+
   const [bills, setBills] = useState([]);
   const [total, setTotal] = useState(0);
+  const [totalOutstanding, setTotalOutstanding] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
   const [printing, setPrinting] = useState(null);
-
-  // Invoice detail / Record Payment panel state.
-  const [selected, setSelected] = useState(null); // the sale row
-  const [history, setHistory] = useState(null); // backend payment ledger
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState("");
-  const [form, setForm] = useState({ amount: "", method: "CASH", date: todayIso(), reference: "", remarks: "" });
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState("");
 
   usePageMotion(scope, [loading]);
   usePressFeedback(scope);
@@ -86,9 +88,17 @@ export default function SalesHistory() {
     setLoading(true);
     setLoadError("");
     try {
-      const { sales, total: count } = await billingService.listSales({ limit: PAGE_LIMIT });
+      const args = { limit: PAGE_LIMIT, search: query.trim() };
+      if (period === "custom") {
+        if (dateFrom) args.dateFrom = dateFrom;
+        if (dateTo) args.dateTo = dateTo;
+      } else if (period !== "all") {
+        args.period = period;
+      }
+      const { sales, total: count, totalOutstanding: out } = await billingService.listSales(args);
       setBills(sales);
       setTotal(count);
+      setTotalOutstanding(out || 0);
     } catch (err) {
       setLoadError(err?.message || "Could not load sales history");
       setBills([]);
@@ -96,26 +106,44 @@ export default function SalesHistory() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [query, period, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
 
+  // Category / sub-category / purity are filtered client-side (backend list has
+  // no such params); search + date/period go through the backend.
   const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return bills.filter((b) => {
-      const matchesTab = tab === "all" || b.status.toLowerCase() === tab;
-      const matchesQuery = !q || [b.inv, b.customer, String(b.amount)].join(" ").toLowerCase().includes(q);
       const matchesCat = fCat === "All Categories" || b.category === fCat;
       const matchesSub = fSub === "All Sub-categories" || b.subcategory === fSub;
       const matchesPurity = fPurity === "All Purity" || b.purity === fPurity;
-      return matchesTab && matchesQuery && matchesCat && matchesSub && matchesPurity;
+      return matchesCat && matchesSub && matchesPurity;
     });
-  }, [bills, tab, query, fCat, fSub, fPurity]);
+  }, [bills, fCat, fSub, fPurity]);
 
-  // Filter option sets, built from the real sales data present.
   const catOptions = useMemo(() => [...new Set(bills.map(b => b.category).filter(Boolean))].sort(), [bills]);
   const subOptions = useMemo(() => [...new Set(bills.map(b => b.subcategory).filter(Boolean))].sort(), [bills]);
   const purityOptions = useMemo(() => [...new Set(bills.map(b => b.purity).filter(Boolean))].sort(), [bills]);
+
+  const totalGoldSold = useMemo(() => rows.reduce((s, b) => s + (b.netGoldWeightGrams || 0), 0), [rows]);
+
+  // Purity-wise sold-gold composition of the current view (respects the
+  // category / sub-category / purity filters, since `rows` is already filtered).
+  const composition = useMemo(() => {
+    const map = new Map();
+    let sum = 0;
+    rows.forEach((b) => {
+      const g = b.netGoldWeightGrams || 0;
+      if (g <= 0) return;
+      const key = b.purity || "—";
+      map.set(key, (map.get(key) || 0) + g);
+      sum += g;
+    });
+    const parts = [...map.entries()]
+      .map(([pur, g]) => ({ pur, g, pct: sum > 0 ? Math.round((g / sum) * 100) : 0 }))
+      .sort((a, b) => b.g - a.g);
+    return { sum, parts };
+  }, [rows]);
 
   const handleExport = async () => {
     if (exporting) return;
@@ -130,153 +158,76 @@ export default function SalesHistory() {
     }
   };
 
-  const loadHistory = useCallback(async (saleId) => {
-    setHistoryLoading(true);
-    setHistoryError("");
-    try {
-      const h = await billingService.getSalePayments(saleId);
-      setHistory(h);
-    } catch (err) {
-      setHistoryError(err?.message || "Could not load payment history");
-      setHistory(null);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
-
-  const openDetail = (b) => {
-    setSelected(b);
-    setHistory(null);
-    setHistoryError("");
-    setFormError("");
-    setForm({ amount: "", method: "CASH", date: todayIso(), reference: "", remarks: "" });
-    loadHistory(b.id);
+  const clearFilters = () => {
+    setFCat("All Categories"); setFSub("All Sub-categories"); setFPurity("All Purity");
   };
+  const filtersActive = fCat !== "All Categories" || fSub !== "All Sub-categories" || fPurity !== "All Purity";
 
-  const closeDetail = () => {
-    if (submitting) return;
-    setSelected(null);
-    setHistory(null);
-  };
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
 
-  const handleRecordPayment = async (e) => {
-    e.preventDefault();
-    if (submitting || !selected) return;
-    setFormError("");
-    const amount = Number(form.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setFormError("Enter a valid amount greater than 0.");
-      return;
-    }
-    if (!form.date) {
-      setFormError("Select a payment date.");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      // Backend re-derives outstanding/status and rejects overpayment/returned sales.
-      const updated = await billingService.recordSalePayment(selected.id, {
-        amount,
-        paymentDate: form.date,
-        paymentMethod: form.method,
-        referenceNo: form.reference.trim(),
-        remarks: form.remarks.trim(),
-      });
-      setHistory(updated);
-      setForm({ amount: "", method: "CASH", date: todayIso(), reference: "", remarks: "" });
-      toast("Payment recorded");
-      // Refresh the list so table outstanding/status reflect backend truth.
-      load();
-    } catch (err) {
-      setFormError(err?.message || "Could not record payment");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
+  // Print Invoice — open the invoice PDF in a new tab (auth-fetched) to view/print.
   const handlePrint = async (b) => {
     if (printing) return;
     setPrinting(b.id);
     try {
-      await billingService.downloadInvoicePdf(b.id, b.inv);
-      toast(`${b.inv} invoice downloaded`);
+      await billingService.openInvoicePdf(b.id);
     } catch (err) {
-      toast(err?.message || "Could not download invoice");
+      toast(err?.message || "Could not open invoice");
     } finally {
       setPrinting(null);
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
-
-  // Net-gold sold total + Category/Purity composition of the currently filtered
-  // sales rows. Real backend data (per-sale category/purity/net weight); display
-  // aggregation only — no financial calculation.
-  const totalGoldSold = useMemo(() => rows.reduce((s, b) => s + (b.netGoldWeightGrams || 0), 0), [rows]);
-  const soldByCategory = fCat !== "All Categories" || fSub !== "All Sub-categories";
-  const soldComposition = useMemo(() => {
-    const map = new Map();
-    rows.forEach(b => {
-      if (!(b.netGoldWeightGrams > 0)) return;
-      const key = soldByCategory ? `${b.category || "Uncategorised"}|${b.purity || "—"}` : (b.purity || "—");
-      map.set(key, (map.get(key) || 0) + b.netGoldWeightGrams);
-    });
-    return [...map.entries()]
-      .map(([k, g]) => soldByCategory
-        ? (() => { const [cat, pur] = k.split("|"); return { cat, pur, g }; })()
-        : { cat: null, pur: k, g })
-      .sort((a, b) => b.g - a.g);
-  }, [rows, soldByCategory]);
-
   return (
-    <div ref={scope} className="mx-auto max-w-[1200px]">
+    <div ref={scope} className="mx-auto max-w-[1280px]">
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Sales History</h2>
           <p className="mt-1 max-w-[55ch] text-sm text-muted">
-            Every bill raised at the counter — filter by status, search, and reprint invoices.
+            Every bill raised at the counter — filter, view the full breakdown, and reprint invoices.
           </p>
         </div>
-        <div className="flex gap-2.5">
-          <Button variant="outline" size="sm" disabled={exporting} onClick={handleExport}>
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 15V3m0 12-4-4m4 4 4-4" /><path d="M2 17l.62 2.48A2 2 0 0 0 4.56 21h14.88a2 2 0 0 0 1.94-1.52L22 17" />
-            </svg>
-            {exporting ? "Exporting…" : "Export CSV"}
-          </Button>
-          <Button size="sm" onClick={() => toast("New sale started")}>New sale</Button>
-        </div>
+        <Button variant="outline" size="sm" disabled={exporting} onClick={handleExport}>
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 15V3m0 12-4-4m4 4 4-4" /><path d="M2 17l.62 2.48A2 2 0 0 0 4.56 21h14.88a2 2 0 0 0 1.94-1.52L22 17" />
+          </svg>
+          {exporting ? "Exporting…" : "Export Excel"}
+        </Button>
       </div>
 
-      <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(220px,280px)_1fr]">
-        <Card data-motion="stat" className="p-4">
-          <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Gold Sold</div>
-          <div className="num mt-1 text-2xl font-extrabold">{totalGoldSold.toFixed(2)} g</div>
-          <div className="text-xs text-muted">Net gold · current view</div>
-        </Card>
+      <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(220px,270px)_1fr]">
+        <div className="grid gap-3">
+          <Card data-motion="stat" className="p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Gold Sold</div>
+            <div className="num mt-1 text-2xl font-extrabold">{totalGoldSold.toFixed(2)} g</div>
+            <div className="text-xs text-muted">Net gold · current view</div>
+          </Card>
+          <Card data-motion="stat" className="p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Outstanding</div>
+            <div className="num mt-1 text-2xl font-extrabold">{formatINR(totalOutstanding)}</div>
+            <div className="text-xs text-muted">Across filtered bills</div>
+          </Card>
+        </div>
         <Card data-motion="stat" className="p-4">
           <div className="flex items-center justify-between">
-            <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Gold Sold Composition</div>
-            <div className="text-[11px] text-muted">{soldByCategory ? "Category · Purity · grams" : "Purity-wise · grams"}</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Sales Composition</div>
+            <div className="text-[11px] text-muted">Purity-wise · sold gold</div>
           </div>
-          {soldComposition.length === 0 ? (
-            <div className="mt-2 text-sm text-muted">No sold gold in the current view.</div>
-          ) : soldByCategory ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {soldComposition.map(({ cat, pur, g }) => (
-                <span key={`${cat}-${pur}`} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas/50 px-2.5 py-1 text-xs">
-                  <span className="font-bold uppercase tracking-wide">{cat}</span>
-                  <Badge tone="neutral">{pur}</Badge>
-                  <span className="num font-mono font-semibold">{g.toFixed(2)} g</span>
-                </span>
-              ))}
-            </div>
+          {composition.parts.length === 0 ? (
+            <div className="mt-3 text-sm text-muted">No sold gold in the current view.</div>
           ) : (
-            <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
-              {soldComposition.map(({ pur, g }) => (
-                <div key={pur} className="flex items-baseline justify-between border-b border-line-soft pb-1">
-                  <span className="text-sm font-bold">{pur}</span>
-                  <span className="num font-mono text-sm font-semibold tabular-nums">{g.toFixed(2)} g</span>
+            <div className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
+              {composition.parts.map(({ pur, g, pct }) => (
+                <div key={pur}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-sm font-bold">
+                      <span className="inline-block h-2 w-2 rounded-full bg-accent" />{pur}
+                    </span>
+                    <span className="num font-mono text-xs font-semibold text-muted tabular-nums">{g.toFixed(2)} g · {pct}%</span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line-soft">
+                    <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -284,77 +235,104 @@ export default function SalesHistory() {
         </Card>
       </div>
 
-      <div data-motion="toolbar" className="mb-4">
-        <div className="flex gap-1 overflow-x-auto border-b border-line" role="tablist" aria-label="Filter bills by status">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => setTab(t.key)}
-              className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold transition-colors duration-150 ${
-                tab === t.key
-                  ? "border-accent text-accent-strong"
-                  : "border-transparent text-muted hover:text-ink"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+      {/* Filter row — old-app layout: search + from/to date + category + sub + purity + period. */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchInput
-          className="min-w-[220px] flex-1"
-          placeholder="Search invoice, customer, or amount..."
+          className="min-w-[200px] flex-1"
+          placeholder="Search invoice, product, or customer..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search sales"
         />
+        <Select value={period} onValueChange={setPeriod} options={PERIODS} className="w-[140px]" />
+        {period === "custom" && (
+          <>
+            <Input type="date" value={dateFrom} max={dateTo || todayIso()} onChange={(e) => setDateFrom(e.target.value)} className="w-[150px]" aria-label="From date" />
+            <Input type="date" value={dateTo} max={todayIso()} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="w-[150px]" aria-label="To date" />
+          </>
+        )}
         <Select value={fCat} onValueChange={setFCat} options={["All Categories", ...catOptions]} className="w-[150px]" />
         <Select value={fSub} onValueChange={setFSub} options={["All Sub-categories", ...subOptions]} className="w-[170px]" />
         <Select value={fPurity} onValueChange={setFPurity} options={["All Purity", ...purityOptions]} className="w-[130px]" />
-        {(fCat !== "All Categories" || fSub !== "All Sub-categories" || fPurity !== "All Purity") && (
-          <button onClick={() => { setFCat("All Categories"); setFSub("All Sub-categories"); setFPurity("All Purity"); }} className="text-xs font-bold text-accent underline">Clear</button>
+        {filtersActive && (
+          <button onClick={clearFilters} className="text-xs font-bold text-accent underline">Clear</button>
         )}
       </div>
 
       <Card data-motion="reveal" className="overflow-hidden">
-        <CardContent className="overflow-x-auto px-0 pb-0">
-          <table className="w-full min-w-[860px] border-collapse text-sm">
+        <CardContent className="auto-fade-scroll overflow-x-auto px-0 pb-0">
+          {/* Draft B Point 13 — 16-column order:
+             Invoice, Date, Customer, HUID, Category, Sub-category, No. of Items,
+             Weight, Payment Type, Total, Paid, Outstanding, Profit/Loss, Status,
+             View, Print Invoice. */}
+          <table className="w-full min-w-[1500px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Invoice</th><th className="py-3">Customer</th><th className="py-3">Items</th>
-                <th className="py-3">Weight</th><th className="py-3">Amount</th><th className="py-3">Method</th>
-                <th className="py-3">Date</th><th className="py-3">Status</th><th className="py-3 text-right">Print</th>
+              <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted [&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-3">
+                <th className="!pl-5">Invoice No.</th>
+                <th>Date</th>
+                <th>Customer</th>
+                <th>HUID</th>
+                <th>Category</th>
+                <th>Sub-category</th>
+                <th className="text-right">Items</th>
+                <th className="text-right">Weight</th>
+                <th>Payment Type</th>
+                <th className="text-right">Total Amount</th>
+                <th className="text-right">Paid</th>
+                <th className="text-right">Outstanding</th>
+                <th className="text-right">Profit/Loss</th>
+                <th>Status</th>
+                <th className="text-center">View</th>
+                <th className="!pr-5 text-center">Print Invoice</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((b) => (
                 <tr
                   key={b.id}
-                  onClick={() => openDetail(b)}
-                  className="cursor-pointer border-b border-line-soft transition-colors duration-150 last:border-0 hover:bg-canvas/60"
+                  onClick={() => setSelectedId(b.id)}
+                  className="cursor-pointer border-b border-line-soft align-middle transition-colors duration-150 last:border-0 hover:bg-canvas/60 [&>td]:px-3 [&>td]:py-3.5"
                 >
-                  <td className="px-6 py-3.5 font-mono text-xs font-semibold">{b.inv}</td>
-                  <td className="py-3.5 font-bold">{b.customer}</td>
-                  <td className="num py-3.5 text-muted">{b.items} item{b.items > 1 ? "s" : ""}</td>
-                  <td className="num py-3.5">{formatWeight(b.grossWeightGrams)}</td>
-                  <td className="num py-3.5 font-bold">{formatINR(b.amount)}</td>
-                  <td className="py-3.5 text-muted">{b.method}</td>
-                  <td className="py-3.5 text-muted">{formatSaleDate(b.saleTimestamp)}</td>
-                  <td className="py-3.5"><Badge tone={STATUS_TONE[b.status]} dot>{b.status}</Badge></td>
-                  <td className="py-3.5 text-right">
+                  <td className="!pl-5 font-mono text-xs font-semibold">{b.inv}</td>
+                  <td className="whitespace-nowrap text-muted">{formatDate(b.saleTimestamp)}</td>
+                  <td className="min-w-[130px]">
+                    <div className="font-bold">{b.customer}</div>
+                    {b.customerCode && <div className="font-mono text-[11px] text-muted">{b.customerCode}</div>}
+                  </td>
+                  <td className="whitespace-nowrap font-mono text-xs text-muted">{b.huid || "—"}</td>
+                  <td className="text-muted">{b.category || "—"}</td>
+                  <td className="text-muted">{b.subcategory || "—"}</td>
+                  <td className="num text-right">{b.items}</td>
+                  <td className="num whitespace-nowrap text-right">{formatWeight(b.grossWeightGrams)}</td>
+                  <td className="whitespace-nowrap text-muted">{b.method}</td>
+                  <td className="num whitespace-nowrap text-right font-bold">{formatINR(b.amount)}</td>
+                  <td className="num whitespace-nowrap text-right">{formatINR(b.paid)}</td>
+                  <td className={`num whitespace-nowrap text-right font-semibold ${b.outstanding > 0 ? "text-danger" : "text-muted"}`}>{formatINR(b.outstanding)}</td>
+                  <td className="num whitespace-nowrap text-right font-semibold">
+                    {b.grossMargin == null ? (
+                      <span className="text-faint">—</span>
+                    ) : (
+                      <span className={b.grossMargin < 0 ? "text-danger" : "text-emerald-600"}>
+                        {b.grossMargin < 0 ? "−" : "+"}{formatINR(Math.abs(b.grossMargin))}
+                      </span>
+                    )}
+                  </td>
+                  <td><Badge tone={STATUS_TONE[b.status]} dot>{b.status}</Badge></td>
+                  <td className="text-center">
                     <button
-                      className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition-colors duration-150 hover:border-accent-line hover:bg-accent-soft hover:text-accent disabled:opacity-50"
-                      onClick={(e) => { e.stopPropagation(); handlePrint(b); }}
-                      disabled={printing === b.id}
-                      aria-label={`Print ${b.inv}`}
+                      className="rounded-lg border border-line px-3 py-1.5 text-xs font-bold text-ink transition-colors duration-150 hover:border-accent-line hover:bg-accent-soft hover:text-accent-strong"
+                      onClick={(e) => { e.stopPropagation(); setSelectedId(b.id); }}
                     >
-                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" />
-                      </svg>
+                      View
+                    </button>
+                  </td>
+                  <td className="!pr-5 text-center">
+                    <button
+                      className="rounded-lg border border-line px-3 py-1.5 text-xs font-bold text-ink transition-colors duration-150 hover:border-accent-line hover:bg-accent-soft hover:text-accent-strong disabled:opacity-50"
+                      disabled={printing === b.id}
+                      onClick={(e) => { e.stopPropagation(); handlePrint(b); }}
+                    >
+                      {printing === b.id ? "Opening…" : "Print"}
                     </button>
                   </td>
                 </tr>
@@ -362,9 +340,7 @@ export default function SalesHistory() {
             </tbody>
           </table>
           {loading && (
-            <div className="px-6 py-14 text-center">
-              <div className="font-bold">Loading bills…</div>
-            </div>
+            <div className="px-6 py-14 text-center"><div className="font-bold">Loading bills…</div></div>
           )}
           {!loading && loadError && (
             <div className="px-6 py-14 text-center">
@@ -376,7 +352,7 @@ export default function SalesHistory() {
           {!loading && !loadError && rows.length === 0 && (
             <div className="px-6 py-14 text-center">
               <div className="font-bold">No bills found</div>
-              <p className="mt-1 text-sm text-muted">Try a different invoice, customer, or amount.</p>
+              <p className="mt-1 text-sm text-muted">Try a different search, date range, or filter.</p>
             </div>
           )}
         </CardContent>
@@ -386,125 +362,328 @@ export default function SalesHistory() {
         <span>Page 1 of {totalPages}</span>
       </div>
 
-      {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={closeDetail} aria-label="Close" />
-          <div className="relative flex max-h-[92vh] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-line px-6 py-4">
-              <div>
-                <h3 className="text-base font-extrabold">Invoice {selected.inv}</h3>
-                <p className="mt-0.5 text-xs text-muted">{selected.customer}</p>
-              </div>
-              <button onClick={closeDetail} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
-            </div>
-
-            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-              {historyLoading && <div className="py-8 text-center text-sm font-bold">Loading payment history…</div>}
-
-              {!historyLoading && historyError && (
-                <div className="py-8 text-center">
-                  <div className="font-bold">Couldn’t load payments</div>
-                  <p className="mt-1 text-sm text-muted">{historyError}</p>
-                  <Button variant="outline" size="sm" className="mt-4" onClick={() => loadHistory(selected.id)}>Retry</Button>
-                </div>
-              )}
-
-              {!historyLoading && !historyError && history && (
-                <>
-                  {/* Backend-authoritative money figures. */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Total</div>
-                      <div className="num mt-0.5 text-sm font-bold">{formatINR(history.finalAmount)}</div>
-                    </div>
-                    <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Paid</div>
-                      <div className="num mt-0.5 text-sm font-bold">{formatINR(history.amountPaid)}</div>
-                    </div>
-                    <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Outstanding</div>
-                      <div className="num mt-0.5 text-sm font-bold">{formatINR(history.amountOutstanding)}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-muted">Status</span>
-                    <Badge tone={PAY_STATUS_TONE[String(history.paymentStatus).toUpperCase()] ?? "neutral"} dot>
-                      {history.paymentStatus || "—"}
-                    </Badge>
-                  </div>
-
-                  <div>
-                    <div className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-muted">Payment history</div>
-                    {history.payments.length === 0 ? (
-                      <p className="rounded-xl border border-line bg-canvas/40 px-3 py-4 text-center text-sm text-muted">No payments recorded yet.</p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {history.payments.map((p) => (
-                          <li key={p.id} className="flex items-start justify-between gap-3 rounded-xl border border-line px-3 py-2.5">
-                            <div>
-                              <div className="num text-sm font-bold">{formatINR(p.amount)}</div>
-                              <div className="mt-0.5 text-xs text-muted">
-                                {p.methodLabel} · {formatPaymentDate(p.paymentDate)}
-                                {p.referenceNo ? ` · Ref ${p.referenceNo}` : ""}
-                              </div>
-                              {p.remarks && <div className="mt-0.5 text-xs text-muted">{p.remarks}</div>}
-                            </div>
-                            {p.recordedByName && <div className="shrink-0 text-right text-[11px] text-faint">{p.recordedByName}</div>}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  {/* Record Payment — only when the sale still has an outstanding balance. */}
-                  {history.amountOutstanding > 0 ? (
-                    <form onSubmit={handleRecordPayment} className="space-y-4 border-t border-line pt-5">
-                      <div className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Record payment</div>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <label className="grid gap-1.5">
-                          <span className="text-xs font-bold">Amount *</span>
-                          <Input
-                            type="number" step="0.01" min="0" inputMode="decimal"
-                            placeholder={`Up to ${formatINR(history.amountOutstanding)}`}
-                            value={form.amount}
-                            onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                          />
-                        </label>
-                        <label className="grid gap-1.5">
-                          <span className="text-xs font-bold">Method *</span>
-                          <Select value={form.method} onValueChange={(v) => setForm({ ...form, method: v })} options={PAY_METHODS} />
-                        </label>
-                        <label className="grid gap-1.5">
-                          <span className="text-xs font-bold">Payment date *</span>
-                          <Input type="date" value={form.date} max={todayIso()} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-                        </label>
-                        <label className="grid gap-1.5">
-                          <span className="text-xs font-bold">Reference no.</span>
-                          <Input placeholder="Txn / cheque ref" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} />
-                        </label>
-                        <label className="grid gap-1.5 sm:col-span-2">
-                          <span className="text-xs font-bold">Remarks</span>
-                          <Input placeholder="Optional note" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
-                        </label>
-                      </div>
-                      {formError && <p role="alert" className="text-xs font-semibold text-danger">{formError}</p>}
-                      <div className="flex justify-end gap-2.5">
-                        <Button type="button" variant="outline" size="sm" onClick={closeDetail} disabled={submitting}>Close</Button>
-                        <Button type="submit" size="sm" disabled={submitting}>{submitting ? "Recording…" : "Record payment"}</Button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="border-t border-line pt-5 text-center text-sm font-semibold text-muted">
-                      No outstanding balance on this invoice.
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+      {selectedId && (
+        <SaleDetail
+          sale={bills.find((b) => b.id === selectedId)}
+          onClose={() => setSelectedId(null)}
+          onChanged={load}
+        />
       )}
     </div>
   );
 }
+
+function BreakdownRow({ label, value, strong }) {
+  return (
+    <div className={`flex items-center justify-between py-1 ${strong ? "border-t border-line pt-2 font-bold" : ""}`}>
+      <span className={strong ? "" : "text-muted"}>{label}</span>
+      <span className="num font-semibold">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * View popup — full price breakdown, admin purchase cost + profit/loss %, the
+ * payment ledger with Record Payment, and Return/Cancel + PDF/Excel/Print
+ * actions. All figures come from the already-mapped sale row + the payment
+ * ledger; nothing is recomputed.
+ */
+function SaleDetail({ sale, onClose, onChanged }) {
+  const [history, setHistory] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  // Record Payment form.
+  const [form, setForm] = useState({ amount: "", method: "CASH", date: todayIso(), reference: "", remarks: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  // Return / Cancel form (hidden until opened).
+  const [retOpen, setRetOpen] = useState(false);
+  const [ret, setRet] = useState({ type: "RETURN", reason: "", amount: "", method: "CASH", reference: "", date: todayIso() });
+  const [retError, setRetError] = useState("");
+  const [retSubmitting, setRetSubmitting] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    if (!sale) return;
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      setHistory(await billingService.getSalePayments(sale.id));
+    } catch (err) {
+      setHistoryError(err?.message || "Could not load payment history");
+      setHistory(null);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [sale]);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  if (!sale) return null;
+
+  const paid = history ? history.amountPaid : sale.paid;
+  const outstanding = history ? history.amountOutstanding : sale.outstanding;
+  const lossPct = sale.purchaseCost > 0 && sale.grossMargin != null
+    ? (sale.grossMargin / sale.purchaseCost) * 100
+    : null;
+  const reversed = sale.saleStatus === "RETURNED" || sale.saleStatus === "CANCELLED";
+
+  const handleRecordPayment = async (e) => {
+    e.preventDefault();
+    if (submitting) return;
+    setFormError("");
+    const amount = Number(form.amount);
+    if (!Number.isFinite(amount) || amount <= 0) { setFormError("Enter a valid amount greater than 0."); return; }
+    if (!form.date) { setFormError("Select a payment date."); return; }
+    setSubmitting(true);
+    try {
+      const updated = await billingService.recordSalePayment(sale.id, {
+        amount, paymentDate: form.date, paymentMethod: form.method,
+        referenceNo: form.reference.trim(), remarks: form.remarks.trim(),
+      });
+      setHistory(updated);
+      setForm({ amount: "", method: "CASH", date: todayIso(), reference: "", remarks: "" });
+      toast("Payment recorded");
+      onChanged?.();
+    } catch (err) {
+      setFormError(err?.message || "Could not record payment");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReturn = async (e) => {
+    e.preventDefault();
+    if (retSubmitting) return;
+    setRetError("");
+    if (ret.reason.trim().length < 3) { setRetError("Reason must be at least 3 characters."); return; }
+    setRetSubmitting(true);
+    try {
+      await billingService.processReturn(sale.id, {
+        returnType: ret.type,
+        reason: ret.reason.trim(),
+        refundAmount: ret.amount,
+        refundMethod: ret.amount !== "" ? ret.method : undefined,
+        refundReferenceNo: ret.reference.trim(),
+        refundDate: ret.date,
+      });
+      toast(ret.type === "CANCELLATION" ? "Sale cancelled" : "Sale returned");
+      onChanged?.();
+      onClose();
+    } catch (err) {
+      setRetError(err?.message || "Could not process return");
+    } finally {
+      setRetSubmitting(false);
+    }
+  };
+
+  const runAction = async (fn, okMsg, errMsg) => {
+    if (busy) return;
+    setBusy(true);
+    try { await fn(); if (okMsg) toast(okMsg); }
+    catch (err) { toast(err?.message || errMsg); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
+      <div className="relative flex max-h-[92vh] w-full max-w-[620px] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-line px-6 py-4">
+          <div>
+            <h3 className="text-base font-extrabold">Invoice {sale.inv}</h3>
+            <p className="mt-0.5 text-xs text-muted">
+              {sale.productName} · {sale.productCode}{sale.purity ? ` · ${sale.purity}` : ""}
+              {sale.huid ? ` · HUID ${sale.huid}` : ""}
+            </p>
+            <p className="mt-0.5 text-xs text-muted">
+              {sale.customer}{sale.customerCode ? ` (${sale.customerCode})` : ""} · {formatDate(sale.saleTimestamp)}
+            </p>
+          </div>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
+        </div>
+
+        <div className="auto-fade-scroll flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          {/* Product weights. */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Gross weight</div>
+              <div className="num mt-0.5 text-sm font-bold">{formatWeight(sale.grossWeightGrams)}</div>
+            </div>
+            <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Net gold weight</div>
+              <div className="num mt-0.5 text-sm font-bold">{formatWeight(sale.netGoldWeightGrams)}</div>
+            </div>
+          </div>
+
+          {/* Price breakdown — customer-facing lines only (no Gold Profit line). */}
+          <div>
+            <div className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-muted">Price breakdown</div>
+            <div className="rounded-xl border border-line px-4 py-3 text-sm">
+              <BreakdownRow label={`Gold Value${sale.goldRateApplied ? ` (₹${Number(sale.goldRateApplied).toFixed(2)}/g)` : ""}`} value={formatINR(sale.goldValueAmount)} />
+              <BreakdownRow label={`Making ${chargeLabel(sale.makingChargeType, sale.makingChargeValue)}`} value={formatINR(sale.makingChargeAmount)} />
+              <BreakdownRow label={`Wastage ${chargeLabel(sale.wastageType, sale.wastageValue)}`} value={formatINR(sale.wastageAmount)} />
+              {sale.stoneChargeAmount > 0 && <BreakdownRow label="Stone" value={formatINR(sale.stoneChargeAmount)} />}
+              {sale.otherChargesAmount > 0 && <BreakdownRow label="Other" value={formatINR(sale.otherChargesAmount)} />}
+              <BreakdownRow label="Subtotal" value={formatINR(sale.subtotalBeforeTax)} />
+              {sale.gstApplied && <BreakdownRow label={`GST (${sale.taxRatePercent}%)`} value={formatINR(sale.taxAmount)} />}
+              {sale.discountAmount > 0 && <BreakdownRow label="Discount" value={`− ${formatINR(sale.discountAmount)}`} />}
+              <BreakdownRow label="Bill Total" value={formatINR(sale.finalAmount)} strong />
+            </div>
+          </div>
+
+          {/* Admin-only cost + profit/loss. */}
+          {sale.purchaseCost != null && (
+            <div className="rounded-xl border border-line bg-canvas/40 px-4 py-3 text-sm">
+              <div className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-muted">Internal (admin only)</div>
+              <BreakdownRow label="Purchase Cost" value={formatINR(sale.purchaseCost)} />
+              <div className="flex items-center justify-between py-1">
+                <span className="text-muted">{sale.grossMargin < 0 ? "Loss" : "Profit"}</span>
+                <span className={`num font-bold ${sale.grossMargin < 0 ? "text-danger" : "text-emerald-600"}`}>
+                  {sale.grossMargin < 0 ? "−" : "+"}{formatINR(Math.abs(sale.grossMargin ?? 0))}
+                  {lossPct != null ? ` (${lossPct < 0 ? "−" : "+"}${Math.abs(lossPct).toFixed(1)}%)` : ""}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Payment figures + ledger. */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Total</div>
+              <div className="num mt-0.5 text-sm font-bold">{formatINR(sale.finalAmount)}</div>
+            </div>
+            <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Paid</div>
+              <div className="num mt-0.5 text-sm font-bold">{formatINR(paid)}</div>
+            </div>
+            <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Outstanding</div>
+              <div className="num mt-0.5 text-sm font-bold">{formatINR(outstanding)}</div>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-muted">Payments</div>
+            {historyLoading && <div className="py-4 text-center text-sm font-bold">Loading payments…</div>}
+            {!historyLoading && historyError && (
+              <div className="py-4 text-center">
+                <p className="text-sm text-muted">{historyError}</p>
+                <Button variant="outline" size="sm" className="mt-2" onClick={loadHistory}>Retry</Button>
+              </div>
+            )}
+            {!historyLoading && !historyError && history && (
+              history.payments.length === 0 ? (
+                <p className="rounded-xl border border-line bg-canvas/40 px-3 py-4 text-center text-sm text-muted">No payments recorded yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {history.payments.map((p) => (
+                    <li key={p.id} className="flex items-start justify-between gap-3 rounded-xl border border-line px-3 py-2.5">
+                      <div>
+                        <div className="num text-sm font-bold">{formatINR(p.amount)}</div>
+                        <div className="mt-0.5 text-xs text-muted">
+                          {p.methodLabel} · {formatDate(p.paymentDate)}{p.referenceNo ? ` · Ref ${p.referenceNo}` : ""}
+                        </div>
+                        {p.remarks && <div className="mt-0.5 text-xs text-muted">{p.remarks}</div>}
+                      </div>
+                      {p.recordedByName && <div className="shrink-0 text-right text-[11px] text-faint">{p.recordedByName}</div>}
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+          </div>
+
+          {/* Record Payment — only when still owed and not reversed. */}
+          {!reversed && history && outstanding > 0 && (
+            <form onSubmit={handleRecordPayment} className="space-y-4 border-t border-line pt-5">
+              <div className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Record payment</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Amount *</span>
+                  <Input type="number" step="0.01" min="0" inputMode="decimal" placeholder={`Up to ${formatINR(outstanding)}`} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Method *</span>
+                  <Select value={form.method} onValueChange={(v) => setForm({ ...form, method: v })} options={PAY_METHODS} />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Payment date *</span>
+                  <Input type="date" value={form.date} max={todayIso()} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Reference no.</span>
+                  <Input placeholder="Txn / cheque ref" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} />
+                </label>
+                <label className="grid gap-1.5 sm:col-span-2">
+                  <span className="text-xs font-bold">Remarks</span>
+                  <Input placeholder="Optional note" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
+                </label>
+              </div>
+              {formError && <p role="alert" className="text-xs font-semibold text-danger">{formError}</p>}
+              <div className="flex justify-end">
+                <Button type="submit" size="sm" disabled={submitting}>{submitting ? "Recording…" : "Record payment"}</Button>
+              </div>
+            </form>
+          )}
+
+          {/* Return / Cancel form. */}
+          {!reversed && retOpen && (
+            <form onSubmit={handleReturn} className="space-y-4 border-t border-line pt-5">
+              <div className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Return / Cancel</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Type *</span>
+                  <Select value={ret.type} onValueChange={(v) => setRet({ ...ret, type: v })} options={RETURN_TYPES} />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Refund amount</span>
+                  <Input type="number" step="0.01" min="0" inputMode="decimal" placeholder="Defaults to refundable cash" value={ret.amount} onChange={(e) => setRet({ ...ret, amount: e.target.value })} />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Refund method</span>
+                  <Select value={ret.method} onValueChange={(v) => setRet({ ...ret, method: v })} options={PAY_METHODS} />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Refund date</span>
+                  <Input type="date" value={ret.date} max={todayIso()} onChange={(e) => setRet({ ...ret, date: e.target.value })} />
+                </label>
+                <label className="grid gap-1.5 sm:col-span-2">
+                  <span className="text-xs font-bold">Reason *</span>
+                  <Input placeholder="Why is this being reversed?" value={ret.reason} onChange={(e) => setRet({ ...ret, reason: e.target.value })} />
+                </label>
+              </div>
+              {retError && <p role="alert" className="text-xs font-semibold text-danger">{retError}</p>}
+              <div className="flex justify-end gap-2.5">
+                <Button type="button" variant="outline" size="sm" onClick={() => setRetOpen(false)} disabled={retSubmitting}>Cancel</Button>
+                <Button type="submit" size="sm" disabled={retSubmitting}>{retSubmitting ? "Processing…" : "Confirm"}</Button>
+              </div>
+            </form>
+          )}
+
+          {reversed && (
+            <div className="rounded-xl border border-line bg-canvas/40 px-4 py-3 text-center text-sm font-semibold text-muted">
+              This sale has been {sale.saleStatus === "CANCELLED" ? "cancelled" : "returned"}.
+            </div>
+          )}
+        </div>
+
+        {/* Action bar. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-6 py-4">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => runAction(() => billingService.openInvoicePdf(sale.id), null, "Could not open invoice")}>Print</Button>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => runAction(() => billingService.downloadInvoicePdf(sale.id, sale.inv), `${sale.inv} PDF downloaded`, "Could not download PDF")}>PDF</Button>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => runAction(() => billingService.downloadInvoiceExcel(sale.id, sale.inv), `${sale.inv} Excel downloaded`, "Could not download Excel")}>Excel</Button>
+            {!reversed && !retOpen && (
+              <Button variant="outline" size="sm" onClick={() => setRetOpen(true)}>Return / Cancel</Button>
+            )}
+          </div>
+          <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

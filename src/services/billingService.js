@@ -230,6 +230,16 @@ export const billingService = {
     return res.data?.item;
   },
 
+  /** POST /api/v1/billing/inventory/{id}/image — attach/replace an existing
+   *  item's image (multipart). Needed so an item with no photo can be given one
+   *  before publishing to the catalogue (publish reuses the item's own image). */
+  async setInventoryItemImage(id, file) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await apiClient.post(`/billing/inventory/${id}/image`, fd, { auth: true });
+    return res.data?.item ?? null;
+  },
+
   /** POST /api/v1/billing/inventory/image — stage an image, returns storage path. */
   async uploadStagingImage(file) {
     const fd = new FormData();
@@ -342,10 +352,19 @@ export const billingService = {
     };
   },
 
-  /** POST /api/v1/billing/inventory/{id}/publish — publish to catalogue.
-   *  SELLING_COST lets the server compute the price (no price sent). */
-  async publishToCatalogue(id) {
-    await apiClient.post(`/billing/inventory/${id}/publish`, { pricing_source: "SELLING_COST" }, { auth: true });
+  /** POST /api/v1/billing/inventory/{id}/publish — publish (or idempotently
+   *  re-publish = "Update Listing") one item to the catalogue.
+   *  - SELLING_COST: server computes the price; no price sent, gst_applied flags
+   *    whether GST is included in that computed selling price.
+   *  - CATALOGUE_COST: admin's manual catalogue_price (> 0) is sent instead.
+   *  sub_category is optional either way. Backend rejects a client price for
+   *  SELLING_COST and requires one for CATALOGUE_COST — mirrored here. */
+  async publishToCatalogue(id, { pricingSource = "SELLING_COST", cataloguePrice, subCategory, gstApplied = true } = {}) {
+    const body = { pricing_source: pricingSource };
+    if (pricingSource === "CATALOGUE_COST") body.catalogue_price = Number(cataloguePrice);
+    else body.gst_applied = gstApplied;
+    if (subCategory && String(subCategory).trim()) body.sub_category = String(subCategory).trim();
+    await apiClient.post(`/billing/inventory/${id}/publish`, body, { auth: true });
   },
 
   /**
@@ -354,14 +373,19 @@ export const billingService = {
    * tax, final amount) is computed server-side; nothing is recomputed here.
    */
   async getSaleQuote(productCode, {
-    discountAmount = 0, gstApplied = true, appliedRatePerGram, goldProfitPercent,
+    discountAmount = 0, gstApplied = true, appliedRatePerGram,
     makingChargeValue, makingChargeType, wastageValue, wastageType,
+    customerPrice, goldProfitPercent,
   } = {}) {
     const params = new URLSearchParams();
     if (discountAmount) params.set("discount_amount", String(discountAmount));
     params.set("gst_applied", String(gstApplied));
-    if (appliedRatePerGram != null && appliedRatePerGram !== "") params.set("applied_rate_per_gram", String(appliedRatePerGram));
+    // Offline manual price: the admin's negotiated final price. Backend makes it
+    // authoritative and returns the implied gold_profit_percent in the breakdown.
+    if (customerPrice != null && customerPrice !== "") params.set("customer_price", String(customerPrice));
+    // Offline margin override: drives the engine price from this profit %.
     if (goldProfitPercent != null && goldProfitPercent !== "") params.set("gold_profit_percent", String(goldProfitPercent));
+    if (appliedRatePerGram != null && appliedRatePerGram !== "") params.set("applied_rate_per_gram", String(appliedRatePerGram));
     // A value override must travel with its own type so a FIXED amount is never
     // reinterpreted as a PERCENTAGE by the backend engine.
     if (makingChargeValue != null && makingChargeValue !== "") { params.set("making_charge_value", String(makingChargeValue)); if (makingChargeType) params.set("making_charge_type", makingChargeType); }
@@ -381,8 +405,9 @@ export const billingService = {
    */
   async createSale({
     productCode, customerId, customerName, customerPhone,
-    discountAmount = 0, gstApplied = true, appliedRatePerGram, goldProfitPercent,
+    discountAmount = 0, gstApplied = true, appliedRatePerGram,
     makingChargeValue, makingChargeType, wastageValue, wastageType,
+    customerPrice, goldProfitPercent,
     paymentMethod = "CASH", paymentStatus = "PAID",
     initialPaymentAmount, paymentReferenceNo,
   }) {
@@ -396,8 +421,9 @@ export const billingService = {
     if (customerName) body.customer_name = customerName;
     if (customerPhone) body.customer_phone = customerPhone;
     if (discountAmount) body.discount_amount = discountAmount;
-    if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
+    if (customerPrice != null && customerPrice !== "") body.customer_price = Number(customerPrice);
     if (goldProfitPercent != null && goldProfitPercent !== "") body.gold_profit_percent = Number(goldProfitPercent);
+    if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
     if (makingChargeValue != null && makingChargeValue !== "") { body.making_charge_value = Number(makingChargeValue); if (makingChargeType) body.making_charge_type = makingChargeType; }
     if (wastageValue != null && wastageValue !== "") { body.wastage_value = Number(wastageValue); if (wastageType) body.wastage_type = wastageType; }
     if (paymentStatus === "PARTIAL") body.initial_payment_amount = initialPaymentAmount;
@@ -414,16 +440,18 @@ export const billingService = {
    */
   async generateQuotation({
     productCode, customerId, customerName, customerPhone,
-    discountAmount = 0, gstApplied = true, appliedRatePerGram, goldProfitPercent,
-    makingChargeValue, makingChargeType, wastageValue, wastageType, schemeAmounts, note,
+    discountAmount = 0, gstApplied = true, appliedRatePerGram,
+    makingChargeValue, makingChargeType, wastageValue, wastageType,
+    customerPrice, goldProfitPercent, schemeAmounts, note,
   }) {
     const body = { product_code: productCode, gst_applied: gstApplied };
     if (customerId) body.customer_id = customerId;
     if (customerName) body.customer_name = customerName;
     if (customerPhone) body.customer_phone = customerPhone;
     if (discountAmount) body.discount_amount = discountAmount;
-    if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
+    if (customerPrice != null && customerPrice !== "") body.customer_price = Number(customerPrice);
     if (goldProfitPercent != null && goldProfitPercent !== "") body.gold_profit_percent = Number(goldProfitPercent);
+    if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
     if (makingChargeValue != null && makingChargeValue !== "") { body.making_charge_value = Number(makingChargeValue); if (makingChargeType) body.making_charge_type = makingChargeType; }
     if (wastageValue != null && wastageValue !== "") { body.wastage_value = Number(wastageValue); if (wastageType) body.wastage_type = wastageType; }
     if (schemeAmounts && Object.keys(schemeAmounts).length) body.scheme_amounts = schemeAmounts;
@@ -483,11 +511,16 @@ export const billingService = {
    * statuses are backend authoritative. Returns already-mapped rows plus the
    * real total count for the footer.
    */
-  async listSales({ search = "", limit = 100, customerId = "", paymentStatus = "" } = {}) {
+  async listSales({ search = "", limit = 100, customerId = "", paymentStatus = "", saleStatus = "", dateFrom = "", dateTo = "", period = "" } = {}) {
     const params = new URLSearchParams({ page: "1", limit: String(limit) });
     if (search) params.set("search", search);
     if (customerId) params.set("customer_id", customerId);
     if (paymentStatus) params.set("payment_status", paymentStatus);
+    if (saleStatus) params.set("sale_status", saleStatus);
+    // Explicit range wins over a named period server-side; send whichever is set.
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    if (period) params.set("period", period);
     const res = await apiClient.get(`/billing/sales?${params.toString()}`, { auth: true });
     return {
       sales: (res.data?.sales ?? []).map(mapSaleRow),
@@ -533,6 +566,54 @@ export const billingService = {
   /** GET /api/v1/billing/sales/{id}/invoice.pdf — download one invoice PDF. */
   async downloadInvoicePdf(saleId, invoiceNumber) {
     await apiClient.download(`/billing/sales/${saleId}/invoice.pdf`, `${invoiceNumber}.pdf`);
+  },
+
+  /**
+   * POST /api/v1/billing/sales/{id}/void — reverse a scheme-redemption sale whose
+   * OTP was never completed: the item returns to stock and the invoice is
+   * cancelled. Called when the admin closes the OTP step without verifying.
+   */
+  async voidSale(saleId) {
+    const res = await apiClient.post(`/billing/sales/${saleId}/void`, {}, { auth: true });
+    return res.data?.void ?? null;
+  },
+
+  /** GET /api/v1/billing/sales/{id}/invoice.pdf — open the invoice PDF in a new
+   *  tab (view / print). */
+  async openInvoicePdf(saleId) {
+    await apiClient.openInNewTab(`/billing/sales/${saleId}/invoice.pdf`);
+  },
+
+  /** GET /api/v1/billing/sales/{id}/invoice.xlsx — download one invoice as Excel. */
+  async downloadInvoiceExcel(saleId, invoiceNumber) {
+    await apiClient.download(`/billing/sales/${saleId}/invoice.xlsx`, `${invoiceNumber}.xlsx`);
+  },
+
+  /**
+   * POST /api/v1/billing/sales/{id}/return — reverse a sale. return_type RETURN
+   * or CANCELLATION; the backend restores the item, refunds only the cash it can
+   * (never the scheme portion or the unpaid balance) and re-derives status.
+   */
+  async processReturn(saleId, { returnType = "RETURN", reason, refundAmount, refundMethod, refundReferenceNo, refundDate } = {}) {
+    const body = { return_type: returnType, reason };
+    if (refundAmount != null && refundAmount !== "") body.refund_amount = Number(refundAmount);
+    if (refundMethod) body.refund_method = refundMethod;
+    if (refundReferenceNo) body.refund_reference_no = refundReferenceNo;
+    if (refundDate) body.refund_date = refundDate;
+    const res = await apiClient.post(`/billing/sales/${saleId}/return`, body, { auth: true });
+    return res.data?.saleReturn ?? res.data ?? null;
+  },
+
+  /** GET /api/v1/billing/quotation/{id}/pdf — download the quotation PDF. */
+  async downloadQuotationPdf(quotationId, quotationNumber) {
+    await apiClient.download(`/billing/quotation/${quotationId}/pdf`, `${quotationNumber}.pdf`);
+  },
+
+  /** GET /api/v1/billing/quotation/{id}/pdf — open the quotation PDF in a new
+   *  tab so the admin can view or print it (auth is header-based, so it must be
+   *  fetched, not linked). */
+  async openQuotationPdf(quotationId) {
+    await apiClient.openInNewTab(`/billing/quotation/${quotationId}/pdf`);
   },
 
   /** GET /api/v1/billing/sales/export.xlsx — export the sales history (Excel). */
@@ -692,7 +773,8 @@ function mapSaleQuote(data = {}, productCode = "", gstApplied = true) {
     wastageType: b.wastage_type ?? "",
     wastageValue: b.wastage_value ?? 0,
     wastageAmount: b.wastage_amount ?? 0,
-    goldProfitPercent: b.gold_profit_percent ?? null,    // internal — not shown as a line
+    goldRatePurityFactor: b.gold_rate_purity_factor ?? null,
+    goldProfitPercent: b.gold_profit_percent ?? null,    // margin % (implied when a customer price is set); null for Staff
     goldProfitAmount: b.gold_profit_amount ?? null,      // discount ceiling; null for Staff
     stoneChargeAmount: b.stone_charge_amount ?? 0,
     otherChargesAmount: b.other_charges_amount ?? 0,
@@ -702,6 +784,35 @@ function mapSaleQuote(data = {}, productCode = "", gstApplied = true) {
     taxAmount: b.tax_amount ?? 0,
     discountAmount: b.discount_amount ?? 0,
     finalAmount: b.final_amount ?? 0,
+    // Profit views (Admin-only; null for Staff). Today's-gold-value P/L is the
+    // card New Sale shows; historical (vs purchase cost) stays available but the
+    // New Sale UI does not display it.
+    currentGoldValuePnl: data.current_gold_value_profit_or_loss ?? null,
+    currentGoldValueMarginPct: data.current_gold_value_margin_percent ?? null,
+    historicalPnl: data.historical_profit_or_loss ?? null,
+    profitLabel: data.profit_or_loss_label ?? null,
+    // Safe-price guidance (Admin sees minimum_safe_price). Null when the item has
+    // no purchase cost to judge against.
+    safePrice: data.safe_price
+      ? {
+          status: data.safe_price.status ?? null,
+          isLoss: !!data.safe_price.is_loss,
+          requestedPrice: data.safe_price.requested_price ?? null,
+          minimumSafePrice: data.safe_price.minimum_safe_price ?? null,
+          achievablePrice: data.safe_price.achievable_price ?? null,
+          residualDiscount: data.safe_price.residual_discount ?? null,
+          message: data.safe_price.message ?? "",
+          // Per-charge trims the backend allocated to reach the requested price.
+          // GOLD_PROFIT is cut first; its to_value is the new gold profit %.
+          reductions: (data.safe_price.reductions ?? []).map((r) => ({
+            component: r.component,
+            chargeType: r.charge_type ?? null,
+            reduceAmount: r.reduce_amount ?? 0,
+            fromValue: r.from_value ?? null,
+            toValue: r.to_value ?? null,
+          })),
+        }
+      : null,
   };
 }
 
@@ -712,7 +823,13 @@ function mapSaleRow(raw) {
     id: raw.id,
     inv: raw.invoice_number,
     customer: raw.customer_name || "Walk-in",
+    customerCode: raw.customer_code ?? "",
+    customerPhone: raw.customer_phone ?? "",
     items: 1,
+    productCode: raw.product_code ?? "",
+    productName: raw.product_name ?? "",
+    vendor: raw.vendor_name ?? "",
+    huid: raw.huid ?? "",
     category: raw.category ?? "",
     subcategory: raw.subcategory ?? "",
     purity: raw.purity ?? "",
@@ -723,7 +840,34 @@ function mapSaleRow(raw) {
     paid: raw.amount_paid ?? 0,
     outstanding: raw.amount_outstanding ?? 0,
     method: METHOD_LABEL[String(raw.payment_method || "").toUpperCase()] ?? (raw.payment_method || "—"),
+    paymentStatus: raw.payment_status ?? "",
+    saleStatus: raw.sale_status ?? "COMPLETED",
     saleTimestamp: raw.sale_timestamp ?? raw.created_at ?? null,
     status: saleStatusLabel(raw.payment_status, raw.sale_status),
+    // Price breakdown for the View popup (backend snapshot; Gold Profit stays
+    // internal and is not surfaced as a line).
+    goldRateApplied: raw.gold_rate_applied ?? 0,
+    goldRateSource: raw.gold_rate_source ?? "",
+    goldRateEffectiveDate: raw.gold_rate_effective_date ?? null,
+    goldValueAmount: raw.gold_value_amount ?? 0,
+    makingChargeType: raw.making_charge_type ?? "",
+    makingChargeValue: raw.making_charge_value ?? 0,
+    makingChargeAmount: raw.making_charge_amount ?? 0,
+    wastageType: raw.wastage_type ?? "",
+    wastageValue: raw.wastage_value ?? 0,
+    wastageAmount: raw.wastage_amount ?? 0,
+    stoneChargeAmount: raw.stone_charge_amount ?? 0,
+    otherChargesAmount: raw.other_charges_amount ?? 0,
+    subtotalBeforeTax: raw.subtotal_before_tax ?? 0,
+    gstApplied: raw.gst_applied ?? false,
+    taxRatePercent: raw.tax_rate_percent ?? 0,
+    taxAmount: raw.tax_amount ?? 0,
+    discountAmount: raw.discount_amount ?? 0,
+    finalAmount: raw.final_amount ?? 0,
+    // Admin-only internal figures (backend returns null for Staff).
+    purchaseCost: raw.purchase_cost_snapshot ?? null,
+    grossMargin: raw.estimated_gross_margin ?? null,
+    profitLabel: raw.profit_or_loss_label ?? null,
+    pricingMode: raw.pricing_mode ?? null,
   };
 }

@@ -7,6 +7,8 @@ import { Select } from "../components/ui/select";
 import { usePageMotion, usePressFeedback } from "../hooks/usePageMotion";
 import { toast } from "../lib/toast";
 import { customerService } from "../services/customerService";
+import { schemeService } from "../services/schemeService";
+import { enrollmentService } from "../services/enrollmentService";
 import { useAuth } from "../context/AuthContext";
 
 // UAT-only test-customer deletion is exposed only for the designated UAT tenant
@@ -18,8 +20,8 @@ const UAT_TENANT_ID = (process.env.NEXT_PUBLIC_UAT_TENANT_ID || "").trim();
 // Real customer data is loaded from the DFX backend via customerService.
 // No mock/demo records remain as an active source or fallback.
 
-const FILTERS = ["All Types", "Walk-in", "Scheme Customer", "Hybrid"];
-const TYPE_TONE = { "Walk-in": "neutral", "Scheme Customer": "info", "Hybrid": "accent" };
+const FILTERS = ["All Types", "Walk-in", "Scheme Customer", "Hybrid", "New"];
+const TYPE_TONE = { "Walk-in": "neutral", "Scheme Customer": "info", "Hybrid": "accent", "New": "neutral" };
 // Backend-derived KYC states (from kyc_state): Not Submitted | Pending Review | Verified | Rejected.
 const KYC_TONE = { Verified: "success", "Pending Review": "warning", Rejected: "danger", "Not Submitted": "neutral" };
 function fmtKycTime(iso) {
@@ -65,7 +67,7 @@ export default function Customers() {
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", scheme: "No scheme" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", dob: "", scheme: "No scheme" });
   const [errors, setErrors] = useState({});
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", password: "" });
@@ -81,6 +83,14 @@ export default function Customers() {
   const uatDeleteEnabled = !!UAT_TENANT_ID && tenantId === UAT_TENANT_ID;
   const [deleting, setDeleting] = useState(null); // customer pending permanent delete
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // Admin enroll-a-customer-into-a-scheme (Customer 360 → Add scheme). One
+  // customer can hold several schemes; the backend blocks only a duplicate
+  // active enrollment in the SAME scheme.
+  const [enrollOpen, setEnrollOpen] = useState(false);
+  const [schemeList, setSchemeList] = useState([]);
+  const [schemeListLoading, setSchemeListLoading] = useState(false);
+  const [chosenSchemeId, setChosenSchemeId] = useState("");
+  const [enrollBusy, setEnrollBusy] = useState(false);
 
   useEffect(() => {
     if (!selected) return;
@@ -124,10 +134,43 @@ export default function Customers() {
     }
   }
 
+  // Open the enroll modal for the customer in the 360 drawer; lazy-load the
+  // tenant's active schemes once.
+  async function openEnroll() {
+    setChosenSchemeId("");
+    setEnrollOpen(true);
+    if (schemeList.length) return;
+    setSchemeListLoading(true);
+    try {
+      const all = await schemeService.getSchemes();
+      setSchemeList(all.filter((s) => s.isActive));
+    } catch (err) {
+      toast(err?.message || "Could not load schemes");
+    } finally {
+      setSchemeListLoading(false);
+    }
+  }
+  async function submitEnroll() {
+    if (!selected || !chosenSchemeId) { toast("Pick a scheme"); return; }
+    setEnrollBusy(true);
+    try {
+      await enrollmentService.adminEnrollCustomer(selected.id, { schemeId: chosenSchemeId });
+      const nm = selected.name;
+      setEnrollOpen(false);
+      await openCustomer(selected); // refresh drawer schemes/history
+      await loadCustomers();        // refresh list + KPI counts
+      toast(`${nm} enrolled in scheme`);
+    } catch (err) {
+      toast(err?.message || "Enroll failed");
+    } finally {
+      setEnrollBusy(false);
+    }
+  }
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return customers.filter((c) => {
-      const matchesQuery = !q || [c.name, c.code, c.email, c.phone, c.city].join(" ").toLowerCase().includes(q);
+      const matchesQuery = !q || [c.name, c.code, c.email, c.phone].join(" ").toLowerCase().includes(q);
       const matchesType = filter === "All Types" || c.type === filter;
       const matchesKyc = kycFilter === "All" || (kycFilter === "Pending" ? c.kyc === "Pending Review" : c.kyc === kycFilter);
       return matchesQuery && matchesType && matchesKyc;
@@ -137,6 +180,7 @@ export default function Customers() {
   function validate() {
     const e = {};
     if (!form.name.trim()) e.name = "Name is required";
+    if (!form.dob) e.dob = "Date of birth is required";
     if (!form.password || form.password.length < 8) e.password = "Min. 8 characters";
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Invalid email";
     if (!form.phone.trim()) e.phone = "Phone is required";
@@ -158,9 +202,10 @@ export default function Customers() {
         password: form.password,
         phone: form.phone.trim(),
         email: form.email.trim() || undefined,
+        dateOfBirth: form.dob,
       });
       setShowAdd(false);
-      setForm({ name: "", phone: "", email: "", password: "", scheme: "No scheme" });
+      setForm({ name: "", phone: "", email: "", password: "", dob: "", scheme: "No scheme" });
       setErrors({});
       await loadCustomers();
       toast(`Customer created — ${created?.customer_code ?? created?.name ?? "OK"}`);
@@ -187,7 +232,6 @@ export default function Customers() {
     if (!editForm.name.trim()) e.name = "Name is required";
     if (editForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) e.email = "Invalid email";
     if (editForm.phone && !/^[0-9]{10}$/.test(editForm.phone.replace(/\D/g, ""))) e.phone = "Enter 10-digit phone";
-    if (editForm.password && editForm.password.length < 8) e.password = "Min. 8 characters";
     setEditErrors(e);
     if (Object.keys(e).length) return;
     setSaving(true);
@@ -295,24 +339,60 @@ export default function Customers() {
         </Button>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4" data-motion="stat">
-        {[
-          { label: "Total customers", value: customers.length, sub: "All time" },
-          { label: "Walk-in", value: customers.filter(c => c.type === "Walk-in").length, sub: "Walk-in customers" },
-          { label: "KYC pending", value: customers.filter(c => c.kyc === "Pending Review").length, sub: "Needs review" },
-          { label: "Scheme enrolled", value: customers.filter(c => c.type === "Scheme Customer" || c.type === "Hybrid").length, sub: "With live schemes" },
-        ].map(s => (
-          <Card key={s.label} className="p-4">
-            <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">{s.label}</div>
-            <div className="num mt-1 text-2xl font-extrabold">{s.value}</div>
-            <div className="text-xs text-faint">{s.sub}</div>
-          </Card>
-        ))}
-      </div>
+      {(() => {
+        // Customer Types composition (Walk-in / Scheme / Hybrid / New), mirroring
+        // the Purchase "Inventory Composition" layout. Counts come from the loaded
+        // list — display aggregation only, no backend recompute.
+        const typeComp = [
+          { label: "Walk-in", count: customers.filter(c => c.type === "Walk-in").length },
+          { label: "Scheme", count: customers.filter(c => c.type === "Scheme Customer").length },
+          { label: "Hybrid", count: customers.filter(c => c.type === "Hybrid").length },
+          { label: "New", count: customers.filter(c => c.type === "New").length },
+        ];
+        const kycPending = customers.filter(c => c.kyc === "Pending Review").length;
+        const schemeEnrolled = customers.filter(c => c.type === "Scheme Customer" || c.type === "Hybrid").length;
+        return (
+          <div className="mb-4 grid gap-3" data-motion="stat">
+            <div className="grid gap-3 lg:grid-cols-[minmax(200px,240px)_1fr]">
+              <Card className="p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total customers</div>
+                <div className="num mt-1 text-2xl font-extrabold">{customers.length}</div>
+                <div className="text-xs text-faint">All time</div>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Customer Types</div>
+                  <div className="text-[11px] text-muted">By type · count</div>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-4">
+                  {typeComp.map(({ label, count }) => (
+                    <div key={label} className="flex items-baseline justify-between border-b border-line-soft pb-1">
+                      <span className="text-sm font-bold">{label}</span>
+                      <span className="num font-mono text-sm font-semibold tabular-nums">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:max-w-[520px]">
+              <Card className="p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">KYC pending</div>
+                <div className="num mt-1 text-2xl font-extrabold">{kycPending}</div>
+                <div className="text-xs text-faint">Needs review</div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Scheme enrolled</div>
+                <div className="num mt-1 text-2xl font-extrabold">{schemeEnrolled}</div>
+                <div className="text-xs text-faint">With live schemes</div>
+              </Card>
+            </div>
+          </div>
+        );
+      })()}
 
       <div data-motion="toolbar" className="mb-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <SearchInput className="w-full max-w-sm" placeholder="Search name, code, email, phone, city..." value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search customers" />
+          <SearchInput className="w-full max-w-sm" placeholder="Search name, code, contact..." value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search customers" />
           <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by type">
             {FILTERS.map((f) => (
               <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${filter === f ? "border-ink bg-ink text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{f}</button>
@@ -321,7 +401,7 @@ export default function Customers() {
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-bold text-muted">KYC:</span>
-          {["All", "Verified", "Pending"].map(k => (
+          {["All", "Verified", "Pending", "Not Submitted"].map(k => (
             <button key={k} onClick={() => setKycFilter(k)} className={`rounded-full border px-3 py-1 font-semibold ${kycFilter === k ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted hover:border-line"}`}>{k}</button>
           ))}
           {(kycFilter !== "All" || filter !== "All Types" || query) && (
@@ -332,10 +412,10 @@ export default function Customers() {
 
       <Card data-motion="reveal" className="overflow-hidden">
         <CardContent className="overflow-x-auto px-0 pb-0">
-          <table className="w-full min-w-[980px] border-collapse text-sm">
+          <table className="w-full min-w-[1060px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Customer</th><th className="py-3">Code</th><th className="py-3">Contact</th><th className="py-3">Type</th><th className="py-3">KYC</th><th className="py-3">Member Since</th><th className="py-3 text-right pr-6">Actions</th>
+                <th className="px-6 py-3">Customer</th><th className="px-4 py-3 whitespace-nowrap">Code</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">KYC</th><th className="px-4 py-3 whitespace-nowrap">Member Since</th><th className="px-4 py-3 text-right pr-6">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -357,10 +437,10 @@ export default function Customers() {
                       </span>
                     </button>
                   </td>
-                  <td className="py-3.5 font-mono text-xs font-semibold">{c.code}</td>
-                  <td className="py-3.5"><div className="text-[13px] leading-tight">{orNP(c.email)}</div><div className="num text-xs text-muted">{orNP(c.phone)}</div></td>
-                  <td className="py-3.5"><Badge tone={TYPE_TONE[c.type]}>{c.type}</Badge></td>
-                  <td className="py-3.5">
+                  <td className="px-4 py-3.5 font-mono text-xs font-semibold whitespace-nowrap">{c.code}</td>
+                  <td className="px-4 py-3.5"><div className="max-w-[220px] truncate text-[13px] leading-tight">{orNP(c.email)}</div><div className="num text-xs text-muted">{orNP(c.phone)}</div></td>
+                  <td className="px-4 py-3.5"><Badge tone={TYPE_TONE[c.type]}>{c.type}</Badge></td>
+                  <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2">
                       <Badge tone={KYC_TONE[c.kyc] ?? "neutral"} dot>{c.kyc}</Badge>
                       {(c.kyc === "Pending Review" || c.kyc === "Rejected") && (
@@ -368,7 +448,7 @@ export default function Customers() {
                       )}
                     </div>
                   </td>
-                  <td className="py-3.5 text-muted">{c.since}</td>
+                  <td className="px-4 py-3.5 text-muted whitespace-nowrap">{c.since}</td>
                   <td className="py-3.5 pr-6 text-right">
                     <div className="flex justify-end gap-1.5">
                       <button onClick={() => openCustomer(c)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent-line hover:bg-accent-soft hover:text-accent" aria-label={`View ${c.name}`} title="View 360">
@@ -422,6 +502,11 @@ export default function Customers() {
                 <span className="text-xs font-bold">Phone<span className="text-danger">*</span> <span className="font-normal text-muted">— 10-digit mobile number</span></span>
                 <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="10-digit mobile number" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.phone ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
                 {errors.phone && <span className="text-xs font-semibold text-danger">{errors.phone}</span>}
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">Date of Birth<span className="text-danger">*</span> <span className="font-normal text-muted">— Required</span></span>
+                <input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.dob ? "border-danger focus:border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
+                {errors.dob && <span className="text-xs font-semibold text-danger">{errors.dob}</span>}
               </label>
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Email <span className="font-normal text-muted">— Optional</span></span>
@@ -571,6 +656,36 @@ export default function Customers() {
         </div>
       )}
 
+      {enrollOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={() => !enrollBusy && setEnrollOpen(false)} aria-label="Close modal" />
+          <div className="relative flex w-full max-w-[460px] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-6 py-4">
+              <h3 className="text-lg font-extrabold">Enroll in Scheme</h3>
+              <button onClick={() => !enrollBusy && setEnrollOpen(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div className="text-sm text-muted">{selected?.name} · <span className="font-mono">{selected?.code}</span></div>
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">Scheme<span className="text-danger">*</span></span>
+                {schemeListLoading ? (
+                  <div className="rounded-xl border border-line px-3.5 py-2.5 text-sm text-muted">Loading schemes…</div>
+                ) : schemeList.length === 0 ? (
+                  <div className="rounded-xl border border-line px-3.5 py-2.5 text-sm text-muted">No active schemes available.</div>
+                ) : (
+                  <Select value={chosenSchemeId} onValueChange={setChosenSchemeId} options={schemeList.map((s) => ({ value: s.id, label: s.name }))} placeholder="Select a scheme…" />
+                )}
+              </label>
+              <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">Enrolls on the scheme&apos;s base terms from today. A customer can hold several schemes; the same scheme can&apos;t be active twice.</p>
+            </div>
+            <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+              <Button variant="outline" size="sm" disabled={enrollBusy} onClick={() => setEnrollOpen(false)}>Cancel</Button>
+              <Button size="sm" disabled={enrollBusy || !chosenSchemeId} onClick={submitEnroll}>{enrollBusy ? "Enrolling…" : "Enroll"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selected && (
         <div className="fixed inset-0 z-50 flex">
           <button className="flex-1 bg-ink/40 backdrop-blur-[2px]" onClick={() => setSelected(null)} aria-label="Close drawer" />
@@ -617,7 +732,10 @@ export default function Customers() {
                 </section>
 
                 <section>
-                  <h4 className="text-xs font-extrabold uppercase tracking-widest text-ink">Scheme Information</h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-extrabold uppercase tracking-widest text-ink">Scheme Information</h4>
+                    <button onClick={openEnroll} className="rounded-lg border border-accent-line bg-accent-soft px-2.5 py-1 text-[11px] font-bold text-accent-strong hover:bg-accent-line">+ Add scheme</button>
+                  </div>
                   {selected.schemes.length ? (
                     <div className="mt-3 grid gap-3">
                       {selected.schemes.map(s => (
@@ -634,7 +752,7 @@ export default function Customers() {
                       ))}
                     </div>
                   ) : (
-                    <div className="mt-3 rounded-xl border border-dashed border-line bg-canvas/30 p-6 text-center text-sm text-muted">No active schemes.<br /><button onClick={() => toast("Enroll flow — coming soon")} className="mt-2 font-bold text-accent underline">Enroll in a scheme</button></div>
+                    <div className="mt-3 rounded-xl border border-dashed border-line bg-canvas/30 p-6 text-center text-sm text-muted">No active schemes.<br /><button onClick={openEnroll} className="mt-2 font-bold text-accent underline">Enroll in a scheme</button></div>
                   )}
                 </section>
 

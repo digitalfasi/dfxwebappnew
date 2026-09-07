@@ -7,6 +7,21 @@ import { Select } from "../components/ui/select";
 import { usePageMotion, usePressFeedback } from "../hooks/usePageMotion";
 import { toast } from "../lib/toast";
 import { billingService } from "../services/billingService";
+import { goldRateService } from "../services/goldRateService";
+
+// Live purchase rate/g for a purity: prefer today's explicitly-published
+// per-purity rate (rate_22k, rate_18k, …); otherwise derive it from the 24K
+// rate by the purity factor (karat / 24). Returns null when no rate is set.
+function purityRatePerGram(rateObj, purity) {
+  if (!rateObj) return null;
+  const k = parseInt(purity, 10) || 0;
+  if (!k) return null;
+  const explicit = rateObj[`rate_${k}k`];
+  if (explicit != null && Number(explicit) > 0) return Number(explicit);
+  const r24 = rateObj.rate_24k;
+  if (r24 == null) return null;
+  return Number(r24) * (k / 24);
+}
 
 const CATS = ["Bangles","Necklaces","Rings","Earrings","Chains","Pendants"];
 const SUBCATS = ["Traditional","Bridal","Diamond","Stone Studded","Jhumka"];
@@ -35,7 +50,6 @@ export default function Inventory({ onNavigate }) {
   const [saving, setSaving] = useState(false);
   const [vendorList, setVendorList] = useState([]);
   const [query, setQuery] = useState("");
-  const [productName, setProductName] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [vendor, setVendor] = useState("All Vendors");
   const [category, setCategory] = useState("All Categories");
@@ -52,6 +66,23 @@ export default function Inventory({ onNavigate }) {
   const [storeTax, setStoreTax] = useState(0);
 
   const [addForm, setAddForm] = useState(EMPTY_PURCHASE);
+  // Today's gold rate object (rate_24k + optional per-purity rates), used to
+  // auto-fill the Purchase Rate/g by purity.
+  const [todayRate, setTodayRate] = useState(null);
+
+  // Inline "add new vendor" inside the Add Purchase vendor section (replaces the
+  // separate Manage Vendors button — a vendor is created without leaving the form).
+  const [showAddVendor, setShowAddVendor] = useState(false);
+  const [newVendor, setNewVendor] = useState({ name: "", phone: "" });
+  const [vendorSaving, setVendorSaving] = useState(false);
+
+  // Add-to-Catalogue / Update-Listing modal. mode "add" or "update"; both hit the
+  // same idempotent publish endpoint (re-publish updates the linked product).
+  const [catModal, setCatModal] = useState(null); // { item, mode } | null
+  const [catForm, setCatForm] = useState({ pricing: "SELLING_COST", price: "", gst: true, sub: "" });
+  const [catImageFile, setCatImageFile] = useState(null);
+  const [catImagePreview, setCatImagePreview] = useState(null);
+  const [catBusy, setCatBusy] = useState(false);
 
   // Bulk receiving — Phase 4. Two types: Jewellery (HUID) / Raw Gold (Serial).
   const [bulkType, setBulkType] = useState("JEWELLERY");
@@ -86,6 +117,23 @@ export default function Inventory({ onNavigate }) {
     load();
   }, [load]);
 
+  // Fetch today's rate once, so the Add Purchase form can price the gold live.
+  useEffect(() => {
+    goldRateService.getTodayRate().then(setTodayRate).catch(() => setTodayRate(null));
+  }, []);
+
+  // Auto-fill Purchase Rate/g = live rate for the chosen purity (24K × purity).
+  // Runs when the form opens and whenever purity changes; the field stays fully
+  // editable — a manual edit is not overwritten (rate is not a dependency here).
+  useEffect(() => {
+    if (!showAdd || !todayRate) return;
+    const r = purityRatePerGram(todayRate, addForm.purity);
+    if (r == null) return;
+    const rounded = String(Math.round(r * 100) / 100);
+    setAddForm((f) => (f.rate === rounded ? f : { ...f, rate: rounded }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAdd, addForm.purity, todayRate]);
+
   const totalGold = useMemo(() => items.filter(i=>i.status==="In Stock").reduce((s,i)=>s+i.net,0), [items]);
   const vendorNames = useMemo(() => vendorList.map((v) => v.name), [vendorList]);
 
@@ -93,15 +141,14 @@ export default function Inventory({ onNavigate }) {
     const q = query.toLowerCase();
     return items.filter(i => {
       const matchesQ = !q || i.name.toLowerCase().includes(q) || (i.huid || "").toLowerCase().includes(q) || i.code.toLowerCase().includes(q);
-      const matchesName = !productName || i.name.toLowerCase().includes(productName.toLowerCase());
       const matchesStatus = status==="All statuses" || i.status===status;
       const matchesVendor = vendor==="All Vendors" || i.vendor===vendor;
       const matchesCat = category==="All Categories" || i.category===category;
       const matchesSub = subCategory==="All Sub-categories" || i.sub===subCategory;
       const matchesPurity = purity==="All Purity" || i.purity===purity;
-      return matchesQ && matchesName && matchesStatus && matchesVendor && matchesCat && matchesSub && matchesPurity;
+      return matchesQ && matchesStatus && matchesVendor && matchesCat && matchesSub && matchesPurity;
     });
-  }, [items, query, productName, status, vendor, category, subCategory, purity]);
+  }, [items, query, status, vendor, category, subCategory, purity]);
 
   // Gold-weight composition of the currently in-stock, filtered inventory. Real
   // loaded data only — display aggregation, no financials. Default is purity-wise;
@@ -303,18 +350,67 @@ export default function Inventory({ onNavigate }) {
     try { await billingService.setInventoryStatus(it.id, "INACTIVE"); await load(); toast("Item retired"); }
     catch (err) { toast(err?.message || "Retire failed"); }
   };
-  const addToCatalogue = async (code) => {
-    const it = items.find(i => i.code === code);
-    if (!it?.id) return;
-    try { await billingService.publishToCatalogue(it.id); await load(); toast("Added to catalogue"); }
-    catch (err) { toast(err?.message || "Publish failed"); }
+  // Open the catalogue modal (add or update). Prefill sub-category on update.
+  const openCatModal = (item, mode) => {
+    setCatForm({ pricing: "SELLING_COST", price: "", gst: true, sub: item.sub || "" });
+    setCatImageFile(null);
+    setCatImagePreview(null);
+    setCatModal({ item, mode });
+  };
+  const submitCatalogue = async () => {
+    if (!catModal?.item?.id) return;
+    const it = catModal.item;
+    if (catForm.pricing === "CATALOGUE_COST" && !(Number(catForm.price) > 0)) { toast("Enter a catalogue price greater than 0"); return; }
+    // A catalogue image is mandatory server-side (publish reuses the item's own
+    // image). If the item has none and none is chosen here, block before calling.
+    if (!it.imageUrl && !catImageFile) { toast("A catalogue image is required — upload one"); return; }
+    setCatBusy(true);
+    try {
+      // Attach/replace the item image first so publish finds one.
+      if (catImageFile) {
+        await billingService.setInventoryItemImage(it.id, catImageFile);
+      }
+      await billingService.publishToCatalogue(it.id, {
+        pricingSource: catForm.pricing,
+        cataloguePrice: catForm.pricing === "CATALOGUE_COST" ? Number(catForm.price) : undefined,
+        gstApplied: catForm.gst,
+        subCategory: catForm.sub,
+      });
+      const wasUpdate = catModal.mode === "update";
+      setCatModal(null);
+      await load();
+      toast(wasUpdate ? "Catalogue listing updated" : "Added to catalogue");
+    } catch (err) {
+      toast(err?.message || "Publish failed");
+    } finally {
+      setCatBusy(false);
+    }
+  };
+
+  // Create a vendor inline from the Add Purchase form and select it immediately.
+  const addVendorInline = async () => {
+    const name = newVendor.name.trim();
+    if (name.length < 2) { toast("Vendor name required (min 2 chars)"); return; }
+    setVendorSaving(true);
+    try {
+      const v = await billingService.createVendor({ name, phone: newVendor.phone.trim() || undefined });
+      setVendorList(prev => [...prev, v]);
+      setAddForm(f => ({ ...f, vendor: v.name }));
+      setNewVendor({ name: "", phone: "" });
+      setShowAddVendor(false);
+      toast(`Vendor added — ${v.name}`);
+    } catch (err) {
+      toast(err?.message || "Could not add vendor");
+    } finally {
+      setVendorSaving(false);
+    }
   };
 
   return (
     <div ref={scope} className="mx-auto max-w-[1200px]">
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-extrabold tracking-tight">Purchase</h2>
+          <h2 className="text-2xl font-extrabold tracking-tight">Inventory</h2>
           <p className="mt-1 text-sm text-muted">Receive finished jewellery / artefacts into stock — <span className="font-mono text-xs">HUID</span> tracked per piece.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -347,23 +443,38 @@ export default function Inventory({ onNavigate }) {
                 </span>
               ))}
             </div>
-          ) : (
-            <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
-              {composition.map(({ pur, g }) => (
-                <div key={pur} className="flex items-baseline justify-between border-b border-line-soft pb-1">
-                  <span className="text-sm font-bold">{pur}</span>
-                  <span className="num font-mono text-sm font-semibold tabular-nums">{g.toFixed(2)} g</span>
-                </div>
-              ))}
-            </div>
-          )}
+          ) : (() => {
+            const totalG = composition.reduce((s, c) => s + c.g, 0) || 1;
+            const maxG = composition.reduce((m, c) => Math.max(m, c.g), 0) || 1;
+            return (
+              <div className="mt-3 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
+                {composition.map(({ pur, g }) => {
+                  const share = (g / totalG) * 100;
+                  const barW = (g / maxG) * 100;
+                  return (
+                    <div key={pur} className="group">
+                      <div className="flex items-baseline justify-between">
+                        <span className="flex items-center gap-1.5 text-sm font-bold">
+                          <span className="inline-block h-2 w-2 rounded-full bg-accent shadow-[0_0_0_3px_var(--color-accent-soft)]" />
+                          {pur}
+                        </span>
+                        <span className="num font-mono text-xs font-semibold tabular-nums">{g.toFixed(2)} g <span className="text-muted">· {share.toFixed(0)}%</span></span>
+                      </div>
+                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-line-soft/70">
+                        <div className="h-full rounded-full bg-gradient-to-r from-accent to-accent-strong transition-[width] duration-700 ease-out" style={{ width: `${Math.max(barW, 4)}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </Card>
       </div>
 
       <div className="mb-4 grid gap-2" data-motion="toolbar">
         <div className="flex flex-wrap gap-2">
-          <SearchInput placeholder="Search HUID or product" value={query} onChange={e=>setQuery(e.target.value)} className="flex-1 min-w-[200px]" />
-          <Input placeholder="Product Name" value={productName} onChange={e=>setProductName(e.target.value)} className="w-[160px]" />
+          <SearchInput placeholder="Search HUID, product or code" value={query} onChange={e=>setQuery(e.target.value)} className="flex-1 min-w-[200px]" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold">Filters</span>
@@ -399,7 +510,9 @@ export default function Inventory({ onNavigate }) {
                   <td className="px-3 py-3.5"><Badge tone={p.catalogue==="Yes"?"success":"neutral"}>{p.catalogue}</Badge></td>
                   <td className="py-3.5 pr-6 whitespace-nowrap">
                     <div className="flex justify-end gap-1.5">
-                      <Button size="sm" variant="outline" onClick={() => addToCatalogue(p.code)}>Catalogue</Button>
+                      {p.catalogue === "Yes"
+                        ? <Button size="sm" variant="outline" onClick={() => openCatModal(p, "update")}>Update Listing</Button>
+                        : <Button size="sm" variant="outline" onClick={() => openCatModal(p, "add")}>Catalogue</Button>}
                       <Button size="sm" variant="outline" className="text-danger" onClick={() => retire(p.code)}>Retire</Button>
                     </div>
                   </td>
@@ -444,14 +557,26 @@ export default function Inventory({ onNavigate }) {
 
               <div className="rounded-xl border border-line bg-canvas/40 p-4 space-y-3">
                 <h4 className="text-xs font-extrabold uppercase tracking-widest">Vendor / Purchase</h4>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Vendor *</span><Select value={addForm.vendor} onValueChange={v=>setAddForm({...addForm, vendor:v})} options={vendorNames} placeholder={vendorNames.length ? "Select vendor…" : "No vendors — add one"} /></label>
+                <div className="grid gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold">Vendor *</span>
+                    <button type="button" onClick={()=>setShowAddVendor(s=>!s)} className="text-[11px] font-bold text-accent underline">{showAddVendor ? "Cancel" : "+ Add new vendor"}</button>
+                  </div>
+                  <Select value={addForm.vendor} onValueChange={v=>setAddForm({...addForm, vendor:v})} options={vendorNames} placeholder={vendorNames.length ? "Select vendor…" : "No vendors — add one below"} />
+                  {showAddVendor && (
+                    <div className="mt-1 grid gap-2 rounded-xl border border-line bg-surface p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                      <label className="grid gap-1"><span className="text-[11px] font-bold text-muted">New vendor name *</span><Input value={newVendor.name} onChange={e=>setNewVendor({...newVendor, name:e.target.value})} placeholder="Vendor name" className="h-9 text-sm" /></label>
+                      <label className="grid gap-1"><span className="text-[11px] font-bold text-muted">Phone</span><Input value={newVendor.phone} onChange={e=>setNewVendor({...newVendor, phone:e.target.value})} placeholder="Phone" className="h-9 text-sm" /></label>
+                      <Button size="sm" disabled={vendorSaving} onClick={addVendorInline} className="bg-accent hover:bg-accent-strong">{vendorSaving ? "Adding…" : "Add vendor"}</Button>
+                    </div>
+                  )}
+                </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date *</span><Input type="date" value={addForm.purchaseDate} onChange={e=>setAddForm({...addForm, purchaseDate:e.target.value})} /></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Invoice / Reference</span><Input value={addForm.invoice} onChange={e=>setAddForm({...addForm, invoice:e.target.value})} placeholder="INV-..." /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Rate (₹/g) *</span><Input type="number" value={addForm.rate} onChange={e=>setAddForm({...addForm, rate:e.target.value})} /></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Rate (₹/g) *</span><Input type="number" value={addForm.rate} onChange={e=>setAddForm({...addForm, rate:e.target.value})} /><span className="text-[11px] text-muted">{todayRate && purityRatePerGram(todayRate, addForm.purity) != null ? `Auto-filled from today's ${addForm.purity} rate (24K × purity). Editable.` : "No live rate set today — enter the rate manually."}</span></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Tunch (%)</span><Input type="number" value={addForm.tunch} onChange={e=>setAddForm({...addForm, tunch:e.target.value})} /><span className="text-[11px] text-muted">Applied to base (Net × Rate/g), not to the rate. Backend computes the final amount.</span></label>
                 </div>
-                <Button size="sm" variant="outline" onClick={()=>onNavigate?.("vendors")}>Manage Vendors</Button>
               </div>
 
               <div className="rounded-xl border border-accent-soft bg-accent-soft/40 p-4">
@@ -597,6 +722,71 @@ export default function Inventory({ onNavigate }) {
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" onClick={()=>setShowDefaults(false)}>Cancel</Button>
               <Button size="sm" disabled={defaultsSaving || defaultsLoading || !defaults} className="bg-accent hover:bg-accent-strong" onClick={saveDefaults}>{defaultsSaving ? "Saving…" : "Save Store Defaults"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add to Catalogue / Update Listing — same idempotent publish endpoint.
+          SELLING_COST = server price (+GST toggle); CATALOGUE_COST = manual price. */}
+      {catModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={()=>!catBusy && setCatModal(null)} aria-label="Close" />
+          <div className="relative w-full max-w-[520px] rounded-2xl border border-line bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-6 py-4">
+              <h3 className="text-base font-extrabold">{catModal.mode === "update" ? "Update Catalogue Listing" : "Add to Catalogue"}</h3>
+              <button onClick={()=>setCatModal(null)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-line bg-canvas/40 text-muted">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                </div>
+                <div>
+                  <div className="font-bold leading-tight">{catModal.item.name}</div>
+                  <div className="text-xs text-muted"><span className="font-mono">{catModal.item.huid || catModal.item.code}</span> · {catModal.item.purity}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Catalogue image {(!catModal.item.imageUrl && !catImageFile) && <span className="text-danger">*</span>}</div>
+                <div className="mt-2 flex items-center gap-3">
+                  <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl border border-line bg-canvas/40 text-muted">
+                    {(catImagePreview || catModal.item.imageUrl)
+                      ? <img src={catImagePreview || catModal.item.imageUrl} alt="" className="h-full w-full object-cover" />
+                      : <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>}
+                  </div>
+                  <label className="cursor-pointer text-xs font-bold text-accent underline">
+                    {(catModal.item.imageUrl || catImageFile) ? "Replace image" : "Upload image"}
+                    <input type="file" accept="image/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; if(f){ setCatImageFile(f); setCatImagePreview(URL.createObjectURL(f)); } }} />
+                  </label>
+                </div>
+                {(!catModal.item.imageUrl && !catImageFile) && <p className="mt-1 text-[11px] text-muted">This item has no photo yet. A catalogue image is required to publish.</p>}
+              </div>
+
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Catalogue pricing</div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {[["SELLING_COST","Selling Price","Server-computed from billing rules"],["CATALOGUE_COST","Catalogue Price","Manual price you set"]].map(([val,title,desc])=>(
+                    <button key={val} type="button" onClick={()=>setCatForm(f=>({...f, pricing:val}))} className={`rounded-xl border p-3 text-left transition ${catForm.pricing===val ? "border-accent bg-accent-soft/40" : "border-line hover:border-accent-line"}`}>
+                      <div className="text-sm font-bold">{title}</div>
+                      <div className="text-[11px] text-muted">{desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {catForm.pricing === "SELLING_COST" ? (
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={catForm.gst} onChange={e=>setCatForm(f=>({...f, gst:e.target.checked}))} /> Apply GST in the computed selling price</label>
+              ) : (
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Catalogue Price (₹) *</span><Input type="number" value={catForm.price} onChange={e=>setCatForm(f=>({...f, price:e.target.value}))} placeholder="e.g. 85000" /></label>
+              )}
+
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category (optional)</span><Input value={catForm.sub} onChange={e=>setCatForm(f=>({...f, sub:e.target.value}))} placeholder="e.g. Chain" /></label>
+            </div>
+            <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+              <Button variant="outline" size="sm" onClick={()=>setCatModal(null)}>Cancel</Button>
+              <Button size="sm" disabled={catBusy} className="bg-accent hover:bg-accent-strong" onClick={submitCatalogue}>{catBusy ? "Saving…" : catModal.mode === "update" ? "Update Listing" : "Publish to Catalogue"}</Button>
             </div>
           </div>
         </div>

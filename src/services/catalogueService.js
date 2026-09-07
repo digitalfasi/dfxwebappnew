@@ -11,6 +11,7 @@ function mapProduct(raw) {
   return {
     id: raw.id,
     name: raw.name ?? "",
+    description: raw.description ?? "",
     category: raw.category ?? "",
     // Backend product has no sub-category field; UI shows neutral (empty).
     subCategory: "",
@@ -46,6 +47,21 @@ function toCreatePayload(data) {
   };
 }
 
+/** Only the fields ProductUpdateRequest actually accepts — nothing invented. */
+function toUpdatePayload(data) {
+  const p = {};
+  if (data.name != null) p.name = data.name;
+  if (data.description != null) p.description = data.description;
+  if (data.category != null) p.category = data.category;
+  if (data.sku != null) p.sku = data.sku;
+  if (data.purity != null) p.purity = data.purity;
+  if (data.price != null) p.price = data.price;
+  if (data.weightGrams != null) p.weight_grams = data.weightGrams;
+  if (data.tags != null) p.tags = data.tags;
+  if (data.isActive != null) p.is_active = data.isActive;
+  return p;
+}
+
 export const catalogueService = {
   /** GET /api/v1/catalogue/products — admin product list. */
   async getProducts() {
@@ -53,9 +69,21 @@ export const catalogueService = {
     return (res.data?.products ?? []).map(mapProduct);
   },
 
+  /** GET /api/v1/catalogue/products/{id} — single product (edit prefill). */
+  async getProduct(id) {
+    const res = await apiClient.get(`/catalogue/products/${id}`, { auth: true });
+    return mapProduct(res.data.product);
+  },
+
   /** POST /api/v1/catalogue/products — create product. */
   async createProduct(data) {
     const res = await apiClient.post("/catalogue/products", toCreatePayload(data), { auth: true });
+    return mapProduct(res.data.product);
+  },
+
+  /** PUT /api/v1/catalogue/products/{id} — edit existing catalogue product. */
+  async updateProduct(id, data) {
+    const res = await apiClient.put(`/catalogue/products/${id}`, toUpdatePayload(data), { auth: true });
     return mapProduct(res.data.product);
   },
 

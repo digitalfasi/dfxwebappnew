@@ -102,3 +102,13 @@ body { margin: 0; }
   }
   html { scroll-behavior: auto; }
 }
+
+/* Remove the native number-input up/down spinner arrows across the whole app.
+   Values are typed, never scrolled — the arrows only cause accidental changes. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  margin: 0;
+}
+input[type="number"] { -moz-appearance: textfield !important; appearance: textfield !important; }

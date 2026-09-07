@@ -116,6 +116,11 @@ function fmtCurrency(v) {
   if (v === null || v === undefined) return "—";
   return formatINR(v);
 }
+// Profit is shown as a plain rupee figure — no leading minus/hyphen on the card.
+function fmtProfit(v) {
+  if (v === null || v === undefined) return "—";
+  return formatINR(Math.abs(Number(v) || 0));
+}
 function fmtCount(v) {
   if (v === null || v === undefined) return "—";
   return Number(v).toLocaleString("en-IN");
@@ -455,14 +460,14 @@ export default function Dashboard({ onNavigate, search = "" }) {
           <div className="grid grid-cols-2 gap-2.5">
             <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSummary?.total_revenue)} growth={bizSummary?.total_revenue_growth_percent} onClick={() => nav("sales-history")} />
             <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} onClick={() => nav("sales-history")} />
-            <KpiCard title={`${bizPfx} Profit`} value={fmtCurrency(profit)} onClick={() => nav("sales-history")} />
+            <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} onClick={() => nav("sales-history")} />
             <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} danger onClick={() => nav("sales-history")} />
           </div>
 
           {/* Sales Trend */}
           <Card className="p-3.5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-xs font-bold">Business Pulse</CardTitle>
+              <CardTitle className="text-xs font-bold">Business Trend</CardTitle>
               <div className="flex flex-wrap items-center gap-1.5">
                 <MetricSelect value={bizMetric} onChange={setBizMetric} options={BIZ_METRICS} accent={BUSINESS_ACCENT} />
                 <PeriodTabs value={bizPeriod} onChange={setBizPeriod} accent={BUSINESS_ACCENT} />
@@ -535,7 +540,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
           {/* Collections Trend */}
           <Card className="p-3.5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-xs font-bold">Payment Activity</CardTitle>
+              <CardTitle className="text-xs font-bold">Scheme Trend</CardTitle>
               <div className="flex flex-wrap items-center gap-1.5">
                 <MetricSelect value={schemeMetric} onChange={setSchemeMetric} options={SCHEME_METRICS} accent={SCHEME_ACCENT} />
                 <PeriodTabs value={schemePeriod} onChange={setSchemePeriod} accent={SCHEME_ACCENT} />
@@ -626,7 +631,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
               <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-faint">Store Business</div>
               <ReportRow label={`${bizPfx} Sales`} value={fmtCurrency(bizSummary?.total_revenue)} />
               <ReportRow label={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} />
-              <ReportRow label={`${bizPfx} Profit`} value={fmtCurrency(profit)} />
+              <ReportRow label={`${bizPfx} Profit`} value={fmtProfit(profit)} />
               <ReportRow label="Outstanding Amount" value={fmtCurrency(outstanding)} />
               <div className="my-2.5 border-t border-line" />
               <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-faint">Schemes</div>

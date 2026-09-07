@@ -27,6 +27,7 @@ export default function CatalogueStudio() {
   const [purityFilter, setPurityFilter] = useState("All Purity");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [view, setView] = useState("catalogue");
+  const [editId, setEditId] = useState(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quick, setQuick] = useState({ name: "", price: "", purity: "", category: "", details: "", photo: null });
   const [form, setForm] = useState({ name: "", category: "", price: "", sku: "", purity: "", weight: "", offerDiscount: "", offerLabel: "", tags: [], customTag: "", description: "", image: null });
@@ -94,6 +95,29 @@ export default function CatalogueStudio() {
     }
   }
 
+  function startCreate() {
+    setEditId(null);
+    setForm({ name: "", category: "", price: "", sku: "", purity: "", weight: "", offerDiscount: "", offerLabel: "", tags: [], customTag: "", description: "", image: null, imageFile: null });
+    setPreview(null);
+    setErrors({});
+    setView("create");
+  }
+
+  // Existing Product path: select an existing catalogue product and edit it via
+  // the real PUT /catalogue/products/{id}. No inventory linking is faked here.
+  function openEdit(p) {
+    setEditId(p.id);
+    setForm({
+      name: p.name || "", category: p.category || "", price: p.price != null ? String(p.price) : "",
+      sku: p.sku || "", purity: p.purity || "", weight: p.weight !== "" && p.weight != null ? String(p.weight) : "",
+      offerDiscount: "", offerLabel: "", tags: Array.isArray(p.tags) ? p.tags : [], customTag: "",
+      description: p.description || "", image: p.img || null, imageFile: null,
+    });
+    setPreview(p.img || null);
+    setErrors({});
+    setView("create");
+  }
+
   function validate() {
     const e = {};
     if (!form.name.trim() || form.name.trim().length < 2) e.name = "Name must be at least 2 characters";
@@ -111,7 +135,7 @@ export default function CatalogueStudio() {
     if (saving) return;
     setSaving(true);
     try {
-      const created = await catalogueService.createProduct({
+      const payload = {
         name: form.name.trim(),
         category: form.category || undefined,
         sku: form.sku || undefined,
@@ -119,67 +143,44 @@ export default function CatalogueStudio() {
         price: Number(form.price),
         weightGrams: form.weight ? Number(form.weight) : undefined,
         tags: form.tags,
-        makingChargeDiscountPercent: form.offerDiscount ? Number(form.offerDiscount) : undefined,
-        makingChargeDiscountLabel: form.offerLabel || undefined,
         description: form.description || undefined,
-      });
-      if (form.imageFile && created?.id) {
-        try { await catalogueService.uploadImage(created.id, form.imageFile); }
-        catch { toast("Product created, image upload failed"); }
+      };
+      let target;
+      if (editId) {
+        target = await catalogueService.updateProduct(editId, payload);
+      } else {
+        target = await catalogueService.createProduct({
+          ...payload,
+          makingChargeDiscountPercent: form.offerDiscount ? Number(form.offerDiscount) : undefined,
+          makingChargeDiscountLabel: form.offerLabel || undefined,
+        });
       }
+      if (form.imageFile && target?.id) {
+        try { await catalogueService.uploadImage(target.id, form.imageFile); }
+        catch { toast(editId ? "Product saved, image upload failed" : "Product created, image upload failed"); }
+      }
+      const wasEdit = !!editId;
+      setEditId(null);
       setForm({ name: "", category: "", price: "", sku: "", purity: "", weight: "", offerDiscount: "", offerLabel: "", tags: [], customTag: "", description: "", image: null, imageFile: null });
       setPreview(null);
       setErrors({});
       setView("catalogue");
       await load();
-      toast("Product created");
+      toast(wasEdit ? "Product updated" : "Product created");
     } catch (err) {
-      toast(err?.message || "Could not create product");
+      toast(err?.message || (editId ? "Could not update product" : "Could not create product"));
     } finally {
       setSaving(false);
     }
-  }
-
-  if (view === "quick") {
-    return (
-      <div ref={scope} className="mx-auto max-w-[1100px]">
-        <div className="mb-6 flex items-center gap-3">
-          <button onClick={() => setView("catalogue")} className="flex items-center gap-2 text-sm font-bold hover:text-accent"><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>Back</button>
-          <h2 className="text-lg font-extrabold">New Product — Quick Form</h2>
-        </div>
-        <Card className="p-6">
-          <h3 className="font-extrabold">New Product — Quick Form</h3>
-          <div className="mt-4 grid gap-6 sm:grid-cols-[1.1fr_1.2fr]">
-            <div>
-              <div className="text-xs font-bold">Photo</div>
-              <label className="mt-1.5 flex h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-line bg-canvas/30 text-xs font-medium text-muted hover:border-accent hover:bg-canvas/50">
-                <input type="file" accept="image/*" className="hidden" onChange={e => handleImage(e, "quick")} />
-                {quick.photo ? <img src={quick.photo} alt="quick" className="h-full w-full rounded-xl object-cover" /> : <span>Add photo</span>}
-              </label>
-            </div>
-            <div className="grid gap-3">
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name *</span><input value={quick.name} onChange={e => setQuick({ ...quick, name: e.target.value })} className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Price (₹)</span><input type="number" value={quick.price} onChange={e => setQuick({ ...quick, price: e.target.value })} className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent" /></label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Purity</span><input value={quick.purity} onChange={e => setQuick({ ...quick, purity: e.target.value })} placeholder="22K" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent" /></label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><input value={quick.category} onChange={e => setQuick({ ...quick, category: e.target.value })} placeholder="Necklaces" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent" /></label>
-              </div>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Details</span><textarea value={quick.details} onChange={e => setQuick({ ...quick, details: e.target.value })} rows={3} className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent" /></label>
-              <div className="flex justify-end gap-2 pt-2"><Button variant="outline" size="sm" onClick={() => { setView("catalogue"); setQuick({ name: "", price: "", purity: "", category: "", details: "", photo: null }); }}>Cancel</Button><Button size="sm" disabled={saving} onClick={() => { saveQuick(); setView("catalogue"); }}>{saving ? "Saving…" : "Save Product"}</Button></div>
-            </div>
-          </div>
-        </Card>
-      </div>
-    );
   }
 
   if (view === "create") {
     return (
       <div ref={scope} className="mx-auto max-w-[1200px]">
         <div className="mb-6 flex items-center justify-between">
-          <button onClick={() => setView("catalogue")} className="flex items-center gap-2 text-sm font-bold hover:text-accent"><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>Back</button>
-          <div className="flex gap-2"><span className="text-lg font-extrabold">Create Product</span></div>
-          <Button size="sm" disabled={saving} onClick={handleSave}>{saving ? "Saving…" : "Save Product"}</Button>
+          <button onClick={() => { setEditId(null); setView("catalogue"); }} className="flex items-center gap-2 text-sm font-bold hover:text-accent"><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>Back</button>
+          <div className="flex gap-2"><span className="text-lg font-extrabold">{editId ? "Edit Product" : "Create Product"}</span></div>
+          <Button size="sm" disabled={saving} onClick={handleSave}>{saving ? "Saving…" : editId ? "Save Changes" : "Save Product"}</Button>
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -237,11 +238,9 @@ export default function CatalogueStudio() {
       {/* Header */}
       <div data-motion="page-head" className="mb-6">
         <h2 className="text-2xl font-extrabold tracking-tight">Catalogue Studio</h2>
-        <p className="mt-1 text-[11px] font-extrabold uppercase tracking-[0.12em] text-muted">Product Studio</p>
-        <p className="mt-1 max-w-[60ch] text-sm text-muted">Add a product in seconds, or open Product Studio for images, editing, and templates.</p>
+        <p className="mt-1 max-w-[60ch] text-sm text-muted">Add a <span className="font-semibold text-ink">new product</span>, or select an <span className="font-semibold text-ink">existing product</span> below to edit its details and images.</p>
         <div className="mt-3 flex gap-2">
-          <Button size="sm" onClick={() => setView("create")}>Product Studio</Button>
-          <Button size="sm" variant="outline" onClick={() => setView("quick")}>+ New Product</Button>
+          <Button size="sm" onClick={startCreate}>Add New Product</Button>
         </div>
       </div>
 
@@ -268,14 +267,14 @@ export default function CatalogueStudio() {
       ) : (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {filtered.map(p => (
-          <Card key={p.id} className="overflow-hidden p-0 flex flex-col">
+          <Card key={p.id} onClick={() => openEdit(p)} className="cursor-pointer overflow-hidden p-0 flex flex-col transition-shadow hover:shadow-card" title={`Edit ${p.name}`}>
             <div className="relative">
               {p.img ? (
                 <img src={p.img} alt={p.name} className="h-48 w-full object-cover" />
               ) : (
                 <div className="grid h-48 w-full place-items-center bg-canvas/40 text-xs font-semibold text-muted">No image</div>
               )}
-              <button onClick={() => toast(`${p.name} images`)} className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-ink shadow hover:bg-white" aria-label="Images">
+              <button onClick={(e) => { e.stopPropagation(); toast(`${p.name} images`); }} className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-ink shadow hover:bg-white" aria-label="Images">
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
               </button>
             </div>
@@ -283,7 +282,7 @@ export default function CatalogueStudio() {
               <div className="font-bold leading-tight">{p.name || "—"}</div>
               <div className="mt-1 text-xs text-muted">{p.category}{p.subCategory ? ` / ${p.subCategory}` : ""}</div>
               <div className="mt-2 flex items-center gap-1.5">
-                <Badge tone="success" dot>{p.status}</Badge>
+                <Badge tone={p.status === "Active" ? "success" : "neutral"} dot>{p.status}</Badge>
                 <span className="text-xs text-muted">{p.stock}</span>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
@@ -291,35 +290,13 @@ export default function CatalogueStudio() {
                 <div><span className="text-muted">Weight</span><div className="font-bold">{p.weight} g</div></div>
               </div>
               <div className="mt-2 font-extrabold text-ink">{p.price != null ? `₹${p.price.toLocaleString("en-IN")}` : "—"}</div>
+              <div className="mt-3 pt-3 border-t border-line-soft">
+                <Button size="sm" variant="outline" className="w-full" onClick={(e) => { e.stopPropagation(); openEdit(p); }}>Edit</Button>
+              </div>
             </div>
           </Card>
         ))}
       </div>
-      )}
-
-      {quickOpen && (
-        <Card className="mt-6 p-5">
-          <h3 className="font-extrabold">New Product — Quick Form</h3>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div>
-              <div className="text-xs font-bold">Photo</div>
-              <label className="mt-1 flex h-32 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 text-xs text-muted hover:border-accent">
-                <input type="file" accept="image/*" className="hidden" onChange={e => handleImage(e, "quick")} />
-                {quick.photo ? <img src={quick.photo} alt="quick" className="h-full w-full rounded-xl object-cover" /> : <><span>Add photo</span></>}
-              </label>
-            </div>
-            <div className="grid gap-3">
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name *</span><input value={quick.name} onChange={e => setQuick({ ...quick, name: e.target.value })} className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)] outline-none" /></label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Price (₹)</span><input type="number" value={quick.price} onChange={e => setQuick({ ...quick, price: e.target.value })} className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm focus:border-accent outline-none" /></label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Purity</span><input value={quick.purity} onChange={e => setQuick({ ...quick, purity: e.target.value })} placeholder="22K" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent" /></label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><input value={quick.category} onChange={e => setQuick({ ...quick, category: e.target.value })} placeholder="Necklaces" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent" /></label>
-              </div>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Details</span><textarea value={quick.details} onChange={e => setQuick({ ...quick, details: e.target.value })} rows={2} className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent" /></label>
-              <div className="flex gap-2 justify-end"><Button variant="outline" size="sm" onClick={() => setQuickOpen(false)}>Cancel</Button><Button size="sm" disabled={saving} onClick={saveQuick}>{saving ? "Saving…" : "Save Product"}</Button></div>
-            </div>
-          </div>
-        </Card>
       )}
     </div>
   );
