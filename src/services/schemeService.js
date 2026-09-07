@@ -39,6 +39,14 @@ function mapCard(raw) {
     monthlyAmount: raw.monthly_amount,
     durationMonths: raw.duration_months,
     bonusDescription: raw.bonus_description || "",
+    // Full tier grid (active + inactive) so the Edit form can prefill the tiers
+    // the admin already selected. Backend-authoritative; never faked.
+    tiers: (raw.tiers ?? []).map((t) => ({
+      id: t.id,
+      monthlyAmount: t.monthly_amount,
+      durationMonths: t.duration_months,
+      isActive: t.is_active,
+    })),
   };
 }
 
@@ -88,6 +96,17 @@ export const schemeService = {
       ...(data.durationMonths !== undefined ? { duration_months: data.durationMonths } : {}),
       ...(data.bonusDescription !== undefined ? { bonus_description: data.bonusDescription } : {}),
       ...(data.isActive !== undefined ? { is_active: data.isActive } : {}),
+      // Tier set reconciled server-side: matching tiers kept, new added, missing
+      // ones deactivated. Omitted when not provided (leaves tiers untouched).
+      ...(data.tiers !== undefined
+        ? {
+            tiers: data.tiers.map((t) => ({
+              monthly_amount: t.monthlyAmount,
+              duration_months: t.durationMonths,
+              is_active: t.isActive ?? true,
+            })),
+          }
+        : {}),
     };
     const res = await apiClient.put(`/schemes/${id}`, body, { auth: true });
     return res.data?.scheme;

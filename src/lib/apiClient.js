@@ -237,6 +237,30 @@ export async function downloadFile(path, filename) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Fetch a raw byte stream (auth header attached) and open it in a new browser
+ * tab — used to view/print a PDF that a plain link cannot reach because the API
+ * is Bearer-authenticated. The object URL is revoked after the tab has loaded.
+ */
+export async function openInNewTab(path) {
+  if (!isBrowser()) return;
+  const token = tokenStore.getAccessToken();
+  if (!token) {
+    throw new ApiError("Your session has expired. Please sign in again.", 401);
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new ApiError(`Could not open file (status ${response.status})`, response.status);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) { URL.revokeObjectURL(url); throw new ApiError("Allow pop-ups to open the PDF.", 0); }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 export const apiClient = {
   get: (path, options = {}) => apiRequest(path, { ...options, method: "GET" }),
   post: (path, body, options = {}) => apiRequest(path, { ...options, method: "POST", body }),
@@ -244,4 +268,5 @@ export const apiClient = {
   patch: (path, body, options = {}) => apiRequest(path, { ...options, method: "PATCH", body }),
   delete: (path, options = {}) => apiRequest(path, { ...options, method: "DELETE" }),
   download: downloadFile,
+  openInNewTab,
 };

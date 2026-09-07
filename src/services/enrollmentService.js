@@ -43,6 +43,9 @@ function mapRow(raw) {
     // Redemptions are not on the list payload; enriched from balance on open.
     alreadyRedeemed: 0,
     nextDue: raw.next_due_date,
+    // Backend-derived overdue (ACTIVE + past next_due_date only). 0 otherwise.
+    overdueDays: raw.overdue_days ?? 0,
+    overdueAmount: raw.overdue_amount ?? 0,
     remarks: raw.remarks ?? "",
   };
 }
@@ -86,9 +89,46 @@ export const enrollmentService = {
     return res.data?.enrollment;
   },
 
+  /**
+   * POST /api/v1/admin/customers/{customerId}/enrollments — admin enrolls a
+   * chosen customer of their tenant into an active scheme. Backend mirrors the
+   * customer self-enroll rules (active scheme, no duplicate active enrollment in
+   * the same scheme; different schemes allowed). scheme_tier_id is optional.
+   */
+  async adminEnrollCustomer(customerId, { schemeId, schemeTierId } = {}) {
+    const body = { scheme_id: schemeId, ...(schemeTierId ? { scheme_tier_id: schemeTierId } : {}) };
+    const res = await apiClient.post(`/admin/customers/${customerId}/enrollments`, body, { auth: true });
+    return res.data?.enrollment;
+  },
+
   /** POST /api/v1/enrollments/{id}/close — cancel/close with a reason. */
   async closeEnrollment(id, reason) {
     const res = await apiClient.post(`/enrollments/${id}/close`, { reason }, { auth: true });
     return res.data?.balance ?? null;
+  },
+
+  /**
+   * POST /api/v1/billing/sales/{saleId}/redeem-schemes/request-otp — send a
+   * single-use, 5-minute code to the customer's app authorising scheme
+   * redemption against this sale. Returns the challenge metadata.
+   */
+  async requestRedemptionOtp(saleId) {
+    const res = await apiClient.post(`/billing/sales/${saleId}/redeem-schemes/request-otp`, {}, { auth: true });
+    return res.data?.otp ?? null;
+  },
+
+  /**
+   * POST /api/v1/billing/sales/{saleId}/redeem-schemes — settle one invoice from
+   * several scheme balances in ONE atomic backend transaction (all-or-nothing).
+   * `items` is [{ enrollmentId, amount }]; the OTP is verified + consumed
+   * server-side before any balance is touched. Never chain single redeems.
+   */
+  async redeemSchemes(saleId, items, otpCode) {
+    const res = await apiClient.post(
+      `/billing/sales/${saleId}/redeem-schemes`,
+      { items: items.map((i) => ({ enrollment_id: i.enrollmentId, amount: i.amount })), otp_code: otpCode },
+      { auth: true }
+    );
+    return res.data?.settlement ?? null;
   },
 };

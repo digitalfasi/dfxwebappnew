@@ -17,10 +17,18 @@ const _gsap = gsap?.default || gsap;
  * ScrollTrigger reveals below the fold. Collapses under reduced motion.
  */
 export function usePageMotion(scopeRef, deps = []) {
+  // The entrance is a one-time choreography. Deps like [loading] used to re-run
+  // it: when data landed the effect fired again and gsap.from() re-hid the
+  // already-visible cards (autoAlpha:0), producing a visible flash before they
+  // came back. Run it only once per mount so populated content is never
+  // re-hidden.
+  const played = useRef(false);
   useEffect(() => {
     const scope = scopeRef.current;
     if (!scope) return;
+    if (played.current) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    played.current = true;
 
     const ctx = _gsap.context(() => {
       _gsap.from("[data-motion='page-head']", {
@@ -68,7 +76,17 @@ export function usePageMotion(scopeRef, deps = []) {
       });
     }, scope);
 
-    return () => ctx.revert();
+    // Fail-safe: gsap.from() applies autoAlpha:0 immediately, so if an entrance
+    // run stalls or is interrupted on a slow/backgrounded device, the elements
+    // (e.g. the KPI stat cards) can stay stranded invisible. Guarantee every
+    // motion element is shown after the entrance window. On a normal run they
+    // are already visible by now, so this is a no-op (no flicker).
+    const safety = setTimeout(() => {
+      const els = scope.querySelectorAll("[data-motion]");
+      if (els.length) _gsap.set(els, { autoAlpha: 1, clearProps: "transform" });
+    }, 1600);
+
+    return () => { clearTimeout(safety); ctx.revert(); };
   }, deps);
 }
 

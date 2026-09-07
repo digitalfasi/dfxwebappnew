@@ -5,35 +5,42 @@ import { Input } from "../components/ui/input";
 import { Select } from "../components/ui/select";
 import { usePageMotion, usePressFeedback } from "../hooks/usePageMotion";
 import { toast } from "../lib/toast";
+import { promotionService } from "../services/promotionService";
 
-export default function PromotionCreate({ onNavigate, promotions, setPromotions, editingPromo, setEditingPromo }) {
+// Backend banner_type <-> UI label.
+const TYPE_TO_LABEL = { STANDARD: "Standard Banner", IMAGE_ONLY: "Image-Only Banner" };
+const LABEL_TO_TYPE = { "Standard Banner": "STANDARD", "Image-Only Banner": "IMAGE_ONLY" };
+
+export default function PromotionCreate({ onNavigate, editingPromo, setEditingPromo }) {
   const scope = useRef(null);
   usePageMotion(scope);
   usePressFeedback(scope);
 
   const isEdit = !!editingPromo;
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState(() => ({
     title: editingPromo?.title ?? "",
     subtitle: editingPromo?.subtitle ?? "",
     description: editingPromo?.description ?? "",
-    bannerType: editingPromo?.bannerType ?? "Standard Banner",
-    image: editingPromo?.image ?? null,
-    imageName: editingPromo?.imageName ?? "",
+    bannerType: TYPE_TO_LABEL[editingPromo?.bannerType] ?? "Standard Banner",
+    image: editingPromo?.imageUrl || null, // preview: stored URL (edit) or object URL (new)
+    imageName: "",
+    imageFile: null,
     buttonText: editingPromo?.buttonText ?? "",
     buttonLink: editingPromo?.buttonLink ?? "",
-    bgColor: editingPromo?.bgColor ?? "#fffbf0",
-    textColor: editingPromo?.textColor ?? "#1e293b",
-    startDate: editingPromo?.start ?? "",
-    endDate: editingPromo?.end ?? "",
+    bgColor: editingPromo?.backgroundColor || "#fffbf0",
+    textColor: editingPromo?.textColor || "#1e293b",
+    startDate: editingPromo?.startDate ?? "",
+    endDate: editingPromo?.endDate ?? "",
     priority: editingPromo?.priority ?? 1,
-    active: editingPromo ? !!editingPromo.enabled : true,
+    active: editingPromo ? !!editingPromo.isActive : true,
   }));
 
   const handleImage = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setForm({ ...form, image: URL.createObjectURL(file), imageName: file.name });
+    setForm({ ...form, image: URL.createObjectURL(file), imageName: file.name, imageFile: file });
   };
 
   const handleCancel = () => {
@@ -41,18 +48,42 @@ export default function PromotionCreate({ onNavigate, promotions, setPromotions,
     onNavigate("marketing");
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!form.title.trim()) { toast("Promotion title is required"); return; }
     if (!form.startDate || !form.endDate) { toast("Select start and end date"); return; }
-    if (isEdit) {
-      setPromotions(prev => prev.map(p => p.id === editingPromo.id ? { ...p, title: form.title, subtitle: form.subtitle, description: form.description, bannerType: form.bannerType, image: form.image, imageName: form.imageName, buttonText: form.buttonText, buttonLink: form.buttonLink, bgColor: form.bgColor, textColor: form.textColor, priority: Number(form.priority), start: form.startDate, end: form.endDate, status: form.active ? "Active" : "Disabled", enabled: form.active } : p));
-      toast("Promotion updated");
-    } else {
-      setPromotions(prev => [{ id: Date.now(), title: form.title, subtitle: form.subtitle, description: form.description, bannerType: form.bannerType, image: form.image, imageName: form.imageName, buttonText: form.buttonText, buttonLink: form.buttonLink, bgColor: form.bgColor, textColor: form.textColor, priority: Number(form.priority), start: form.startDate, end: form.endDate, status: form.active ? "Active" : "Disabled", enabled: form.active }, ...prev]);
-      toast("Promotion created");
+    if (form.endDate < form.startDate) { toast("End date must be on or after start date"); return; }
+    if (saving) return;
+    setSaving(true);
+    const payload = {
+      bannerType: LABEL_TO_TYPE[form.bannerType] || "STANDARD",
+      title: form.title.trim(),
+      subtitle: form.subtitle,
+      description: form.description,
+      buttonText: form.buttonText,
+      buttonLink: form.buttonLink,
+      backgroundColor: form.bgColor,
+      textColor: form.textColor,
+      priority: Number(form.priority) || 1,
+      isActive: form.active,
+      startDate: form.startDate,
+      endDate: form.endDate,
+    };
+    try {
+      const saved = isEdit
+        ? await promotionService.updatePromotion(editingPromo.id, payload)
+        : await promotionService.createPromotion(payload);
+      if (form.imageFile && saved?.id) {
+        try { await promotionService.uploadPromotionImage(saved.id, form.imageFile); }
+        catch { toast(isEdit ? "Saved, image upload failed" : "Created, image upload failed"); }
+      }
+      toast(isEdit ? "Promotion updated" : "Promotion created");
+      setEditingPromo(null);
+      onNavigate("marketing");
+    } catch (err) {
+      toast(err?.message || (isEdit ? "Could not update promotion" : "Could not create promotion"));
+    } finally {
+      setSaving(false);
     }
-    setEditingPromo(null);
-    onNavigate("marketing");
   };
 
   return (
@@ -122,8 +153,8 @@ export default function PromotionCreate({ onNavigate, promotions, setPromotions,
           </div>
 
           <div className="flex justify-end gap-2.5 border-t border-line pt-4">
-            <Button variant="outline" size="sm" onClick={handleCancel}>Cancel</Button>
-            <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={handleCreate}>{isEdit ? "Update Promotion" : "Create Promotion"}</Button>
+            <Button variant="outline" size="sm" onClick={handleCancel} disabled={saving}>Cancel</Button>
+            <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={handleCreate} disabled={saving}>{saving ? "Saving…" : isEdit ? "Update Promotion" : "Create Promotion"}</Button>
           </div>
         </div>
       </Card>

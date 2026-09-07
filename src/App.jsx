@@ -17,32 +17,35 @@ import Support from "./views/Support";
 import Notifications from "./views/Notifications";
 import Settings from "./views/Settings";
 import Inventory from "./views/Inventory";
+import Vendors from "./views/Vendors";
 import NewSale from "./views/NewSale";
 import ReportsAnalytics from "./views/ReportsAnalytics";
 import SalesHistory from "./views/SalesHistory";
 import ComingSoon from "./views/ComingSoon";
 import { subscribe } from "./lib/toast";
 import { INITIAL_PROMOTIONS } from "./lib/promotionStore";
+import { goldRateService } from "./services/goldRateService";
 
 const PAGES = {
-  dashboard: { title: "Dashboard", crumb: "Overview", component: Dashboard },
-  "gold-rate": { title: "Gold Rate", crumb: "Overview", component: GoldRate, action: "Publish update" },
-  customers: { title: "Customers", crumb: "People", component: Customers },
-  schemes: { title: "Schemes", crumb: "Schemes", component: Schemes },
-  "scheme-management": { title: "Scheme Management", crumb: "Schemes", component: SchemeManagement },
-  payments: { title: "Payments", crumb: "Billing", component: Payments },
-  inventory: { title: "Inventory", crumb: "Billing", component: Inventory },
-  "new-sale": { title: "New Sale", crumb: "Billing", component: NewSale },
-  "sales-history": { title: "Sales History", crumb: "Billing", component: SalesHistory, action: "New sale" },
-  catalogue: { title: "Catalogue Studio", crumb: "Growth", component: CatalogueStudio },
-  marketing: { title: "Promotion Banners", crumb: "Growth", component: PromotionBanners },
-  "promotion-create": { title: "Create Promotion", crumb: "Growth", component: PromotionCreate },
-  reports: { title: "Reports & Analytics", crumb: "Growth", component: ReportsAnalytics },
-  branches: { title: "Branches", crumb: "Operations", component: Branches },
-  "staff-users": { title: "Staff Users", crumb: "Operations", component: StaffUsers },
-  support: { title: "Support", crumb: "System", component: Support },
-  notifications: { title: "Notifications", crumb: "System", component: Notifications },
-  settings: { title: "Settings", crumb: "System", component: Settings },
+  dashboard: { title: "Dashboard", component: Dashboard },
+  "gold-rate": { title: "Gold Rate", component: GoldRate },
+  customers: { title: "Customers", component: Customers },
+  schemes: { title: "Schemes", component: Schemes },
+  "scheme-management": { title: "Enrollment Management", component: SchemeManagement },
+  payments: { title: "Payments", component: Payments },
+  inventory: { title: "Purchase", component: Inventory },
+  vendors: { title: "Purchase History", component: Vendors },
+  "new-sale": { title: "New Sale", component: NewSale },
+  "sales-history": { title: "Sales History", component: SalesHistory, action: "New sale" },
+  catalogue: { title: "Catalogue Studio", component: CatalogueStudio },
+  marketing: { title: "Promotion Banners", component: PromotionBanners },
+  "promotion-create": { title: "Create Promotion", component: PromotionCreate },
+  reports: { title: "Reports & Analytics", component: ReportsAnalytics },
+  branches: { title: "Branches", component: Branches },
+  "staff-users": { title: "Staff Users", component: StaffUsers },
+  support: { title: "Support", component: Support },
+  notifications: { title: "Notifications", component: Notifications },
+  settings: { title: "Settings", component: Settings },
 };
 
 function Toast({ onRef }) {
@@ -71,14 +74,43 @@ function Toast({ onRef }) {
   );
 }
 
+// Current module id from the URL hash, so a browser refresh restores the same
+// page instead of falling back to the Dashboard. "#/payments" -> "payments".
+function pageFromHash() {
+  const h = window.location.hash.replace(/^#\/?/, "").trim();
+  return h || "dashboard";
+}
+
 export default function App() {
   const { logout } = useAuth();
-  const [page, setPage] = useState("dashboard");
+  const [page, setPageState] = useState(pageFromHash);
+  // Navigate = update state AND the URL hash, so refresh/back/forward keep the page.
+  const setPage = (p) => setPageState((prev) => (typeof p === "function" ? p(prev) : p));
+  useEffect(() => {
+    if (pageFromHash() !== page) window.location.hash = `/${page}`;
+  }, [page]);
+  useEffect(() => {
+    const onHash = () => setPageState(pageFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
   useEffect(() => { setSearch(""); }, [page]);
   const [promotions, setPromotions] = useState(INITIAL_PROMOTIONS);
   const [editingPromo, setEditingPromo] = useState(null);
+  // Today's live bullion rate — fetched once here so the TopBar can show it on
+  // every module, not just the Dashboard.
+  const [bullion, setBullion] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => goldRateService.getTodayRate().then((r) => { if (alive) setBullion(r); }).catch(() => {});
+    load();
+    // Re-fetch the moment an admin publishes a new rate (Gold Rate screen), so
+    // the TopBar strip updates without a reload.
+    window.addEventListener("dfx:rate-published", load);
+    return () => { alive = false; window.removeEventListener("dfx:rate-published", load); };
+  }, []);
   const meta = PAGES[page] ?? NAV_SECTIONS.flatMap((s) => s.items).find((i) => i.id === page) ?? { title: "Dashboard" };
   const Page = meta.component;
 
@@ -91,6 +123,7 @@ export default function App() {
           onMenu={() => setNavOpen(true)}
           onNavigate={setPage}
           onLogout={logout}
+          bullion={bullion}
           hideTitle
           action={
             meta.action && (
