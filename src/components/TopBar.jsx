@@ -69,6 +69,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
             </span>
             <BullionStat label="24K" value={bullion?.rate_24k} />
             <BullionStat label="22K" value={bullion?.rate_22k} />
+            <BullionStat label="18K" value={bullion?.rate_18k} />
             <BullionStat label="Silver 999" value={bullion?.silver_999} />
           </div>
         )}

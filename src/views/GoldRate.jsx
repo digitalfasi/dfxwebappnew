@@ -283,7 +283,7 @@ export default function GoldRate() {
                 <span className="text-[11px] text-red-500">Live: {liveErr}</span>
               ) : live?.fetchedAt ? (
                 <span className="text-[11px] text-muted">
-                  Live · KJPL + MJDTA · auto 60s · {new Date(live.fetchedAt).toLocaleTimeString()}
+                  Live Sync · auto 60s · {new Date(live.fetchedAt).toLocaleTimeString()}
                 </span>
               ) : null}
             </div>
