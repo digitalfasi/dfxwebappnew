@@ -31,6 +31,7 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Only Image-Only banners are supported now. Create goes straight to the form.
   const openCreate = () => { setEditingPromo(null); onNavigate("promotion-create"); };
   const handleEdit = (p) => { setEditingPromo(p); onNavigate("promotion-create"); };
 

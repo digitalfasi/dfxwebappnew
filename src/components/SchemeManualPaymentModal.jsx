@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input, SearchInput } from "./ui/input";
@@ -8,6 +8,7 @@ import { formatINR } from "../lib/utils";
 import { customerService } from "../services/customerService";
 import { enrollmentService } from "../services/enrollmentService";
 import { paymentService } from "../services/paymentService";
+import { dueSchedule, fmtDueDate, fmtMissedDates } from "../lib/schemeDue";
 
 // Scheme manual-payment method enum (backend PaymentMethod for /payments/manual).
 const PAY_METHODS = [
@@ -18,8 +19,9 @@ const PAY_METHODS = [
   { value: "CHEQUE", label: "Cheque" },
   { value: "ONLINE", label: "Online" },
 ];
-// Backend accepts only 1 / 3 / 6 installments per manual transaction; an advance
-// (3/6) requires amount == monthly_amount * months_covered exactly.
+// Advance-payment convenience sizes. The backend accepts ANY whole-month
+// multiple (it derives the installment count from the amount), so these are just
+// quick "pay ahead" shortcuts — the "clear overdue" option below can be any count.
 const ADVANCE_OPTIONS = [1, 3, 6];
 
 function todayIso() {
@@ -41,7 +43,7 @@ function fmtDate(iso) {
  * are UX hints — the backend re-validates the months multiple and maturity cap
  * on submit. Business sale payments are a separate flow and are not touched here.
  */
-export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
+export default function SchemeManualPaymentModal({ onClose, onRecorded, initial }) {
   // Step 1 — customer search.
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -122,17 +124,49 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
     loadBalance(e.id);
   };
 
+  // Row-level "Clear Overdue" jumps straight to this enrollment's contribution
+  // form — no re-search. The row already carries the enrollment id, number,
+  // scheme name and customer name.
+  useEffect(() => {
+    if (!initial?.enrollmentId) return;
+    setCustomer({ id: initial.customerId ?? null, name: initial.customerName || "Customer" });
+    setEnrollment({ id: initial.enrollmentId, scheme: initial.scheme, enrollment: initial.enrollment });
+    loadBalance(initial.enrollmentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial?.enrollmentId]);
+
   // Backend-derived coverage numbers (never recomputed here).
   const monthly = balance?.monthly_amount ?? 0;
   const remainingMonths = balance ? Math.max(0, (balance.duration_months ?? 0) - (balance.months_paid ?? 0)) : 0;
   const canContribute = !!balance?.can_contribute && remainingMonths > 0;
-  // Only advance sizes that fit inside the remaining contractual months.
-  const monthChoices = useMemo(
-    () => ADVANCE_OPTIONS.filter((n) => n <= remainingMonths),
-    [remainingMonths]
+  // Installments overdue right now, from the backend's oldest-unpaid next_due_date.
+  // This is what the admin most often wants to settle in ONE payment.
+  const sched = useMemo(
+    () => (balance ? dueSchedule(balance.next_due_date, monthly, remainingMonths) : null),
+    [balance, monthly, remainingMonths]
   );
-  // Amount is fixed by the scheme: monthly x months_covered (backend requires exact equality).
+  const overdueCount = sched?.missedCount || 0;
+  // Choices: "clear overdue" (the exact overdue count) + advance sizes (1/3/6),
+  // capped at remaining months and de-duplicated. Backend accepts any whole-month
+  // multiple, so clearing 2 overdue in one payment is valid — no forced 1+1.
+  const monthChoices = useMemo(() => {
+    const set = new Set();
+    if (overdueCount > 0 && overdueCount <= remainingMonths) set.add(overdueCount);
+    for (const n of ADVANCE_OPTIONS) if (n <= remainingMonths) set.add(n);
+    return [...set].sort((a, b) => a - b);
+  }, [overdueCount, remainingMonths]);
+  // Amount is fixed by the scheme: monthly x months (backend requires exact equality).
   const amount = monthly * form.months;
+
+  // Default the selector to "clear the overdue" when there is any, else 1 month —
+  // so the common case (settle what's owed) is one click. Runs when the balance
+  // resolves (and thus the overdue count is known).
+  useEffect(() => {
+    if (!balance) return;
+    const preferred = overdueCount > 0 ? overdueCount : 1;
+    setForm((prev) => ({ ...prev, months: monthChoices.includes(preferred) ? preferred : (monthChoices[0] ?? 1) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [balance, overdueCount, remainingMonths]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -158,12 +192,15 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
     try {
       // Existing scheme engine. Backend re-derives coverage and rejects
       // over-maturity / non-matching amounts. No balance recompute here.
+      // Send only the amount (monthly × chosen installments). The backend derives
+      // the installment count from the amount, so months_covered is intentionally
+      // omitted — sending it would hit the schema's 1/3/6 restriction and block a
+      // 2-installment "clear overdue".
       await paymentService.recordManualPayment({
         enrollmentId: balance.enrollment_id,
         amount,
         method: form.method,
         paymentDate: form.date,
-        monthsCovered: form.months,
         remarks: form.remarks.trim() || undefined,
       });
       toast(`Payment of ${formatINR(amount)} recorded for ${balance.enrollment_number}`);
@@ -179,6 +216,7 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
   };
 
   const back = () => {
+    if (initial?.enrollmentId) { onClose(); return; } // row-level clear: no list behind it
     if (enrollment) { setEnrollment(null); setBalance(null); return; }
     if (customer) { setCustomer(null); setEnrollments([]); return; }
     onClose();
@@ -303,8 +341,39 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
                       <span className="text-muted">Remaining months</span><span className="num text-right font-bold">{remainingMonths}</span>
                       <span className="text-muted">Total paid</span><span className="num text-right font-bold">{formatINR(balance.total_paid ?? 0)}</span>
                       <span className="text-muted">Available balance</span><span className="num text-right font-bold">{formatINR(balance.available_balance ?? 0)}</span>
-                      <span className="text-muted">Next due</span><span className="text-right font-bold">{fmtDate(balance.next_due_date)}</span>
                     </div>
+                    {/* Installment status. The backend's next_due_date is the OLDEST
+                        UNPAID installment, so it is a PAST date once payments are
+                        missed — never label that "next due". */}
+                    {(() => {
+                      const sched = dueSchedule(balance.next_due_date, monthly, remainingMonths);
+                      if (sched.missedCount > 0) {
+                        return (
+                          <div className="mt-3 rounded-lg border border-danger-line bg-danger-soft/40 px-3 py-2.5">
+                            <div className="flex items-center justify-between text-xs font-bold text-danger">
+                              <span>{sched.missedCount} installment{sched.missedCount > 1 ? "s" : ""} overdue</span>
+                              <span className="num">{formatINR(sched.missedAmount)}</span>
+                            </div>
+                            <div className="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-[11px] font-semibold text-danger/85">
+                              <span>Missed dates</span><span className="text-right">{fmtMissedDates(sched.missedDates)}</span>
+                              <span>Overdue since</span><span className="text-right">{fmtDueDate(sched.oldestUnpaid)} — {sched.daysOverdue} days</span>
+                              {sched.nextUpcoming && (<><span className="text-ink-soft">Next installment due</span><span className="text-right text-ink-soft">{fmtDueDate(sched.nextUpcoming)}</span></>)}
+                            </div>
+                            {sched.missedCount > 1 && (
+                              <div className="mt-1.5 text-[11px] font-semibold text-muted">
+                                Use “Clear overdue” below to settle all {sched.missedCount} in one payment.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="mt-3 flex items-center justify-between rounded-lg border border-line bg-white px-3 py-2 text-xs font-semibold">
+                          <span className="text-muted">Next installment due</span>
+                          <span className="font-bold">{fmtDueDate(sched.nextUpcoming) !== "—" ? fmtDueDate(sched.nextUpcoming) : fmtDate(balance.next_due_date)}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {canContribute && monthChoices.length > 0 ? (
@@ -312,11 +381,16 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
                       <div className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Record contribution</div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <label className="grid gap-1.5">
-                          <span className="text-xs font-bold">Advance (months) *</span>
+                          <span className="text-xs font-bold">Installments *</span>
                           <Select
                             value={String(form.months)}
                             onValueChange={(v) => setForm({ ...form, months: Number(v) })}
-                            options={monthChoices.map((n) => ({ value: String(n), label: n === 1 ? "1 month (regular)" : `${n} months (advance)` }))}
+                            options={monthChoices.map((n) => ({
+                              value: String(n),
+                              label: (overdueCount > 0 && n === overdueCount)
+                                ? `Clear overdue · ${n} (${formatINR(monthly * n)})`
+                                : (n === 1 ? "1 month (regular)" : `${n} months (advance)`),
+                            }))}
                           />
                         </label>
                         <label className="grid gap-1.5">
@@ -337,7 +411,7 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
                         </label>
                       </div>
                       <p className="text-[11px] text-muted">
-                        Amount is fixed at {formatINR(monthly)} × months. Backend derives coverage from the amount and rejects non-matching amounts or payments past maturity.
+                        Amount = {formatINR(monthly)} × installments, set automatically. The backend re-derives coverage from the amount and rejects mismatched amounts or payments past maturity.
                       </p>
                       {formError && <p role="alert" className="text-xs font-semibold text-danger">{formError}</p>}
                       <div className="flex justify-end gap-2.5">

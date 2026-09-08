@@ -6,12 +6,6 @@ const ROLE_LABEL = { admin: "Admin", superadmin: "Super Admin", customer: "Custo
 function roleText(u) {
   return u?.backendRole || ROLE_LABEL[u?.role] || (u?.role ? u.role : "");
 }
-function initials(name) {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-}
-
 const Icon = ({ d, ...p }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
     strokeLinecap="round" strokeLinejoin="round" className={cn("h-[18px] w-[18px] shrink-0", p.className)}>
@@ -91,7 +85,7 @@ export const NAV_SECTIONS = [
   },
 ];
 
-export default function Sidebar({ page, onNavigate, open, onClose }) {
+export default function Sidebar({ page, onNavigate, open, onClose, collapsed = false, onToggleCollapse }) {
   const { user, tenantName } = useAuth();
   const storeName = tenantName || "DFX Solution";
   const [openMap, setOpenMap] = useState({ Plans: true, Procurement: true, Billing: true });
@@ -109,24 +103,62 @@ export default function Sidebar({ page, onNavigate, open, onClose }) {
       />
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col border-r border-accent-line/45 bg-[#efe7d3] transition-transform duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
+          "fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col border-r border-accent-line/45 bg-[#efe7d3] transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
           "lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:translate-x-0 lg:overflow-hidden",
+          collapsed && "lg:w-[76px]",
           open ? "translate-x-0" : "-translate-x-full"
         )}
         aria-label="Primary navigation"
       >
-        <div className="flex items-center gap-3 border-b border-line-soft px-5 py-[18px]">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-sm font-extrabold text-white">
-            {storeName[0]?.toUpperCase() ?? "D"}
+        {/* Store identity — visually separated from the nav by its own surface
+            and a stronger divider, so the header reads as a distinct band. */}
+        {collapsed ? (
+          <div className="flex justify-center border-b border-accent-line/50 bg-white/50 px-2 py-4">
+            <div
+              className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm"
+              title={`${storeName} · ${roleText(user) || "Admin"}`}
+            >
+              {storeName[0]?.toUpperCase() ?? "D"}
+            </div>
           </div>
-          <div className="leading-tight">
-            <div className="text-sm font-extrabold tracking-tight">{storeName}</div>
-            <div className="text-[11px] font-medium text-muted">{roleText(user) || "Admin"}</div>
+        ) : (
+          <div className="flex items-center gap-3 border-b border-accent-line/50 bg-white/50 px-4 py-4">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm">
+              {storeName[0]?.toUpperCase() ?? "D"}
+            </div>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="truncate text-sm font-extrabold tracking-tight text-ink" title={storeName}>{storeName}</div>
+              <span className="mt-1 inline-flex items-center rounded-full border border-accent-line/60 bg-accent-soft/70 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-accent-strong">
+                {roleText(user) || "Admin"}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
-        <nav className="auto-fade-scroll flex-1 overflow-y-auto overscroll-contain px-3 py-3" onScroll={(e) => { const el = e.currentTarget; el.classList.add("is-scrolling"); clearTimeout(el._fadeT); el._fadeT = setTimeout(() => el.classList.remove("is-scrolling"), 1000); }}>
-          {(() => {
+        <nav className={cn("auto-fade-scroll flex-1 overflow-y-auto overscroll-contain py-3", collapsed ? "px-2" : "px-3")} onScroll={(e) => { const el = e.currentTarget; el.classList.add("is-scrolling"); clearTimeout(el._fadeT); el._fadeT = setTimeout(() => el.classList.remove("is-scrolling"), 1000); }}>
+          {collapsed ? (
+            /* Icon rail — every module as a single tooltipped icon. */
+            <div className="flex flex-col items-center gap-1">
+              {NAV_SECTIONS.flatMap((s) => s.items).map((item) => {
+                const active = page === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => { onNavigate(item.id); onClose(); }}
+                    title={item.name}
+                    aria-label={item.name}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "grid h-10 w-10 place-items-center rounded-xl transition-colors",
+                      active ? "border border-accent-line/40 bg-white text-accent-strong shadow-sm" : "text-ink-soft hover:bg-white hover:text-ink"
+                    )}
+                  >
+                    {item.icon}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (() => {
             const q = query.trim().toLowerCase();
             const filtered = q
               ? NAV_SECTIONS.map(sec => ({ ...sec, items: sec.items.filter(it => it.name.toLowerCase().includes(q)) })).filter(sec => sec.items.length > 0)
@@ -213,12 +245,22 @@ export default function Sidebar({ page, onNavigate, open, onClose }) {
           })()}
         </nav>
 
-        <div className="flex items-center gap-3 border-t border-line-soft px-5 py-4">
-          <div className="grid h-8 w-8 place-items-center rounded-full bg-ink text-xs font-bold text-white">{initials(user?.name)}</div>
-          <div className="text-xs leading-tight">
-            <div className="font-bold">{user?.name || "—"}</div>
-            <div className="text-muted">{roleText(user) || "—"}</div>
-          </div>
+        {/* Collapse control — centered in its own bottom band. The signed-in user
+            block used to live here, but the header already shows the store and
+            role, so it was duplicate information. Desktop only (mobile uses the
+            slide-over drawer, which has no collapsed state). */}
+        <div className="hidden justify-center border-t border-accent-line/50 bg-white/50 px-2 py-3 lg:flex">
+          <button
+            onClick={onToggleCollapse}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            className="grid h-9 w-9 place-items-center rounded-xl border border-line bg-white text-muted transition-colors hover:border-accent-line hover:text-accent-strong"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d={collapsed ? "M9 18l6-6-6-6" : "M15 18l-6-6 6-6"} />
+            </svg>
+          </button>
         </div>
       </aside>
     </>

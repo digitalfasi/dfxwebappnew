@@ -36,7 +36,7 @@ const PAGES = {
   inventory: { title: "Inventory", component: Inventory },
   vendors: { title: "Purchase History", component: Vendors },
   "new-sale": { title: "New Sale", component: NewSale },
-  "sales-history": { title: "Sales History", component: SalesHistory, action: "New sale" },
+  "sales-history": { title: "Sales History", component: SalesHistory },
   catalogue: { title: "Catalogue Studio", component: CatalogueStudio },
   marketing: { title: "Promotion Banners", component: PromotionBanners },
   "promotion-create": { title: "Create Promotion", component: PromotionCreate },
@@ -95,6 +95,16 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   const [navOpen, setNavOpen] = useState(false);
+  // Desktop sidebar collapsed to an icon rail, so the content area can expand.
+  // Per-viewer convenience only — safe to lose.
+  const [navCollapsed, setNavCollapsed] = useState(() => {
+    try { return localStorage.getItem("dfx:navCollapsed") === "1"; } catch { return false; }
+  });
+  const toggleNavCollapsed = () => setNavCollapsed((v) => {
+    const next = !v;
+    try { localStorage.setItem("dfx:navCollapsed", next ? "1" : "0"); } catch { /* ignore */ }
+    return next;
+  });
   const [search, setSearch] = useState("");
   useEffect(() => { setSearch(""); }, [page]);
   const [promotions, setPromotions] = useState(INITIAL_PROMOTIONS);
@@ -116,7 +126,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar page={page} onNavigate={setPage} open={navOpen} onClose={() => setNavOpen(false)} />
+      <Sidebar page={page} onNavigate={setPage} open={navOpen} onClose={() => setNavOpen(false)} collapsed={navCollapsed} onToggleCollapse={toggleNavCollapsed} />
       <div className="auto-fade-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain" onScroll={(e) => { const el = e.currentTarget; el.classList.add("is-scrolling"); clearTimeout(el._fadeT); el._fadeT = setTimeout(() => el.classList.remove("is-scrolling"), 1000); }}>
         <TopBar
           title={meta.title}
@@ -125,16 +135,6 @@ export default function App() {
           onLogout={logout}
           bullion={bullion}
           hideTitle
-          action={
-            meta.action && (
-              <button
-                onClick={() => {}}
-                className="hidden h-8 items-center rounded-full bg-accent px-4 text-xs font-bold text-white transition-all duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-accent-strong active:scale-95 sm:inline-flex"
-              >
-                {meta.action}
-              </button>
-            )
-          }
         />
         <main className="content-shell w-full min-w-0 flex-1 overflow-x-hidden px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
           {Page ? <Page onNavigate={setPage} search={search} promotions={promotions} setPromotions={setPromotions} editingPromo={editingPromo} setEditingPromo={setEditingPromo} /> : <ComingSoon name={meta.title} />}

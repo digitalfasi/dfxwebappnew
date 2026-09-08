@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { SearchInput } from "./ui/input";
 
-function BullionStat({ label, value }) {
+function BullionStat({ label, value, dot }) {
   return (
-    <span className="flex items-center gap-1 whitespace-nowrap">
-      <span className="font-bold text-muted">{label}:</span>
-      <span className="num font-extrabold text-ink">{value != null ? `₹${Number(value).toLocaleString("en-IN")}/g` : "—/g"}</span>
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
+      <span className="text-[10px] font-bold uppercase tracking-wide text-muted">{label}</span>
+      <span className="num text-[13px] font-extrabold tabular-nums text-ink">
+        {value != null ? `₹${Number(value).toLocaleString("en-IN")}` : "—"}
+        <span className="text-[10px] font-semibold text-faint">/g</span>
+      </span>
     </span>
   );
 }
@@ -63,14 +67,24 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
             middle when there's no search. Always shown (—/g until today's rate is
             published). Hidden on small screens to stay clean. */}
         {!showSearch && (
-          <div className="hidden h-9 min-w-0 shrink-0 items-center gap-x-4 rounded-full border border-line bg-surface px-4 text-[11px] shadow-sm lg:flex xl:gap-x-5">
-            <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap font-bold text-ink">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />Live Rate
+          <div className="hidden h-11 min-w-0 shrink-0 items-center gap-1 rounded-full border border-line bg-gradient-to-r from-white via-white to-[#f8f2e3] pl-1.5 pr-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_1px_3px_rgba(30,41,59,0.06)] lg:flex">
+            {/* Animated LIVE badge — dark chip with a pinging gold pulse. */}
+            <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-ink px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+              </span>
+              Live
             </span>
-            <BullionStat label="24K" value={bullion?.rate_24k} />
-            <BullionStat label="22K" value={bullion?.rate_22k} />
-            <BullionStat label="18K" value={bullion?.rate_18k} />
-            <BullionStat label="Silver 999" value={bullion?.silver_999} />
+            <div className="flex items-center gap-x-3 pl-2 xl:gap-x-4">
+              <BullionStat label="24K" value={bullion?.rate_24k} dot="#c9a84c" />
+              <span className="h-4 w-px bg-line" />
+              <BullionStat label="22K" value={bullion?.rate_22k} dot="#d4b65e" />
+              <span className="h-4 w-px bg-line" />
+              <BullionStat label="18K" value={bullion?.rate_18k} dot="#e3cd8a" />
+              <span className="h-4 w-px bg-line" />
+              <BullionStat label="Silver" value={bullion?.silver_999} dot="#a8adb7" />
+            </div>
           </div>
         )}
 

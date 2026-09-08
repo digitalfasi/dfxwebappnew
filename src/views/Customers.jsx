@@ -344,48 +344,78 @@ export default function Customers() {
         // the Purchase "Inventory Composition" layout. Counts come from the loaded
         // list — display aggregation only, no backend recompute.
         const typeComp = [
-          { label: "Walk-in", count: customers.filter(c => c.type === "Walk-in").length },
-          { label: "Scheme", count: customers.filter(c => c.type === "Scheme Customer").length },
-          { label: "Hybrid", count: customers.filter(c => c.type === "Hybrid").length },
-          { label: "New", count: customers.filter(c => c.type === "New").length },
+          { label: "Walk-in", count: customers.filter(c => c.type === "Walk-in").length, color: "#c9a84c" },
+          { label: "Scheme", count: customers.filter(c => c.type === "Scheme Customer").length, color: "#0f9b7a" },
+          { label: "Hybrid", count: customers.filter(c => c.type === "Hybrid").length, color: "#6366f1" },
+          { label: "New", count: customers.filter(c => c.type === "New").length, color: "#94a3b8" },
         ];
         const kycPending = customers.filter(c => c.kyc === "Pending Review").length;
         const schemeEnrolled = customers.filter(c => c.type === "Scheme Customer" || c.type === "Hybrid").length;
+        const totalCustomers = customers.length;
+        const pct = (n) => (totalCustomers > 0 ? Math.round((n / totalCustomers) * 100) : 0);
+
+        const StatCard = ({ label, value, note, icon, tint, ring, valueClass }) => (
+          <Card className="relative overflow-hidden p-4">
+            <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full opacity-[0.12]" style={{ background: tint }} />
+            <div className="relative flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border" style={{ background: `${tint}1a`, borderColor: ring, color: tint }}>
+                {icon}
+              </span>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">{label}</div>
+                <div className={`num mt-0.5 text-[26px] font-extrabold leading-none ${valueClass || ""}`}>{value}</div>
+                <div className="mt-1 text-xs text-faint">{note}</div>
+              </div>
+            </div>
+          </Card>
+        );
+
         return (
           <div className="mb-4 grid gap-3" data-motion="stat">
-            <div className="grid gap-3 lg:grid-cols-[minmax(200px,240px)_1fr]">
-              <Card className="p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total customers</div>
-                <div className="num mt-1 text-2xl font-extrabold">{customers.length}</div>
-                <div className="text-xs text-faint">All time</div>
-              </Card>
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Customer Types</div>
-                  <div className="text-[11px] text-muted">By type · count</div>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-4">
-                  {typeComp.map(({ label, count }) => (
-                    <div key={label} className="flex items-baseline justify-between border-b border-line-soft pb-1">
-                      <span className="text-sm font-bold">{label}</span>
-                      <span className="num font-mono text-sm font-semibold tabular-nums">{count}</span>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <StatCard
+                label="Total customers" value={totalCustomers} note="All time" tint="#c9a84c" ring="rgba(201,168,76,0.35)"
+                icon={<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /></svg>}
+              />
+              <StatCard
+                label="KYC pending" value={kycPending} note="Needs review" tint={kycPending > 0 ? "#dc2626" : "#0f9b7a"} ring={kycPending > 0 ? "rgba(220,38,38,0.3)" : "rgba(15,155,122,0.3)"}
+                valueClass={kycPending > 0 ? "text-danger" : ""}
+                icon={<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M9 15h6" /></svg>}
+              />
+              <StatCard
+                label="Scheme enrolled" value={schemeEnrolled} note="With live schemes" tint="#0f9b7a" ring="rgba(15,155,122,0.3)"
+                icon={<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="5" /><circle cx="16" cy="13" r="4" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></svg>}
+              />
+            </div>
+
+            {/* Customer Types — share-of-base composition with bars. */}
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Customer Types</div>
+                <div className="text-[11px] text-muted">Share of {totalCustomers.toLocaleString("en-IN")} customers</div>
+              </div>
+              {/* Single stacked bar — the whole base at a glance. */}
+              <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-line-soft">
+                {typeComp.map(({ label, count, color }) => (
+                  count > 0 ? <div key={label} style={{ width: `${pct(count)}%`, background: color }} title={`${label}: ${count}`} /> : null
+                ))}
+              </div>
+              <div className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+                {typeComp.map(({ label, count, color }) => (
+                  <div key={label}>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-sm font-bold">
+                        <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />{label}
+                      </span>
+                      <span className="num font-mono text-xs font-semibold tabular-nums text-muted">{count} · {pct(count)}%</span>
                     </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
-            <div className="grid grid-cols-2 gap-3 lg:max-w-[520px]">
-              <Card className="p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">KYC pending</div>
-                <div className="num mt-1 text-2xl font-extrabold">{kycPending}</div>
-                <div className="text-xs text-faint">Needs review</div>
-              </Card>
-              <Card className="p-4">
-                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Scheme enrolled</div>
-                <div className="num mt-1 text-2xl font-extrabold">{schemeEnrolled}</div>
-                <div className="text-xs text-faint">With live schemes</div>
-              </Card>
-            </div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line-soft">
+                      <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${pct(count)}%`, background: color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
           </div>
         );
       })()}

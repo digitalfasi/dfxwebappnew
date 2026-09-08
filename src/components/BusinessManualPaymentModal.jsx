@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input, SearchInput } from "./ui/input";
@@ -30,7 +30,7 @@ function todayIso() {
  * (POST /billing/sales/{sale_id}/payments). All money figures stay backend
  * authoritative. Scheme payments are a separate flow and are not touched here.
  */
-export default function BusinessManualPaymentModal({ onClose, onRecorded }) {
+export default function BusinessManualPaymentModal({ onClose, onRecorded, initial }) {
   // Step 1 — customer search.
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -115,6 +115,16 @@ export default function BusinessManualPaymentModal({ onClose, onRecorded }) {
     loadHistory(s.id);
   };
 
+  // Row-level "Clear" jumps straight to this invoice's record form — no re-search.
+  // The row already carries the sale id, invoice no. and customer name.
+  useEffect(() => {
+    if (!initial?.saleId) return;
+    setCustomer({ id: initial.customerId ?? null, name: initial.customerName || "Customer" });
+    setSale({ id: initial.saleId, inv: initial.inv });
+    loadHistory(initial.saleId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial?.saleId]);
+
   const submit = async (e) => {
     e.preventDefault();
     if (submitting || !sale) return;
@@ -157,6 +167,7 @@ export default function BusinessManualPaymentModal({ onClose, onRecorded }) {
   };
 
   const back = () => {
+    if (initial?.saleId) { onClose(); return; } // row-level clear: no list behind it
     if (sale) { setSale(null); setHistory(null); return; }
     if (customer) { setCustomer(null); setSales([]); return; }
     onClose();
@@ -289,7 +300,10 @@ export default function BusinessManualPaymentModal({ onClose, onRecorded }) {
                       <div className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Record payment</div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <label className="grid gap-1.5">
-                          <span className="text-xs font-bold">Amount *</span>
+                          <span className="flex items-center justify-between text-xs font-bold">
+                            <span>Amount *</span>
+                            <button type="button" onClick={() => setForm({ ...form, amount: String(history.amountOutstanding) })} className="text-[11px] font-bold text-accent hover:underline">Full · {formatINR(history.amountOutstanding)}</button>
+                          </span>
                           <Input type="number" step="0.01" min="0" inputMode="decimal" placeholder={`Up to ${formatINR(history.amountOutstanding)}`} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
                         </label>
                         <label className="grid gap-1.5">

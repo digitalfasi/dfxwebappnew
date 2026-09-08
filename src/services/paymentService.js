@@ -37,6 +37,14 @@ function mapRow(raw) {
     method: raw.payment_method,
     date: fmtDate(raw.payment_date),
     time: fmtTime(raw.payment_date),
+    // Raw ISO date so the table's period filter (Today / This Month / Custom)
+    // works on the actual transaction date, and a marker so the view can tell a
+    // payment transaction from an enrollment row.
+    ts: raw.payment_date || null,
+    kind: "payment",
+    // How many installments this one payment cleared, so the ledger can show
+    // "₹30,000 · 3 mo" — the admin sees at a glance what the payment covered.
+    monthsCovered: raw.months_covered || 1,
     // Enrollment overdue tracking (backend-authoritative when present on the
     // payload; 0 when the payments endpoint doesn't carry it).
     overdueDays: raw.overdue_days ?? 0,

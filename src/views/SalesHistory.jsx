@@ -12,6 +12,9 @@ import { billingService } from "../services/billingService";
 const STATUS_TONE = { Paid: "success", Partial: "warning", Pending: "danger", Returned: "info", Canceled: "neutral" };
 const PAY_STATUS_TONE = { PAID: "success", PARTIAL: "warning", PENDING: "danger" };
 const PAGE_LIMIT = 100; // backend caps /billing/sales at limit<=100
+// Karats the store deals in — always selectable in the purity filter regardless
+// of what the currently loaded page contains.
+const PURITY_CANONICAL = ["24K", "22K", "18K", "14K"];
 
 // Named periods the backend resolves server-side, plus a Custom range.
 const PERIODS = [
@@ -123,7 +126,15 @@ export default function SalesHistory() {
 
   const catOptions = useMemo(() => [...new Set(bills.map(b => b.category).filter(Boolean))].sort(), [bills]);
   const subOptions = useMemo(() => [...new Set(bills.map(b => b.subcategory).filter(Boolean))].sort(), [bills]);
-  const purityOptions = useMemo(() => [...new Set(bills.map(b => b.purity).filter(Boolean))].sort(), [bills]);
+  // Purity options must NOT depend on what this page happened to load. The list
+  // is period-limited (default This Month, 100 rows), so deriving options purely
+  // from `bills` hid purities that were genuinely sold in other periods (e.g. 24K
+  // never appearing). Canonical karats always offered; extras appended.
+  const purityOptions = useMemo(() => {
+    const seen = new Set(bills.map(b => b.purity).filter(Boolean));
+    const extras = [...seen].filter(p => !PURITY_CANONICAL.includes(p)).sort();
+    return [...PURITY_CANONICAL, ...extras];
+  }, [bills]);
 
   const totalGoldSold = useMemo(() => rows.reduce((s, b) => s + (b.netGoldWeightGrams || 0), 0), [rows]);
 
@@ -265,7 +276,7 @@ export default function SalesHistory() {
              Invoice, Date, Customer, HUID, Category, Sub-category, No. of Items,
              Weight, Payment Type, Total, Paid, Outstanding, Profit/Loss, Status,
              View, Print Invoice. */}
-          <table className="w-full min-w-[1500px] border-collapse text-sm">
+          <table className="w-full min-w-[1400px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted [&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-3">
                 <th className="!pl-5">Invoice No.</th>
@@ -282,8 +293,7 @@ export default function SalesHistory() {
                 <th className="text-right">Outstanding</th>
                 <th className="text-right">Profit/Loss</th>
                 <th>Status</th>
-                <th className="text-center">View</th>
-                <th className="!pr-5 text-center">Print Invoice</th>
+                <th className="!pr-5 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -318,22 +328,26 @@ export default function SalesHistory() {
                     )}
                   </td>
                   <td><Badge tone={STATUS_TONE[b.status]} dot>{b.status}</Badge></td>
-                  <td className="text-center">
-                    <button
-                      className="rounded-lg border border-line px-3 py-1.5 text-xs font-bold text-ink transition-colors duration-150 hover:border-accent-line hover:bg-accent-soft hover:text-accent-strong"
-                      onClick={(e) => { e.stopPropagation(); setSelectedId(b.id); }}
-                    >
-                      View
-                    </button>
-                  </td>
-                  <td className="!pr-5 text-center">
-                    <button
-                      className="rounded-lg border border-line px-3 py-1.5 text-xs font-bold text-ink transition-colors duration-150 hover:border-accent-line hover:bg-accent-soft hover:text-accent-strong disabled:opacity-50"
-                      disabled={printing === b.id}
-                      onClick={(e) => { e.stopPropagation(); handlePrint(b); }}
-                    >
-                      {printing === b.id ? "Opening…" : "Print"}
-                    </button>
+                  <td className="!pr-5">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-bold text-ink transition-colors duration-150 hover:border-accent-line hover:bg-accent-soft hover:text-accent-strong"
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(b.id); }}
+                        title="View invoice details"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+                        View
+                      </button>
+                      <button
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-bold text-ink transition-colors duration-150 hover:border-accent-line hover:bg-accent-soft hover:text-accent-strong disabled:opacity-50"
+                        disabled={printing === b.id}
+                        onClick={(e) => { e.stopPropagation(); handlePrint(b); }}
+                        title="Print invoice"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" /></svg>
+                        {printing === b.id ? "Opening…" : "Print"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

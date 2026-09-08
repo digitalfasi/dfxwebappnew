@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { usePageMotion, usePressFeedback } from "../hooks/usePageMotion";
@@ -86,13 +86,15 @@ export default function Schemes() {
     // Tiers apply to MONTHLY schemes on both create and edit.
     const cleanTiers = [];
     if (form.type === "MONTHLY") {
-      const seen = new Set();
+      // Seed with the scheme's own base plan so a tier can't silently duplicate
+      // it — that would show the customer the same option twice.
+      const seen = new Set([`${Number(form.amount)}-${Number(form.duration)}`]);
       for (const t of tiers) {
         const ma = Number(t.monthlyAmount);
         const dm = Number(t.durationMonths);
         if (!ma || ma <= 0 || !dm || dm <= 0) { e.tiers = "Each tier needs a valid amount and duration"; break; }
         const key = `${ma}-${dm}`;
-        if (seen.has(key)) { e.tiers = "Duplicate tier (same amount and duration)"; break; }
+        if (seen.has(key)) { e.tiers = "Tier duplicates the base plan or another tier (same amount and duration)"; break; }
         seen.add(key);
         cleanTiers.push({ monthlyAmount: ma, durationMonths: dm });
       }
@@ -109,7 +111,10 @@ export default function Schemes() {
           monthlyAmount: Number(form.amount),
           durationMonths: Number(form.duration),
           bonusDescription: form.bonus.trim(),
-          ...(form.type === "MONTHLY" ? { tiers: cleanTiers } : {}),
+          // Always send the tier set. Omitting it leaves tiers untouched, so a
+          // scheme switched away from MONTHLY would keep stale selectable tiers;
+          // an empty array makes the backend deactivate them.
+          tiers: form.type === "MONTHLY" ? cleanTiers : [],
         });
         setShow(false);
         setEditingId(null);
@@ -229,23 +234,6 @@ export default function Schemes() {
           </Card>
         ))}
       </div>
-
-      <Card data-motion="reveal" className="overflow-hidden">
-        <CardHeader>
-          <div>
-            <CardTitle>Recent enrollments</CardTitle>
-            <CardDescription>Customers who joined a scheme recently</CardDescription>
-          </div>
-          <Badge tone="neutral">—</Badge>
-        </CardHeader>
-        <CardContent className="px-6 py-10 text-center">
-          {/* Enrollment data belongs to Scheme Management (a later task). No mock
-              rows are shown here — this stays an honest neutral state until the
-              real enrollments feed is wired in. */}
-          <div className="font-bold">Enrollments appear in Scheme Management</div>
-          <p className="mt-1 text-sm text-muted">Recent enrollment activity will be shown here once available.</p>
-        </CardContent>
-      </Card>
 
       {show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

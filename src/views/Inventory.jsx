@@ -29,6 +29,16 @@ const SUBCATS = ["Traditional","Bridal","Diamond","Stone Studded","Jhumka"];
 const PURITIES = ["24K","22K","20K","18K","14K","9K"];
 const STATUS_OPTS = ["All statuses","In Stock","Sold","Inactive"];
 const PAYMENT_MODES = ["CASH","CREDIT","PARTIAL"];
+// Mode of payment (how the money actually moved) — separate from settlement
+// type. Recorded in the Vendor Payment ledger so cash/UPI/card/bank are
+// accounted. Backend PaymentMethod enum.
+const PAY_METHOD_OPTS = [
+  { value: "CASH", label: "Cash" },
+  { value: "UPI", label: "UPI" },
+  { value: "CARD", label: "Card" },
+  { value: "BANK_TRANSFER", label: "Net Banking / Bank" },
+  { value: "CHEQUE", label: "Cheque" },
+];
 
 const emptyBulkRow = () => ({ ident: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", net: "", rate: "" });
 
@@ -37,7 +47,7 @@ const emptyBulkRow = () => ({ ident: "", name: "", category: "", subCategory: ""
 const EMPTY_PURCHASE = {
   photoFile: null, photo: null, huid: "", name: "", category: "Rings", subCategory: "Traditional",
   purity: "22K", gross: "", net: "", vendor: "", purchaseDate: "", invoice: "", rate: "",
-  tunch: "4", paymentMode: "CASH", paidNow: "", addToCatalogue: true,
+  tunch: "4", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
 };
 
 export default function Inventory({ onNavigate }) {
@@ -86,7 +96,7 @@ export default function Inventory({ onNavigate }) {
 
   // Bulk receiving — Phase 4. Two types: Jewellery (HUID) / Raw Gold (Serial).
   const [bulkType, setBulkType] = useState("JEWELLERY");
-  const [bulkHeader, setBulkHeader] = useState({ vendor: "", date: "", invoice: "", tunch: "4", paymentMode: "CASH", paidNow: "" });
+  const [bulkHeader, setBulkHeader] = useState({ vendor: "", date: "", invoice: "", tunch: "4", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
   const [bulkRows, setBulkRows] = useState([emptyBulkRow()]);
   const [bulkSaving, setBulkSaving] = useState(false);
 
@@ -267,7 +277,8 @@ export default function Inventory({ onNavigate }) {
           inventoryItemId: created.id,
           paymentMode: f.paymentMode,
           paidNow: f.paymentMode === "PARTIAL" ? Number(f.paidNow) : undefined,
-          paymentMethod: "CASH",
+          // Mode of payment for the initial settlement; CREDIT moves no money.
+          paymentMethod: f.paymentMode === "CREDIT" ? "CASH" : f.paymentMethod,
           paymentDate: f.purchaseDate,
         });
         if (f.addToCatalogue) {
@@ -314,7 +325,7 @@ export default function Inventory({ onNavigate }) {
         tunchPercent: h.tunch,
         paymentMode: h.paymentMode,
         paidNow: h.paidNow,
-        paymentMethod: "CASH",
+        paymentMethod: h.paymentMode === "CREDIT" ? "CASH" : h.paymentMethod,
         paymentDate: h.date,
         items: rows.map(r => ({
           huid: r.ident.trim(),
@@ -334,7 +345,7 @@ export default function Inventory({ onNavigate }) {
       const final = res?.purchase?.purchaseAmount;
       setShowBulk(false);
       setBulkRows([emptyBulkRow()]);
-      setBulkHeader({ vendor: "", date: "", invoice: "", tunch: "4", paymentMode: "CASH", paidNow: "" });
+      setBulkHeader({ vendor: "", date: "", invoice: "", tunch: "4", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
       await load();
       toast(final != null ? `Bulk purchase recorded — ₹${final} payable` : "Bulk purchase recorded");
     } catch (err) {
@@ -593,11 +604,14 @@ export default function Inventory({ onNavigate }) {
                 <h4 className="text-xs font-extrabold uppercase tracking-widest">Payment</h4>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Payment Type</span><Select value={addForm.paymentMode} onValueChange={v=>setAddForm({...addForm, paymentMode:v})} options={PAYMENT_MODES} /></label>
+                  {addForm.paymentMode !== "CREDIT" && (
+                    <label className="grid gap-1.5"><span className="text-xs font-bold">Mode of Payment</span><Select value={addForm.paymentMethod} onValueChange={v=>setAddForm({...addForm, paymentMethod:v})} options={PAY_METHOD_OPTS} /></label>
+                  )}
                   {addForm.paymentMode === "PARTIAL" && (
                     <label className="grid gap-1.5"><span className="text-xs font-bold">Paid Now (₹) *</span><Input type="number" value={addForm.paidNow} onChange={e=>setAddForm({...addForm, paidNow:e.target.value})} /></label>
                   )}
                 </div>
-                <p className="text-[11px] text-muted">CASH settles in full · CREDIT leaves the full amount outstanding · PARTIAL records Paid Now and leaves the remainder outstanding. Tracked in the Vendor Payment ledger.</p>
+                <p className="text-[11px] text-muted">CASH settles in full · CREDIT leaves the full amount outstanding · PARTIAL records Paid Now and leaves the remainder outstanding. Mode of Payment (Cash/UPI/Card/Bank/Cheque) is recorded in the Vendor Payment ledger.</p>
               </div>
 
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={addForm.addToCatalogue} onChange={e=>setAddForm({...addForm, addToCatalogue:e.target.checked})} /> Add to Catalogue after creating</label>
@@ -633,6 +647,9 @@ export default function Inventory({ onNavigate }) {
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date *</span><Input type="date" value={bulkHeader.date} onChange={e=>setBulkHeader({...bulkHeader, date:e.target.value})} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Invoice Number</span><Input value={bulkHeader.invoice} onChange={e=>setBulkHeader({...bulkHeader, invoice:e.target.value})} placeholder="INV-..." /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Payment Type</span><Select value={bulkHeader.paymentMode} onValueChange={v=>setBulkHeader({...bulkHeader, paymentMode:v})} options={PAYMENT_MODES} /></label>
+                {bulkHeader.paymentMode !== "CREDIT" && (
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Mode of Payment</span><Select value={bulkHeader.paymentMethod} onValueChange={v=>setBulkHeader({...bulkHeader, paymentMethod:v})} options={PAY_METHOD_OPTS} /></label>
+                )}
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Tunch (%)</span><Input type="number" value={bulkHeader.tunch} onChange={e=>setBulkHeader({...bulkHeader, tunch:e.target.value})} /></label>
                 {bulkHeader.paymentMode === "PARTIAL" && (
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Paid Now (₹) *</span><Input type="number" value={bulkHeader.paidNow} onChange={e=>setBulkHeader({...bulkHeader, paidNow:e.target.value})} /></label>
