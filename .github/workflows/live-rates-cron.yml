@@ -1,34 +1,31 @@
-# DFX Collector Engine — free 24/7 auto-publish cron.
+# DFX Collector Engine — manual/fallback auto-publish trigger (testing repo).
 #
-# Every 5 minutes GitHub Actions POSTs to the deployed /api/live-rates/publish
-# route, which scrapes KJPL + MJDTA and writes the live rate into the DFX
-# (Render) backend — the source the MOBILE app reads. No server of your own runs
-# 24/7; GitHub's runners do the scheduling for free, Vercel does the work.
+# The 5-minute schedule now runs ON THE E2E NODE, not here:
+#   /etc/cron.d/dfx-gold-rate -> /opt/dfx-web/publish-rate.sh
+# It calls the same route over loopback, so it needs no public URL, no GitHub
+# runner and no shared secret in transit, and it keeps running if GitHub's cron
+# is delayed or skipped.
 #
-# The publish route itself enforces market hours (09:05–23:25 IST, Mon–Fri) and
-# sanity checks, so off-hours or bad-scrape runs simply no-op (published:false).
-# The schedule below is narrowed to roughly those hours (UTC) just to avoid
-# pointless runs — the route remains the authority.
+# This workflow is kept as a MANUAL trigger only (Actions -> Run workflow) for
+# when you want to force a publish without SSH access. Its schedule is
+# deliberately removed: running both schedulers would publish the same rate
+# twice every 5 minutes and duplicate the rate-history audit trail.
 #
-# SETUP (one time):
-#   1. Push this repo to the GitHub repo Vercel deploys from.
-#   2. Add two GitHub repo secrets (Settings → Secrets and variables → Actions):
-#        PUBLISH_URL  = https://<your-app>.vercel.app/api/live-rates/publish
-#        CRON_SECRET  = <a long random string>
-#   3. In Vercel (Project → Settings → Environment Variables) set the matching:
-#        CRON_SECRET           = <the SAME random string>
-#        DFX_API_URL           = https://dfx-backend-lym0.onrender.com/api/v1
-#        DFX_SERVICE_USERNAME  = <a backend account allowed to write gold rates>
-#        DFX_SERVICE_PASSWORD  = <its password>
-#      then redeploy so the env vars take effect.
-#   4. Test without touching the backend: run the workflow manually (Actions →
-#      Run workflow) — or locally hit the route with ?dryRun=1.
+# The publish route enforces market hours (09:05-23:25 IST, Mon-Fri) and sanity
+# checks, so an off-hours or bad-scrape run no-ops with published:false.
+#
+# Target: the E2E test node, which hosts the web app, the API and its own
+# Postgres. This repo is the TESTING repo — it must never point at the
+# production Render backend or the production web app.
+#
+# Optional repo secrets (Settings -> Secrets and variables -> Actions):
+#   PUBLISH_URL   overrides the default E2E URL below
+#   CRON_SECRET   must match CRON_SECRET in /opt/dfx-web/.env.web on E2E
 
 name: live-rates-cron
 
 on:
-  schedule:
-    - cron: "*/5 3-18 * * 1-5" # ~every 5 min during IST market hours (UTC), Mon–Fri
+  # No schedule: the E2E node's own cron owns the 5-minute cadence.
   workflow_dispatch: {}
 
 concurrency:
@@ -42,7 +39,7 @@ jobs:
     steps:
       - name: Scrape & publish live rate
         env:
-          PUBLISH_URL: ${{ secrets.PUBLISH_URL }}
+          PUBLISH_URL: ${{ secrets.PUBLISH_URL || 'https://164-52-198-31.sslip.io/api/live-rates/publish' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$PUBLISH_URL" ] || [ -z "$CRON_SECRET" ]; then
