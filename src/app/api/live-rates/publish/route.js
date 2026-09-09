@@ -21,6 +21,10 @@
  *   DFX_API_URL            backend base, e.g. https://dfx-backend-lym0.onrender.com/api/v1
  *   DFX_SERVICE_USERNAME   a backend account allowed to write gold rates
  *   DFX_SERVICE_PASSWORD   its password
+ *   DFX_PUBLISH_SCOPE      "all" writes the rate to every active tenant via
+ *                          POST /gold-rates/today/publish-all (requires a
+ *                          SuperAdmin account). Anything else writes only the
+ *                          account's own tenant.
  *
  * ?dryRun=1 runs the scrape + gates and reports what it WOULD publish, without
  * logging into or writing to the backend (safe to test before creds exist).
@@ -146,6 +150,25 @@ export async function POST(request) {
     const token = login.data?.access_token;
     if (!token) return Response.json({ published: false, error: "login returned no access token" }, { status: 502 });
 
+    // Rates are stored per tenant. A SuperAdmin account can publish the scraped
+    // rate to every active tenant in one transaction; a tenant-scoped account
+    // (Admin/Staff) can only write its own, which is the correct fallback for a
+    // single-store deployment.
+    if (String(process.env.DFX_PUBLISH_SCOPE || "").toLowerCase() === "all") {
+      const res = await backend("/gold-rates/today/publish-all", { method: "POST", body, token });
+      const d = res.data ?? {};
+      return Response.json({
+        published: true,
+        scope: "all-tenants",
+        tenantsCreated: d.created ?? 0,
+        tenantsUpdated: d.updated ?? 0,
+        effectiveDate: d.effective_date,
+        rate: body,
+        fetchedAt: data.fetchedAt,
+        publishedAt: new Date().toISOString(),
+      });
+    }
+
     let exists = false;
     try {
       const today = await backend("/gold-rates/today", { token });
@@ -155,6 +178,7 @@ export async function POST(request) {
     const res = await backend("/gold-rates/today", { method: exists ? "PUT" : "POST", body, token });
     return Response.json({
       published: true,
+      scope: "own-tenant",
       method: exists ? "PUT" : "POST",
       rate: res.data?.rate ?? body,
       fetchedAt: data.fetchedAt,
