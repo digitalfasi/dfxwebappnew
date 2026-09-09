@@ -26,7 +26,7 @@
  * logging into or writing to the backend (safe to test before creds exist).
  */
 import crypto from "node:crypto";
-import { collectLiveRates } from "../../../../lib/collector";
+import { collectLiveRates } from "@/_shared/collector";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

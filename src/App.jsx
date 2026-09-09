@@ -1,30 +1,29 @@
 import { useEffect, useRef, useState } from "react";
-import Sidebar, { NAV_SECTIONS } from "./components/Sidebar";
-import { useAuth } from "./context/AuthContext";
-import TopBar from "./components/TopBar";
-import Dashboard from "./views/Dashboard";
-import GoldRate from "./views/GoldRate";
-import Customers from "./views/Customers";
-import Schemes from "./views/Schemes";
-import SchemeManagement from "./views/SchemeManagement";
-import Payments from "./views/Payments";
-import CatalogueStudio from "./views/CatalogueStudio";
-import PromotionBanners from "./views/PromotionBanners";
-import PromotionCreate from "./views/PromotionCreate";
-import Branches from "./views/Branches";
-import StaffUsers from "./views/StaffUsers";
-import Support from "./views/Support";
-import Notifications from "./views/Notifications";
-import Settings from "./views/Settings";
-import Inventory from "./views/Inventory";
-import Vendors from "./views/Vendors";
-import NewSale from "./views/NewSale";
-import ReportsAnalytics from "./views/ReportsAnalytics";
-import SalesHistory from "./views/SalesHistory";
-import ComingSoon from "./views/ComingSoon";
-import { subscribe } from "./lib/toast";
-import { INITIAL_PROMOTIONS } from "./lib/promotionStore";
-import { goldRateService } from "./services/goldRateService";
+import Sidebar, { NAV_SECTIONS } from "@/_shared/Sidebar";
+import { useAuth } from "@/_shared/AuthContext";
+import TopBar from "@/_shared/TopBar";
+import Dashboard from "@/modules/dashboard/Dashboard";
+import GoldRate from "@/modules/gold-rate/GoldRate";
+import Customers from "@/modules/customers/Customers";
+import Schemes from "@/modules/plan/scheme/Schemes";
+import SchemeManagement from "@/modules/plan/enrollment/SchemeManagement";
+import Payments from "@/modules/payments/Payments";
+import CatalogueStudio from "@/modules/catalogue-studio/CatalogueStudio";
+import PromotionBanners from "@/modules/marketing/PromotionBanners";
+import PromotionCreate from "@/modules/marketing/PromotionCreate";
+import Branches from "@/modules/branches/Branches";
+import StaffUsers from "@/modules/staff/StaffUsers";
+import Support from "@/modules/support/Support";
+import Notifications from "@/modules/notifications/Notifications";
+import Settings from "@/modules/settings/Settings";
+import Inventory from "@/modules/procurement/inventory/Inventory";
+import Vendors from "@/modules/procurement/purchase-history/Vendors";
+import NewSale from "@/modules/billing/new-sale/NewSale";
+import ReportsAnalytics from "@/modules/reports/ReportsAnalytics";
+import SalesHistory from "@/modules/billing/sale-history/SalesHistory";
+import ComingSoon from "@/_shared/ComingSoon";
+import { subscribe } from "@/_shared/toast";
+import { goldRateService } from "@/modules/gold-rate/goldRateService";
 
 const PAGES = {
   dashboard: { title: "Dashboard", component: Dashboard },
@@ -107,14 +106,29 @@ export default function App() {
   });
   const [search, setSearch] = useState("");
   useEffect(() => { setSearch(""); }, [page]);
-  const [promotions, setPromotions] = useState(INITIAL_PROMOTIONS);
+  // Real promotions only — PromotionBanners fetches /admin/promotions on mount.
+  const [promotions, setPromotions] = useState([]);
   const [editingPromo, setEditingPromo] = useState(null);
-  // Today's live bullion rate — fetched once here so the TopBar can show it on
-  // every module, not just the Dashboard.
+  // Today's bullion rate — fetched once here so the TopBar can show it on
+  // every module, not just the Dashboard. When today's rate has not been
+  // published yet the strip falls back to the LAST published rate and flags it
+  // as not-today, so an admin is never shown a stale figure as if it were
+  // today's. Display only: every price is resolved server-side.
   const [bullion, setBullion] = useState(null);
   useEffect(() => {
     let alive = true;
-    const load = () => goldRateService.getTodayRate().then((r) => { if (alive) setBullion(r); }).catch(() => {});
+    const load = async () => {
+      try {
+        const today = await goldRateService.getTodayRate();
+        if (!alive) return;
+        if (today?.rate_24k != null) { setBullion({ ...today, isToday: true }); return; }
+        const last = await goldRateService.getLastPublishedRate();
+        if (!alive) return;
+        setBullion(last ? { ...last, isToday: false } : null);
+      } catch {
+        if (alive) setBullion(null);
+      }
+    };
     load();
     // Re-fetch the moment an admin publishes a new rate (Gold Rate screen), so
     // the TopBar strip updates without a reload.

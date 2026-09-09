@@ -6,7 +6,7 @@
  * directly by any client (e.g. a native mobile app — CORS does not apply there).
  * Pass ?fresh=1 to bypass the 20s soft cache.
  */
-import { collectLiveRates } from "../../../lib/collector";
+import { collectLiveRates } from "@/_shared/collector";
 
 export const dynamic = "force-dynamic"; // never statically cached
 export const revalidate = 0;

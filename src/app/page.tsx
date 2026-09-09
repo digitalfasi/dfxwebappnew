@@ -1,7 +1,7 @@
 "use client";
-import App from "../App";
-import AuthGate from "../components/AuthGate";
-import { AuthProvider } from "../context/AuthContext";
+import App from "@/App";
+import AuthGate from "@/_shared/AuthGate";
+import { AuthProvider } from "@/_shared/AuthContext";
 
 export default function Page() {
   return (
