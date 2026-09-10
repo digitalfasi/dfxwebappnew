@@ -310,11 +310,16 @@ export default function NewSale() {
   // GOLD_PROFIT trim is returned (loss zone) the margin is fully consumed — show
   // 0, never fall back to the full 10%.
   const goldProfitCut = (product?.safePrice?.reductions || []).find((r) => r.component === "GOLD_PROFIT");
-  const belowAsking = priceDriver === "PRICE" && customerPrice !== "" && num(customerPrice) < sellingPrice - 0.01;
-  const goldProfitShown =
-    goldProfitCut?.toValue != null ? goldProfitCut.toValue
-    : belowAsking ? 0
-    : product?.goldProfitPercent;
+  // The percent the bill IS applying, straight from the backend breakdown.
+  // It used to prefer safePrice.reductions.GOLD_PROFIT.toValue, which is only
+  // a SUGGESTED trim — so the field read one number (5.35) while the summary
+  // row billed another (5.72). An input must state what is in force; the
+  // suggestion is surfaced as helper text below instead.
+  const goldProfitShown = product?.goldProfitPercent;
+  const goldProfitSuggested =
+    goldProfitCut?.toValue != null && Math.abs(goldProfitCut.toValue - (product?.goldProfitPercent ?? 0)) > 0.01
+      ? goldProfitCut.toValue
+      : null;
 
   // Max discount the admin may give before crossing break-even = current asking
   // price − minimum safe price. (safe_price.residual_discount is only the sliver
@@ -550,6 +555,9 @@ export default function NewSale() {
                         value={priceDriver === "PROFIT" ? goldProfit : (goldProfitShown != null ? String(round2(goldProfitShown)) : "")}
                         onChange={(e) => { setGoldProfit(e.target.value); setPriceDriver("PROFIT"); }} />
                       <span className="text-[11px] text-muted">{schemeSelected ? "Earned on the un-covered grams only — waived on the scheme-covered slice." : "Margin over gold value — drives the selling price."}</span>
+                      {goldProfitSuggested != null && (
+                        <span className="text-[11px] font-semibold text-accent-strong">Safe-price guidance: trimming to {round2(goldProfitSuggested)}% still avoids a loss.</span>
+                      )}
                     </label>
                     <label className="grid gap-1.5">
                       <span className="text-xs font-bold">Making Charge {chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}</span>
