@@ -16,11 +16,13 @@ import { paymentService } from "@/modules/payments/paymentService";
 // gold rate, gold weight, payment history) are backend-authoritative and read
 // through the existing services. No mock data. No frontend gold valuation.
 
-// "Overdue" is a live condition rather than a stored status, so it filters on
-// the backend-derived overdue fields instead of r.status.
+// "Overdue" is a live condition, not a stored status. The API sends no overdue
+// field, so enrollmentService derives overdueDays/overdueAmount from status +
+// next_due_date; this filter reads that. (It previously read raw API fields that
+// never existed, so the filter always came back empty.)
 const FILTERS = ["All", "Active", "Overdue", "Completed", "Cancelled"];
 const ROWS_PER_PAGE = 20;
-const isOverdue = (r) => (r.overdueDays || 0) > 0 || (r.overdueAmount || 0) > 0;
+const isOverdue = (r) => (r.overdueDays || 0) > 0;
 const TABS = ["Enrollment Details", "Passbook & Payments", "Remarks"];
 // Predefined close-scheme reasons (manual entry still allowed alongside).
 const CLOSE_PRESETS = [
@@ -133,6 +135,8 @@ export default function SchemeManagement() {
   // values the backend already computed. Null when the slice is unavailable.
   // Overdue has no backend summary slice of its own; it borrows the Active
   // slice, since every overdue enrollment is by definition still active.
+  // (The KPI money figure is amount still due to maturity, which is why it is
+  // labelled Outstanding and not Overdue.)
   const FILTER_TO_SLICE = { All: "all", Active: "active", Overdue: "active", Completed: "completed", Cancelled: "cancelled" };
   const kpis = summary?.[FILTER_TO_SLICE[filter]] ?? null;
 
@@ -250,7 +254,7 @@ export default function SchemeManagement() {
       <div data-motion="reveal" className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard label="Active Enrollments" value={loading || !kpis ? "—" : String(kpis.active_enrollments)} />
         <KpiCard label="Total Paid" value={loading || !kpis ? "—" : money(kpis.total_paid)} />
-        <KpiCard label="Overdue" value={loading || !kpis ? "—" : money(kpis.outstanding)} />
+        <KpiCard label="Outstanding" value={loading || !kpis ? "—" : money(kpis.outstanding)} />
         <KpiCard label="Completed" value={loading || !kpis ? "—" : String(kpis.completed)} />
       </div>
 
@@ -281,7 +285,7 @@ export default function SchemeManagement() {
           <table className="w-full min-w-[1160px] border-collapse text-sm">
             <thead>
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3 text-right">Installment</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Overdue</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
+                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3 text-right">Installment</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Outstanding</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -367,7 +371,7 @@ export default function SchemeManagement() {
                       {/* Overdue and Next Due only mean something while the
                           enrollment is still running. On a closed/completed
                           record they read Nil rather than a stale figure. */}
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Overdue Amount</td><td className="px-4 py-2.5 font-bold">{manage.status === "Active" ? money(outstanding(manage)) : "Nil"}</td></tr>
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Outstanding</td><td className="px-4 py-2.5 font-bold">{manage.status === "Active" ? money(outstanding(manage)) : "Nil"}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Current Gold Balance</td><td className="px-4 py-2.5 font-bold text-accent-strong">{grams(goldBalance)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.joined)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.maturity)}</td></tr>

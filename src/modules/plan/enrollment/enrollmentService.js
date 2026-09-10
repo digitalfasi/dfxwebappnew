@@ -18,6 +18,34 @@ function labelStatus(s) {
   return STATUS_LABEL[String(s || "").toUpperCase()] ?? s ?? "";
 }
 
+const MS_PER_DAY = 86400000;
+
+// Whole days between next_due_date and today, floored at 0. Only an ACTIVE
+// enrollment with a due date in the past is overdue; COMPLETED and CANCELLED
+// records are closed, and a wallet plan has no schedule at all.
+function deriveOverdueDays(raw) {
+  if (String(raw.status || "").toUpperCase() !== "ACTIVE" || !raw.next_due_date) return 0;
+  const due = new Date(raw.next_due_date);
+  if (Number.isNaN(due.getTime())) return 0;
+  due.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.floor((today - due) / MS_PER_DAY);
+  return days > 0 ? days : 0;
+}
+
+// One instalment per 30 overdue days (the schedule is monthly), never more than
+// the amount still due to maturity.
+function deriveOverdueAmount(raw) {
+  const days = deriveOverdueDays(raw);
+  if (days <= 0) return 0;
+  const installment = Number(raw.monthly_amount) || 0;
+  const missed = Math.floor(days / 30) + 1;
+  const due = installment * missed;
+  const cap = Number(raw.outstanding_amount);
+  return Number.isFinite(cap) && cap >= 0 ? Math.min(due, cap) : due;
+}
+
 /** GET /enrollments item -> the row shape the Enrollments table renders. */
 function mapRow(raw) {
   return {
@@ -43,9 +71,13 @@ function mapRow(raw) {
     // Redemptions are not on the list payload; enriched from balance on open.
     alreadyRedeemed: 0,
     nextDue: raw.next_due_date,
-    // Backend-derived overdue (ACTIVE + past next_due_date only). 0 otherwise.
-    overdueDays: raw.overdue_days ?? 0,
-    overdueAmount: raw.overdue_amount ?? 0,
+    // The API returns no overdue field, so both are derived here from the only
+    // facts the payload carries: status, next_due_date and the instalment. Two
+    // screens read them (Enrollment Management's Overdue filter and Payments'
+    // Scheme Dues table), so deriving once here keeps them consistent.
+    // A wallet enrollment has no next_due_date and can never be overdue.
+    overdueDays: deriveOverdueDays(raw),
+    overdueAmount: deriveOverdueAmount(raw),
     remarks: raw.remarks ?? "",
     // Reason captured when the enrollment was CLOSED. A different field from
     // `remarks` (the editable operational note) — the close transaction writes
