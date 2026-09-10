@@ -542,22 +542,28 @@ export default function NewSale() {
                 <SpecCell label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
                 <SpecCell label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
               </div>
+
+              {/* Mode belongs to the item: it decides whether THIS item's rate is
+                  editable. As a card footer it stops being an unowned strip
+                  floating between two cards. */}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line-soft pt-3">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Mode</span>
+                  <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white">{saleMode === "OFFLINE" ? "Offline" : "Online"}</span>
+                  <span className="text-[11px] text-muted">{saleMode === "OFFLINE" ? "Gold rate editable" : "Gold rate locked to live"}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => selectMode(saleMode === "OFFLINE" ? "ONLINE" : "OFFLINE")}
+                  className="rounded-lg px-2 py-1 text-[11px] font-bold text-accent-strong underline decoration-accent-line underline-offset-2 transition-colors hover:bg-accent-soft"
+                >
+                  Switch to {saleMode === "OFFLINE" ? "Online" : "Offline"}
+                </button>
+              </div>
             </Card>
 
-            {/* Mode bar — the mode only decides whether the rate is editable. */}
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-canvas/40 px-4 py-2.5">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-bold uppercase tracking-wider text-muted">Mode</span>
-                <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white">{saleMode === "OFFLINE" ? "Offline" : "Online"}</span>
-                <span className="text-[11px] text-muted">{saleMode === "OFFLINE" ? "Gold rate editable" : "Gold rate locked to live"}</span>
-              </div>
-              <button type="button" onClick={() => selectMode(saleMode === "OFFLINE" ? "ONLINE" : "OFFLINE")} className="text-[11px] font-bold text-accent underline">Switch to {saleMode === "OFFLINE" ? "Online" : "Offline"}</button>
-            </div>
-
-            {/* Billing calculator — same in BOTH modes (old web app, reskinned).
-                Purchase Cost and Purchase-Cost P/L intentionally omitted. */}
-                {/* Value cards + Customer Price + Today's-gold-value P/L. Purchase
-                    Cost and Purchase-Cost P/L are intentionally omitted. */}
+            {/* Purchase Cost and Purchase-Cost P/L are intentionally omitted from
+                this screen — the counter sees selling figures only. */}
                 <Card className="p-5 space-y-4">
                   <SectionHead step={2} title="Pricing" meta={requoting ? "Updating…" : undefined} />
                   {/* Reference figures stay small: the field below is the one
