@@ -542,8 +542,41 @@ function SaleDetail({ sale, onClose, onChanged }) {
               {sale.stoneChargeAmount > 0 && <BreakdownRow label="Stone" value={formatINR(sale.stoneChargeAmount)} />}
               {sale.otherChargesAmount > 0 && <BreakdownRow label="Other" value={formatINR(sale.otherChargesAmount)} />}
               <BreakdownRow label="Subtotal" value={formatINR(sale.subtotalBeforeTax)} />
-              {sale.gstApplied && <BreakdownRow label={`GST (${sale.taxRatePercent}%)`} value={formatINR(sale.taxAmount)} />}
-              {sale.discountAmount > 0 && <BreakdownRow label="Discount" value={`− ${formatINR(sale.discountAmount)}`} />}
+              {/* Where the discount belongs in the column depends on when the
+                  bill was raised. A discount now reduces the TAXABLE value, so
+                  it prints before GST; bills raised before that change had GST
+                  charged on the full subtotal and the discount taken off the
+                  gross total. Rather than guess from a date, the order follows
+                  whichever arithmetic actually reconciles to the stored total -
+                  so every bill, old or new, adds up as printed. */}
+              {(() => {
+                const sub = sale.subtotalBeforeTax || 0;
+                const tax = sale.taxAmount || 0;
+                const disc = sale.discountAmount || 0;
+                // Which era this bill belongs to is NOT answerable from the
+                // total: subtotal - discount + tax and subtotal + tax -
+                // discount are the same sum. What separates them is the tax
+                // BASE, so that is what is tested - the stored tax against the
+                // rate applied to the discounted subtotal.
+                const rate = sale.gstApplied ? (sale.taxRatePercent || 0) : 0;
+                const preTaxDiscount =
+                  disc > 0 && (rate === 0 || Math.abs(tax - (sub - disc) * rate / 100) <= 1);
+                if (!preTaxDiscount) {
+                  return (
+                    <>
+                      {sale.gstApplied && <BreakdownRow label={`GST (${sale.taxRatePercent}%)`} value={formatINR(tax)} />}
+                      {disc > 0 && <BreakdownRow label="Discount" value={`− ${formatINR(disc)}`} />}
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <BreakdownRow label="Discount" value={`− ${formatINR(disc)}`} />
+                    <BreakdownRow label="Taxable value" value={formatINR(sub - disc)} />
+                    {sale.gstApplied && <BreakdownRow label={`GST (${sale.taxRatePercent}%)`} value={formatINR(tax)} />}
+                  </>
+                );
+              })()}
               <BreakdownRow label="Bill Total" value={formatINR(sale.finalAmount)} strong />
             </div>
           </div>
