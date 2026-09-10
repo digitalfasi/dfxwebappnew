@@ -1,12 +1,15 @@
+import { useLayoutEffect, useRef } from "react";
+
 import { cn } from "@/_shared/utils";
 
 /** `error` is truthy when the value is invalid: it paints the danger border and
  *  marks the field aria-invalid, so the visual state and the state a screen
  *  reader announces can never disagree. It is consumed here and never spread
  *  onto the DOM node. */
-export function Input({ className, error, ...props }) {
+export function Input({ className, error, inputRef, ref, ...props }) {
   return (
     <input
+      ref={ref ?? inputRef}
       aria-invalid={error ? true : undefined}
       className={cn(
         "h-10 w-full rounded-xl border bg-surface px-3.5 text-sm text-ink placeholder:text-faint",
@@ -105,17 +108,53 @@ export function MoneyInput({ value, onValueChange, className, maxDigits = 12, al
   const [rupees, paise] = raw.split(".");
   const grouped = rupees ? Number(rupees).toLocaleString("en-IN") : "";
   const display = paise !== undefined ? `${grouped}.${paise}` : grouped;
+
+  // Re-formatting the value on every keystroke moves the text, and a controlled
+  // input then leaves the caret after the last character - which made editing
+  // the middle of an amount impossible, because each digit typed jumped to the
+  // end. The caret is remembered as "how many digits were to its left" so that
+  // separators appearing or disappearing cannot shift it, and put back after
+  // the browser paints the new string.
+  const inputRef = useRef(null);
+  const digitsBeforeCaret = useRef(null);
+
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    const want = digitsBeforeCaret.current;
+    digitsBeforeCaret.current = null;
+    if (!el || want == null || document.activeElement !== el) return;
+    let pos = 0;
+    let seen = 0;
+    while (pos < el.value.length && seen < want) {
+      if (/[\d.]/.test(el.value[pos])) seen += 1;
+      pos += 1;
+    }
+    // Skip a separator sitting immediately left of the caret, so backspacing
+    // over "1,2|34" does not park the cursor between the comma and the digit.
+    while (pos < el.value.length && /[^\d.]/.test(el.value[pos])) pos += 1;
+    try { el.setSelectionRange(pos, pos); } catch { /* not a text input */ }
+  }, [display]);
+
+  const countDigits = (text) => String(text).replace(/[^\d.]/g, "").length;
+
   return (
     <div className="relative">
       <span className={cn("pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted", symbolClassName)}>₹</span>
       <Input
+        ref={inputRef}
         type="text"
         inputMode={allowDecimal ? "decimal" : "numeric"}
         value={display}
-        onChange={(e) => onValueChange?.(sanitize(e.target.value))}
+        onChange={(e) => {
+          const caret = e.target.selectionStart ?? e.target.value.length;
+          digitsBeforeCaret.current = countDigits(e.target.value.slice(0, caret));
+          onValueChange?.(sanitize(e.target.value));
+        }}
         onPaste={(e) => {
           e.preventDefault();
-          onValueChange?.(sanitize(e.clipboardData.getData("text")));
+          const next = sanitize(e.clipboardData.getData("text"));
+          digitsBeforeCaret.current = countDigits(next);
+          onValueChange?.(next);
         }}
         className={cn("num pl-8", className)}
         {...props}

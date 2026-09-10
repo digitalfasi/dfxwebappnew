@@ -131,6 +131,16 @@ export default function NewSale() {
   // A scheme (savings) bill is billed at pure gold value on the covered slice; a
   // manual discount cannot stack on top of it (backend enforces the same rule).
   const discountExceedsProfit = !schemeSelected && goldProfitCeiling != null && discountNum > goldProfitCeiling + 1e-6;
+  // A discount is absorbed from gold profit and nothing else, so the margin the
+  // bill is really earning is the set profit less the discount. Stating it here
+  // is what makes "the discount ate the profit" visible instead of implied: at
+  // a discount equal to the profit the effective figure reads 0%.
+  const effectiveProfitAmount =
+    goldProfitCeiling != null ? Math.max(0, goldProfitCeiling - discountNum) : null;
+  const effectiveProfitPct =
+    effectiveProfitAmount != null && (product?.goldValueAmount || 0) > 0
+      ? (effectiveProfitAmount / product.goldValueAmount) * 100
+      : null;
 
   // First HUID lookup — confirm a real sellable item and seed edit fields.
   const handleFind = useCallback(async () => {
@@ -646,6 +656,15 @@ export default function NewSale() {
                         value={priceDriver === "PROFIT" ? goldProfit : (goldProfitShown != null ? String(round2(goldProfitShown)) : "")}
                         onChange={(e) => { setGoldProfit(e.target.value); setPriceDriver("PROFIT"); }} />
                       <span className="text-[11px] text-muted">{schemeSelected ? "Earned on the un-covered grams only — waived on the scheme-covered slice." : "Margin over gold value — drives the selling price."}</span>
+                      {/* What the margin becomes once the discount is taken off
+                          it. Red at zero: there is nothing left to give. */}
+                      {!schemeSelected && discountNum > 0 && effectiveProfitPct != null && (
+                        <span className={`text-[11px] font-semibold ${effectiveProfitPct <= 0.005 ? "text-danger" : "text-accent-strong"}`}>
+                          {effectiveProfitPct <= 0.005
+                            ? <>Discount of {money(discountNum)} wipes out Gold Profit — effective 0%</>
+                            : <>After the {money(discountNum)} discount — effective {round2(effectiveProfitPct)}% ({money(effectiveProfitAmount)})</>}
+                        </span>
+                      )}
                       {goldProfitSuggested != null && (
                         <span className="text-[11px] font-semibold text-accent-strong">Safe-price guidance: trimming to {round2(goldProfitSuggested)}% still avoids a loss.</span>
                       )}

@@ -375,6 +375,8 @@ export default function Inventory({ onNavigate }) {
   // Each row's Cost/g is the 24K rate, so the row's base is its PURE gold
   // content (net × karat/24) at that rate — the purity never changes the rate.
   const bulkRowBase = (r) => (Number(r.net) || 0) * ((parseInt(r.purity, 10) || 0) / 24) * (Number(r.rate) || 0);
+  // Non-gold weight of a bulk row - gross minus net, exactly as in Add Purchase.
+  const rowStoneWeight = (r) => Math.max(0, (Number(r.gross) || 0) - (Number(r.net) || 0));
   // A new row opens with today's 24K rate already in it, so the common case
   // needs no typing at all; the field stays editable for a back-dated invoice.
   const newBulkRow = useCallback(() => {
@@ -393,7 +395,7 @@ export default function Inventory({ onNavigate }) {
   // the Tunch column shows "mixed" when one purity carries more than one rate.
   const bulkBreakdown = useMemo(() => {
     const groups = new Map();
-    let netTotal = 0, fineTotal = 0, tunchGTotal = 0, baseTotal = 0, tunchAmtTotal = 0, stoneTotal = 0;
+    let netTotal = 0, fineTotal = 0, tunchGTotal = 0, baseTotal = 0, tunchAmtTotal = 0, stoneTotal = 0, stoneGTotal = 0;
     const rates = new Set();
 
     for (const r of bulkRows) {
@@ -407,17 +409,19 @@ export default function Inventory({ onNavigate }) {
       const tunchAmt = base * pct / 100;
       const tunchG = fine * pct / 100;
 
-      // Stones are money, not metal: they never enter a gram total.
+      // Stones are money, not metal: they never enter a GOLD gram total. Their
+      // own weight is tracked separately so the receipt can state both.
       const stone = Number(r.stone) || 0;
+      const stoneG = Math.max(0, (Number(r.gross) || 0) - net);
 
       if (rate > 0) rates.add(rate);
       netTotal += net; fineTotal += fine; tunchGTotal += tunchG;
-      baseTotal += base; tunchAmtTotal += tunchAmt; stoneTotal += stone;
+      baseTotal += base; tunchAmtTotal += tunchAmt; stoneTotal += stone; stoneGTotal += stoneG;
 
       const key = r.purity;
-      const g = groups.get(key) || { purity: key, rows: 0, net: 0, fine: 0, tunchG: 0, base: 0, tunchAmt: 0, stone: 0, pcts: new Set() };
+      const g = groups.get(key) || { purity: key, rows: 0, net: 0, fine: 0, tunchG: 0, base: 0, tunchAmt: 0, stone: 0, stoneG: 0, pcts: new Set() };
       g.rows += 1; g.net += net; g.fine += fine; g.tunchG += tunchG;
-      g.base += base; g.tunchAmt += tunchAmt; g.stone += stone; g.pcts.add(pct);
+      g.base += base; g.tunchAmt += tunchAmt; g.stone += stone; g.stoneG += stoneG; g.pcts.add(pct);
       groups.set(key, g);
     }
 
@@ -427,7 +431,7 @@ export default function Inventory({ onNavigate }) {
     );
     return {
       groups: rowsOut,
-      netTotal, fineTotal, tunchGTotal, baseTotal, tunchAmtTotal, stoneTotal,
+      netTotal, fineTotal, tunchGTotal, baseTotal, tunchAmtTotal, stoneTotal, stoneGTotal,
       payableGrams: fineTotal + tunchGTotal,
       finalAmount: baseTotal + tunchAmtTotal + stoneTotal,
       // One rate across the receipt is the normal case; a mixed receipt shows
@@ -941,7 +945,15 @@ export default function Inventory({ onNavigate }) {
                           <td className="px-2 py-2"><DigitsInput value={r.tunch} onValueChange={v=>setCell("tunch",v)} maxDigits={1} className="h-9" /></td>
                           {/* Flat rupees for this row's stones: no purity, no Tunch. */}
                           {bulkType === "JEWELLERY" && (
-                            <td className="px-2 py-2"><MoneyInput value={r.stone} onValueChange={v=>setCell("stone",v)} maxDigits={8} placeholder="0" className="h-9" /></td>
+                            <td className="px-2 py-2">
+                              <MoneyInput value={r.stone} onValueChange={v=>setCell("stone",v)} maxDigits={8} placeholder="0" className="h-9" />
+                              {/* The same figure Add Purchase states: whatever
+                                  gross carries over net is the stone / non-gold
+                                  part of the piece. */}
+                              {rowStoneWeight(r) > 0 && (
+                                <span className="mt-1 block text-[10px] font-semibold text-accent-strong">{rowStoneWeight(r).toFixed(3)} g stone</span>
+                              )}
+                            </td>
                           )}
                           <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(lineTotal + lineTotal * rowTunchPct(r) / 100 + (Number(r.stone) || 0)) : "—"}</td>
                           <td className="px-2 py-2"><Button size="sm" variant="outline" onClick={()=>setBulkRows(bulkRows.length>1 ? bulkRows.filter((_,ix)=>ix!==i) : [emptyBulkRow()])}>×</Button></td>
@@ -1024,10 +1036,16 @@ export default function Inventory({ onNavigate }) {
                       <span className="text-muted">+ Tunch {bulkBreakdown.tunchGTotal.toFixed(3)} g (each row at its own %)</span>
                       <span className="num font-mono font-bold tabular-nums">{money(bulkBreakdown.tunchAmtTotal)}</span>
                     </div>
-                    {bulkBreakdown.stoneTotal > 0 && (
+                    {/* Shown as soon as there IS stone in the receipt, even
+                        before it is priced - a row carrying 5 g of stone at Rs 0
+                        is a figure the buyer needs to see, not a hidden line. */}
+                    {(bulkBreakdown.stoneTotal > 0 || bulkBreakdown.stoneGTotal > 0) && (
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-muted">+ Stone charges (flat, no Tunch)</span>
-                        <span className="num font-mono font-bold tabular-nums">{money(bulkBreakdown.stoneTotal)}</span>
+                        <span className="text-muted">
+                          + Stone charges (flat, no Tunch)
+                          {bulkBreakdown.stoneGTotal > 0 && <span className="num"> — {bulkBreakdown.stoneGTotal.toFixed(3)} g of stone</span>}
+                        </span>
+                        <span className={`num font-mono font-bold tabular-nums ${bulkBreakdown.stoneTotal > 0 ? "" : "text-muted"}`}>{money(bulkBreakdown.stoneTotal)}</span>
                       </div>
                     )}
                     <div className="flex items-center justify-between gap-3 border-t border-accent-line pt-1.5">
