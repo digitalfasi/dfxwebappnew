@@ -449,7 +449,10 @@ export default function NewSale() {
         <p className="mt-1 max-w-[64ch] text-sm text-muted">Enter the item's HUID, adjust the applicable rate and charges if needed, identify the buyer, then confirm the bill. Every amount is calculated by the backend.</p>
       </div>
 
-      {/* HUID lookup */}
+      {/* Lookup, and — until an item is loaded — the same two-column skeleton the
+          loaded bill uses, so the layout never jumps from one column to two
+          halfway through the task. */}
+      <div className={product ? "" : "grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]"}>
       <Card data-motion="reveal" className="p-5 sm:p-6">
         <SectionHead title="Find product by HUID" />
         <div className="mt-4 flex flex-wrap items-end gap-3">
@@ -460,8 +463,44 @@ export default function NewSale() {
           <Button size="sm" className="bg-accent hover:bg-accent-strong h-10 px-6" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
         </div>
         {lookupError && <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm font-semibold text-danger">{lookupError}</div>}
-        {!product && !lookupError && !loading && <p className="mt-4 text-xs text-muted">No product loaded yet. Enter an HUID and select <span className="font-semibold">Find Product</span>.</p>}
+        {!product && !lookupError && !loading && (
+          <div className="mt-5 border-t border-line-soft pt-4">
+            <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">How a bill is made</div>
+            <ol className="mt-2 space-y-1.5">
+              {[
+                "Find the item by its HUID.",
+                "Choose Online (live rate) or Offline (editable rate).",
+                "Adjust rate, profit % and charges — or type the customer's price.",
+                "Identify the buyer and redeem any schemes they hold.",
+                "State how they are paying, then create the bill.",
+              ].map((step, i) => (
+                <li key={step} className="flex gap-2.5 text-xs text-muted">
+                  <span className="num mt-px grid h-4 w-4 shrink-0 place-items-center rounded border border-line-soft bg-canvas text-[9px] font-extrabold text-faint">{i + 1}</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
       </Card>
+
+      {/* Placeholder for the pinned summary: keeps the right column occupied so
+          the page reads as a billing screen rather than an empty form. */}
+      {!product && (
+        <div className="hidden rounded-2xl border border-dashed border-line bg-canvas/40 p-6 lg:block">
+          <div className="text-sm font-extrabold text-faint">Bill summary</div>
+          <p className="mt-1 text-xs text-muted">Appears here once an item is loaded, and stays pinned while you work down the form.</p>
+          <div className="mt-4 space-y-2.5" aria-hidden="true">
+            {["Gold value", "Gold profit", "Making charge", "GST", "Bill total"].map((label, i) => (
+              <div key={label} className="flex items-center justify-between gap-4">
+                <span className={`text-xs ${i === 4 ? "font-extrabold text-faint" : "text-faint"}`}>{label}</span>
+                <span className={`h-2 rounded-full bg-line-soft ${i === 4 ? "w-24" : "w-16"}`} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </div>
 
       {/* Product found: the ONLY thing on screen is the payment-mode choice. */}
       {product && !saleMode && (
