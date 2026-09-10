@@ -51,12 +51,55 @@ function mapRow(raw) {
 }
 
 export const customerService = {
-  /** GET /api/v1/admin/customers?page&limit&search — real list. */
-  async getCustomers({ search = "", page = 1, limit = 100 } = {}) {
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  /**
+   * GET /api/v1/admin/customers?page&limit&search — one page of customers,
+   * with the server's pagination block.
+   *
+   * Screens that show the full customer list MUST page and search through this:
+   * asking for one big page and filtering it in the browser hid every customer
+   * past the requested limit, and a search for one of them came back empty even
+   * though the record exists. The server caps `limit` at 100.
+   */
+  async getCustomerPage({ search = "", page = 1, limit = 20, customerType, kycState } = {}) {
+    const params = new URLSearchParams({ page: String(page), limit: String(Math.min(limit, 100)) });
     if (search) params.set("search", search);
+    if (customerType) params.set("customer_type", customerType);
+    if (kycState) params.set("kyc_state", kycState);
     const res = await apiClient.get(`/admin/customers?${params.toString()}`, { auth: true });
-    return (res.data?.customers ?? []).map(mapRow);
+    const p = res.meta?.pagination ?? {};
+    const rows = (res.data?.customers ?? []).map(mapRow);
+    return {
+      rows,
+      page: p.page ?? page,
+      pageSize: p.page_size ?? limit,
+      totalItems: p.total_items ?? rows.length,
+      totalPages: p.total_pages ?? 1,
+    };
+  },
+
+  /**
+   * Every customer, by walking the pages. The server caps `limit` at 100, so a
+   * single request for a bigger page is rejected outright (422) — which is what
+   * silently emptied the birthdays widget. Bounded at 50 pages so a bad total
+   * can never spin forever.
+   */
+  async getAllCustomers({ search = "" } = {}) {
+    const all = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const res = await customerService.getCustomerPage({ search, page, limit: 100 });
+      all.push(...res.rows);
+      totalPages = res.totalPages || 1;
+      page += 1;
+    } while (page <= totalPages && page <= 50);
+    return all;
+  },
+
+  /** Rows only — for pickers that just need the top matches for a search. */
+  async getCustomers(opts = {}) {
+    const { rows } = await customerService.getCustomerPage(opts);
+    return rows;
   },
 
   /**

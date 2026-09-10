@@ -6,7 +6,7 @@ import { Select } from "@/_shared/ui/select";
 import { SearchInput } from "@/_shared/ui/input";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
-import { fmtDate } from "@/_shared/utils";
+import { fmtDate, grams as fmtGrams, money as fmtMoney } from "@/_shared/utils";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { passbookService } from "@/_shared/passbookService";
 import { paymentService } from "@/modules/payments/paymentService";
@@ -36,17 +36,19 @@ const CLOSE_PRESETS = [
 function statusTone(s) {
   return s === "Active" ? "info" : s === "Completed" ? "success" : "danger";
 }
+// These wrap the shared formatters rather than re-implementing them: local
+// copies here printed whole rupees and 3 fixed decimals, so the same figure
+// read differently on this screen than on a bill. The only thing added is the
+// "—" for an absent value, which the shared helpers render as zero.
+const isBlank = (v) => v === null || v === undefined || Number.isNaN(Number(v));
 function money(v) {
-  if (v === null || v === undefined || Number.isNaN(Number(v))) return "—";
-  return `₹${Number(v).toLocaleString("en-IN")}`;
+  return isBlank(v) ? "—" : fmtMoney(v);
 }
 function grams(v) {
-  if (v === null || v === undefined || Number.isNaN(Number(v))) return "—";
-  return `${Number(v).toFixed(3)} g`;
+  return isBlank(v) ? "—" : fmtGrams(v);
 }
 function rate(v) {
-  if (v === null || v === undefined || Number.isNaN(Number(v))) return "—";
-  return `₹${Number(v).toLocaleString("en-IN")}/g`;
+  return isBlank(v) ? "—" : `${fmtMoney(v)}/g`;
 }
 
 // KPI card — presentation only, matches the existing DFX card language.
@@ -189,6 +191,10 @@ export default function SchemeManagement() {
       goldBalance: e.goldBalance,
     }));
   }, [passbook]);
+
+  // One definition of "closed" for the whole modal: anything not Active is a
+  // finished record (Completed, Cancelled, Closed).
+  const isClosed = !!manage && manage.status !== "Active";
 
   const totalPaid = balance?.total_paid ?? manage?.totalPaid ?? null;
   // Authoritative total gold balance from the passbook summary (backend).
@@ -371,11 +377,11 @@ export default function SchemeManagement() {
                       {/* Overdue and Next Due only mean something while the
                           enrollment is still running. On a closed/completed
                           record they read Nil rather than a stale figure. */}
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Outstanding</td><td className="px-4 py-2.5 font-bold">{manage.status === "Active" ? money(outstanding(manage)) : "Nil"}</td></tr>
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Outstanding</td><td className="px-4 py-2.5 font-bold">{isClosed ? "Nil" : money(outstanding(manage))}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Current Gold Balance</td><td className="px-4 py-2.5 font-bold text-accent-strong">{grams(goldBalance)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.joined)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.maturity)}</td></tr>
-                      <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-mono text-xs">{manage.status === "Active" ? fmtDate(manage.nextDue) : "Nil"}</td></tr>
+                      <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-mono text-xs">{isClosed ? "Nil" : fmtDate(manage.nextDue)}</td></tr>
                     </tbody>
                   </table>
                   <p className="px-4 py-2 text-xs text-muted">Financial and schedule fields are fixed at enrollment and backend-authoritative.</p>
@@ -441,31 +447,44 @@ export default function SchemeManagement() {
 
               {!detailLoading && tab === "Remarks" && (
                 <div>
-                  {/* The closing reason is a DIFFERENT field from the
-                      operational remark: closing writes closure_reason, this box
-                      edits `remarks`. It was persisted all along but displayed
-                      nowhere, which read as data loss. Shown read-only here. */}
-                  {manage.closureReason && (
-                    <div className="mb-4 rounded-xl border border-line bg-canvas/50 p-3.5">
-                      <div className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-faint">Closing remark</div>
-                      <p className="mt-1 text-sm font-semibold text-ink">{manage.closureReason}</p>
-                      <p className="mt-1 text-[11px] text-muted">Recorded when the scheme was closed. Read-only.</p>
+                  {/* Two different fields. Closing writes closure_reason; the
+                      editor below writes `remarks`. A closed enrollment shows
+                      both read-only: there is no live enrollment left to
+                      annotate, so offering "Save Remarks" there was wrong. */}
+                  {!isClosed && (
+                    <>
+                      <label className="mb-1.5 block text-xs font-bold">Operational remark</label>
+                      <textarea
+                        value={remark}
+                        onChange={(e) => setRemark(e.target.value)}
+                        rows={5}
+                        placeholder="e.g. Customer requested callback next week"
+                        className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent-line"
+                      />
+                      <p className="mt-1.5 text-xs text-muted">Operational note only — persisted on the enrollment. Never affects any financial record.</p>
+                      <div className="mt-3 flex justify-end">
+                        <Button size="sm" disabled={savingRemark} onClick={saveRemark}>{savingRemark ? "Saving…" : "Save Remarks"}</Button>
+                      </div>
+                    </>
+                  )}
+
+                  {isClosed && (
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-danger/40 bg-danger/5 p-3.5">
+                        <div className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-danger">Why this scheme was closed</div>
+                        <p className="mt-1 text-sm font-semibold text-ink">{manage.closureReason || "No reason was recorded."}</p>
+                        <p className="mt-1 text-[11px] text-muted">
+                          {manage.closedAt ? `Closed on ${fmtDate(manage.closedAt)}. ` : ""}Read-only — a closed enrollment cannot be reopened or re-annotated.
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-line bg-canvas/50 p-3.5">
+                        <div className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-faint">Operational remark</div>
+                        <p className="mt-1 text-sm font-semibold text-ink">{manage.remarks || "None recorded."}</p>
+                      </div>
                     </div>
                   )}
-                  <label className="mb-1.5 block text-xs font-bold">Operational remark</label>
-                  <textarea
-                    value={remark}
-                    onChange={(e) => setRemark(e.target.value)}
-                    rows={5}
-                    placeholder="e.g. Customer requested callback next week"
-                    className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent-line"
-                  />
-                  <p className="mt-1.5 text-xs text-muted">Operational note only — persisted on the enrollment. Never affects any financial record.</p>
-                  <div className="mt-3 flex justify-end">
-                    <Button size="sm" disabled={savingRemark} onClick={saveRemark}>{savingRemark ? "Saving…" : "Save Remarks"}</Button>
-                  </div>
 
-                  {manage.status === "Active" && (
+                  {!isClosed && (
                     <div className="mt-6 rounded-xl border border-danger/40 bg-danger/5 p-4">
                       <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-danger">Close scheme</div>
                       <p className="mt-1 text-xs text-muted">Stops future contributions. The paid-in balance is preserved and stays redeemable — closing never refunds or forfeits. Cannot be reopened.</p>
@@ -497,8 +516,11 @@ export default function SchemeManagement() {
               )}
             </div>
 
+            {/* "Done" rather than "Close": the header already has an X to
+                dismiss, and "Close" is the destructive close-the-scheme action
+                further down. Three controls reading Close was the confusion. */}
             <div className="border-t border-line p-4 flex justify-end">
-              <Button size="sm" variant="outline" onClick={closeManage}>Close</Button>
+              <Button size="sm" variant="outline" onClick={closeManage}>Done</Button>
             </div>
 
             {confirmClose && (

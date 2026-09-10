@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/_shared/ui/card";
 import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
+import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { formatINR } from "@/_shared/utils";
 import { apiClient } from "@/_shared/apiClient";
@@ -117,10 +118,13 @@ function fmtCurrency(v) {
   if (v === null || v === undefined) return "—";
   return formatINR(v);
 }
-// Profit is shown as a plain rupee figure — no leading minus/hyphen on the card.
+// Profit can legitimately be negative (returns, discounts below cost). It is
+// shown with an explicit minus — Math.abs() here used to render a loss as if it
+// were a profit of the same size, which is the worst possible reading.
 function fmtProfit(v) {
   if (v === null || v === undefined) return "—";
-  return formatINR(Math.abs(Number(v) || 0));
+  const n = Number(v) || 0;
+  return n < 0 ? `-${formatINR(Math.abs(n))}` : formatINR(n);
 }
 function fmtCount(v) {
   if (v === null || v === undefined) return "—";
@@ -169,11 +173,17 @@ function PeriodTabs({ value, onChange, accent, tabs = PERIOD_TABS }) {
 }
 function MetricSelect({ value, onChange, options, accent }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}
-      className="rounded-lg border border-line bg-surface px-2 py-1 text-[10px] font-bold text-ink outline-none"
-      style={{ borderLeft: `3px solid ${accent}` }}>
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    // The accent bar lives on a wrapper: Select owns its trigger styling, so
+    // colouring it from outside would mean adding a prop just for this.
+    <span className="inline-flex items-stretch overflow-hidden rounded-lg" style={{ borderLeft: `3px solid ${accent}` }}>
+      <Select
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        className="w-[132px]"
+        triggerClassName="h-7 min-h-[28px] rounded-l-none text-[10px] font-bold"
+      />
+    </span>
   );
 }
 function CustomRange({ value, onApply, accent }) {
@@ -282,7 +292,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);    // Generate Report popup
   const [outstanding, setOutstanding] = useState(null);   // business product dues (all-time)
-  const [overdue, setOverdue] = useState(null);           // scheme installment dues (all-time)
+  const [pendingDues, setPendingDues] = useState(null);   // scheme dues not yet collected (all-time)
   const [invoices, setInvoices] = useState([]);
   const [enrollList, setEnrollList] = useState([]);
   const [cards, setCards] = useState({});
@@ -327,7 +337,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
       if (!alive) return;
       // Bullion rate now lives in the global TopBar (fetched once in App), so the
       // Dashboard no longer fetches or renders it here.
-      setOverdue(payAll?.outstanding_dues ?? null);
+      setPendingDues(payAll?.outstanding_dues ?? null);
       setInvoices(billing?.sales ?? []);
       setOutstanding(billing ? billing.totalOutstanding : null);
       setEnrollList((enr ?? []).slice(0, 5));
@@ -457,7 +467,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
           <div className="grid grid-cols-2 gap-2.5">
             <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSummary?.total_revenue)} growth={bizSummary?.total_revenue_growth_percent} onClick={() => nav("sales-history")} />
             <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} onClick={() => nav("sales-history")} />
-            <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} onClick={() => nav("sales-history")} />
+            <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
             <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} danger onClick={() => nav("sales-history")} />
           </div>
 
@@ -531,7 +541,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} growth={paySummary?.total_revenue_growth_percent} onClick={() => nav("payments")} />
             <KpiCard title={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} onClick={() => nav("scheme-management")} />
             <KpiCard title={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} onClick={() => nav("scheme-management")} />
-            <KpiCard title="Overdue Amount" value={fmtCurrency(overdue)} danger onClick={() => nav("payments")} />
+            <KpiCard title="Pending Dues" value={fmtCurrency(pendingDues)} danger onClick={() => nav("payments")} />
           </div>
 
           {/* Collections Trend */}

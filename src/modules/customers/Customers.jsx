@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/_shared/ui/card";
 import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
@@ -21,6 +21,18 @@ const UAT_TENANT_ID = (process.env.NEXT_PUBLIC_UAT_TENANT_ID || "").trim();
 // No mock/demo records remain as an active source or fallback.
 
 const FILTERS = ["All Types", "Walk-in", "Scheme Customer", "Hybrid", "New"];
+// The chip label the admin sees, mapped to the value the API filters on. Search,
+// type and KYC all filter on the SERVER so the row count and the pager describe
+// the whole matching set, not just the page that happened to be loaded.
+const TYPE_PARAM = {
+  "Walk-in": "WALK-IN",
+  "Scheme Customer": "SCHEME CUSTOMER",
+  Hybrid: "HYBRID",
+  New: "NEW",
+};
+const KYC_FILTERS = ["All", "Verified", "Pending", "Not Submitted"];
+const KYC_PARAM = { Verified: "Verified", Pending: "Pending", "Not Submitted": "Not Submitted" };
+const ROWS_PER_PAGE = 20;
 const TYPE_TONE = { "Walk-in": "neutral", "Scheme Customer": "info", "Hybrid": "accent", "New": "neutral" };
 // Backend-derived KYC states (from kyc_state): Not Submitted | Pending Review | Verified | Rejected.
 const KYC_TONE = { Verified: "success", "Pending Review": "warning", Rejected: "danger", "Not Submitted": "neutral" };
@@ -67,6 +79,11 @@ export default function Customers() {
   const scope = useRef(null);
   usePressFeedback(scope);
   const [query, setQuery] = useState("");
+  // Debounced copy of `query` — what actually goes to the API, so typing does
+  // not fire a request per keystroke.
+  const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageInfo, setPageInfo] = useState({ totalItems: 0, totalPages: 1 });
   const [filter, setFilter] = useState("All Types");
   const [kycFilter, setKycFilter] = useState("All");
   const [selected, setSelected] = useState(null);
@@ -121,24 +138,39 @@ export default function Customers() {
     setLoading(true);
     setLoadError("");
     try {
-      const [list, sum] = await Promise.all([
-        customerService.getCustomers(),
+      const [res, sum] = await Promise.all([
+        customerService.getCustomerPage({
+          search: searchTerm,
+          page,
+          limit: ROWS_PER_PAGE,
+          customerType: TYPE_PARAM[filter],
+          kycState: KYC_PARAM[kycFilter],
+        }),
         // A counter failure must not blank the table, so it degrades to the
         // page-derived figures instead of throwing.
         customerService.getSummary().catch(() => null),
       ]);
-      setCustomers(list);
+      setCustomers(res.rows);
+      setPageInfo({ totalItems: res.totalItems, totalPages: res.totalPages });
       if (sum) setSummary(sum);
     } catch (err) {
       setLoadError(err?.message || "Could not load customers.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [searchTerm, page, filter, kycFilter]);
 
   useEffect(() => {
     loadCustomers();
   }, [loadCustomers]);
+
+  // Debounce the search box, and send any filter change back to page 1 —
+  // staying on page 4 of a now 2-page result renders an empty table.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(query.trim()), 350);
+    return () => clearTimeout(t);
+  }, [query]);
+  useEffect(() => { setPage(1); }, [searchTerm, filter, kycFilter]);
 
   // Open the 360° drawer, then enrich it with real schemes/history from the
   // backend overview endpoint.
@@ -191,15 +223,9 @@ export default function Customers() {
     }
   }
 
-  const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return customers.filter((c) => {
-      const matchesQuery = !q || [c.name, c.code, c.email, c.phone].join(" ").toLowerCase().includes(q);
-      const matchesType = filter === "All Types" || c.type === filter;
-      const matchesKyc = kycFilter === "All" || (kycFilter === "Pending" ? c.kyc === "Pending Review" : c.kyc === kycFilter);
-      return matchesQuery && matchesType && matchesKyc;
-    });
-  }, [customers, query, filter, kycFilter]);
+  // The API applied search, type and KYC, so the page is rendered as returned.
+  // Re-filtering it here would only ever hide rows the server already matched.
+  const rows = customers;
 
   function validate() {
     const e = {};
@@ -461,7 +487,7 @@ export default function Customers() {
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-bold text-muted">KYC:</span>
-          {["All", "Verified", "Pending", "Not Submitted"].map(k => (
+          {KYC_FILTERS.map(k => (
             <button key={k} onClick={() => setKycFilter(k)} className={`rounded-full border px-3 py-1 font-semibold ${kycFilter === k ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted hover:border-line"}`}>{k}</button>
           ))}
           {(kycFilter !== "All" || filter !== "All Types" || query) && (
@@ -539,9 +565,22 @@ export default function Customers() {
           )}
         </CardContent>
       </Card>
-      <div className="mt-3 flex items-center justify-between text-xs font-semibold text-muted">
-        <span>Showing {rows.length} of {customers.length}</span>
-        <span>Click name or eye to open 360° view</span>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs font-semibold text-muted">
+        <span>
+          {pageInfo.totalItems === 0
+            ? "No customers match"
+            : `Showing ${(page - 1) * ROWS_PER_PAGE + 1}–${Math.min(page * ROWS_PER_PAGE, pageInfo.totalItems)} of ${pageInfo.totalItems}`}
+        </span>
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:inline">Click name or eye to open 360° view</span>
+          {pageInfo.totalPages > 1 && (
+            <span className="flex items-center gap-1.5">
+              <Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</Button>
+              <span className="num px-1">Page {page} of {pageInfo.totalPages}</span>
+              <Button variant="outline" size="sm" disabled={page >= pageInfo.totalPages || loading} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </span>
+          )}
+        </div>
       </div>
 
       {showAdd && (

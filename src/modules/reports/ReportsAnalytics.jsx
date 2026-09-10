@@ -241,7 +241,10 @@ export default function ReportsAnalytics() {
     let cancel = false;
     (async () => {
       try {
-        const custs = await customerService.getCustomers({ limit: 500 });
+        // Every customer, paged — the server rejects a limit above 100, so the
+        // old single limit=500 request failed and left this list permanently
+        // empty. Birthdays must consider the whole customer base.
+        const custs = await customerService.getAllCustomers();
         if (cancel) return;
         setBirthdays(upcomingBirthdays(custs));
       } catch {

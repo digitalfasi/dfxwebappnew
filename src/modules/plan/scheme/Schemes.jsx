@@ -44,6 +44,11 @@ export default function Schemes() {
   // browser confirm() leaks the host name into a customer-facing console and
   // cannot carry the consequence text a destructive action needs.
   const [confirming, setConfirming] = useState(null);
+  // Scheme pending PERMANENT deletion. Separate state from `confirming` because
+  // the two actions are not interchangeable: deactivating is reversible and
+  // keeps every record, deleting removes the row and is refused by the backend
+  // the moment anything references it.
+  const [deleting, setDeleting] = useState(null);
   const [busyId, setBusyId] = useState(null); // scheme id mid deactivate/reactivate
   const [form, setForm] = useState({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonusPct: "" });
   const [tiers, setTiers] = useState([]);
@@ -199,6 +204,23 @@ export default function Schemes() {
 
   const confirmDeactivate = () => { if (confirming) handleDeactivate(confirming); };
 
+  // Permanent delete. Only ever offered for a scheme created by mistake — the
+  // backend returns 409 with the dependent counts when anything references it,
+  // and that message is surfaced verbatim rather than reworded here.
+  async function handleDelete(s) {
+    setBusyId(s.id);
+    try {
+      await schemeService.deleteSchemePermanently(s.id);
+      setDeleting(null);
+      await loadSchemes();
+      toast(`Scheme deleted — ${s.name}`);
+    } catch (err) {
+      toast(err?.message || "Delete failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   // Reactivate via the real update endpoint (PUT is_active=true).
   async function handleReactivate(s) {
     setBusyId(s.id);
@@ -254,6 +276,9 @@ export default function Schemes() {
             <div className="mt-auto border-t border-dashed border-line pt-3 text-xs text-muted">
               <div>{s.perk} · {s.tenure}</div>
             </div>
+            {/* Edit and the lifecycle toggle share the row; Delete sits apart
+                as an icon so it can never be hit while reaching for
+                Deactivate — they look similar but only one is reversible. */}
             <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
               <Button variant="outline" size="sm" className="flex-1" disabled={busyId === s.id} onClick={() => openEdit(s)}>Edit</Button>
               {s.status === "Active" ? (
@@ -265,6 +290,18 @@ export default function Schemes() {
                   {busyId === s.id ? "…" : "Reactivate"}
                 </Button>
               )}
+              <button
+                type="button"
+                title="Delete permanently"
+                aria-label={`Delete ${s.name} permanently`}
+                disabled={busyId === s.id}
+                onClick={() => setDeleting(s)}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-line text-muted transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:opacity-50"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /><path d="M10 11v5M14 11v5" />
+                </svg>
+              </button>
             </div>
           </Card>
         ))}
@@ -334,6 +371,35 @@ export default function Schemes() {
       {/* Deactivation confirm — the app's own dialog, replacing window.confirm.
           A native confirm shows the host name ("localhost says…"), cannot state
           the consequence, and looks nothing like the product. */}
+      {deleting && (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-ink/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+            <div className="px-6 pt-5">
+              <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-danger">Delete permanently</div>
+              <h4 id="delete-title" className="mt-1 text-base font-extrabold">{deleting.name}</h4>
+              <p className="mt-2 text-sm text-muted">
+                The scheme and its tiers are removed for good. This cannot be undone.
+              </p>
+              <p className="mt-2 rounded-xl border border-line bg-canvas/50 p-3 text-xs text-muted">
+                Only possible while nothing references the scheme. If any customer is enrolled — or ever was — the
+                server refuses the delete and tells you how many records hold it. Deactivate such a scheme instead.
+              </p>
+            </div>
+            <div className="mt-5 flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+              <Button variant="outline" size="sm" onClick={() => setDeleting(null)}>Cancel</Button>
+              <Button
+                size="sm"
+                className="bg-danger text-white hover:bg-danger/90"
+                disabled={busyId === deleting.id}
+                onClick={() => handleDelete(deleting)}
+              >
+                {busyId === deleting.id ? "Deleting…" : "Delete permanently"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirming && (
         <div className="fixed inset-0 z-[100] grid place-items-center bg-ink/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="deactivate-title">
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">

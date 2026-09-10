@@ -83,6 +83,7 @@ function mapRow(raw) {
     // `remarks` (the editable operational note) — the close transaction writes
     // closure_reason, so it must be surfaced separately or it looks lost.
     closureReason: raw.closure_reason ?? "",
+    closedAt: raw.closed_at ?? null,
   };
 }
 

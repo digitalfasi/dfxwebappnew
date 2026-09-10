@@ -112,8 +112,17 @@ export const schemeService = {
     return res.data?.scheme;
   },
 
-  /** DELETE /api/v1/schemes/{id} — deactivate (backend supported; no UI control yet). */
+  /** DELETE /api/v1/schemes/{id} — deactivate (soft; the row is kept). */
   async deactivateScheme(id) {
     await apiClient.delete(`/schemes/${id}`, { auth: true });
+  },
+
+  /**
+   * DELETE /api/v1/schemes/{id}/permanent — removes the row and its tiers.
+   * The backend refuses with 409 when any enrollment or scheme request points
+   * at the scheme, so this only ever clears one created by mistake.
+   */
+  async deleteSchemePermanently(id) {
+    await apiClient.delete(`/schemes/${id}/permanent`, { auth: true });
   },
 };
