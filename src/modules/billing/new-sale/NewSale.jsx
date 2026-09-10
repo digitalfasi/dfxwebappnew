@@ -130,7 +130,29 @@ export default function NewSale() {
   const schemeSelected = schemeRedeemRequested > 0;
   // A scheme (savings) bill is billed at pure gold value on the covered slice; a
   // manual discount cannot stack on top of it (backend enforces the same rule).
-  const discountExceedsProfit = !schemeSelected && goldProfitCeiling != null && discountNum > goldProfitCeiling + 1e-6;
+  // Two real limits on a discount, mirroring the server: the store's own gold
+  // profit, and the cost floor under which the piece sells for less than it
+  // cost. minimumSafePrice is purchase cost grossed up by GST, so backing the
+  // tax out again gives the cost in pre-tax rupees - the same units a discount
+  // is now expressed in.
+  const taxFactor = 1 + (product?.gstApplied ? (product?.taxRatePercent || 0) : 0) / 100;
+  const costFloorCeiling =
+    product?.safePrice?.minimumSafePrice != null && product?.subtotalBeforeTax != null
+      ? round2(product.subtotalBeforeTax - product.safePrice.minimumSafePrice / taxFactor)
+      : null;
+  const discountCeiling =
+    goldProfitCeiling == null
+      ? costFloorCeiling
+      : costFloorCeiling == null
+        ? goldProfitCeiling
+        : Math.min(goldProfitCeiling, costFloorCeiling);
+  const ceilingReason =
+    discountCeiling == null
+      ? null
+      : discountCeiling === costFloorCeiling && (goldProfitCeiling == null || costFloorCeiling <= goldProfitCeiling)
+        ? "below what the piece cost"
+        : "more than the Gold Profit on this bill";
+  const discountExceedsProfit = !schemeSelected && discountCeiling != null && discountNum > discountCeiling + 1e-6;
   // A discount is absorbed from gold profit and nothing else, so the margin the
   // bill is really earning is the set profit less the discount. Stating it here
   // is what makes "the discount ate the profit" visible instead of implied: at
@@ -569,9 +591,9 @@ export default function NewSale() {
               {/* One strip, hairline separated: the three facts that decide the
                   price sit on a single line instead of three stacked boxes. */}
               <div className="mt-3.5 flex divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60">
-                <SpecCell label="Purity" value={product.purity || "Not provided"} />
-                <SpecCell label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
-                <SpecCell label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
+                <SpecCell flush label="Purity" value={product.purity || "Not provided"} />
+                <SpecCell flush label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
+                <SpecCell flush label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
               </div>
 
               {/* Mode belongs to the item: it decides whether THIS item's rate is
@@ -599,7 +621,11 @@ export default function NewSale() {
                   <SectionHead step={2} title="Pricing" meta={requoting ? "Updating…" : undefined} />
                   {/* Reference figures stay small: the field below is the one
                       the admin acts on, so it gets the visual weight. */}
-                  <div className="flex divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60">
+                  {/* Two equal columns with their own padding. SpecCell's
+                      edge-flush rule is for the spec strip that sits directly on
+                      the card; inside this bordered box it pulled the first
+                      label onto the border. */}
+                  <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1">
                     <SpecCell label="Today's gold value" value={money(todaysGoldValue)} mono />
                     <SpecCell label="Selling price" value={money(sellingPrice)} mono />
                   </div>
@@ -632,12 +658,24 @@ export default function NewSale() {
                       <p className="mt-1 text-[11px] text-muted">
                         {schemeSelected
                           ? <>Bill total for the piece. It is converted into the Gold Profit % it implies, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
-                          : "Type the quoted price — Gold Profit % below updates to match."}
+                          /* It becomes a discount line, not a new profit %. Saying
+                             "Gold Profit % updates to match" was untrue on a
+                             normal bill and is what made the field look broken. */
+                          : <>Type the quoted price. The gap to {money(sellingPrice)} is recorded as a discount and comes out of Gold Profit — the percentage itself stays as you set it.</>}
                       </p>
                     )}
                   </div>
                   {product.currentGoldValuePnl != null && (
-                    <PnlCard label="Today's Gold Value Profit / Loss" amount={product.currentGoldValuePnl} pct={product.currentGoldValueMarginPct} sub="vs today's gold value" />
+                    <PnlCard
+                      label="Today's Gold Value Profit / Loss"
+                      amount={product.currentGoldValuePnl}
+                      pct={product.currentGoldValueMarginPct}
+                      /* The figure is opaque without its own arithmetic: it is
+                         the bill with GST taken back out (that money is the
+                         government's, not the store's) against what the metal
+                         is worth at today's rate. */
+                      detail={<>{money(round2((product.finalAmount || 0) / taxFactor))} bill less GST − {money(todaysGoldValue)} today's gold value</>}
+                    />
                   )}
                 </Card>
 
@@ -665,8 +703,8 @@ export default function NewSale() {
                             : <>After the {money(discountNum)} discount — effective {round2(effectiveProfitPct)}% ({money(effectiveProfitAmount)})</>}
                         </span>
                       )}
-                      {goldProfitSuggested != null && (
-                        <span className="text-[11px] font-semibold text-accent-strong">Safe-price guidance: trimming to {round2(goldProfitSuggested)}% still avoids a loss.</span>
+                      {goldProfitSuggested != null && discountNum <= 0 && (
+                        <span className="text-[11px] font-semibold text-accent-strong">This can be cut to {round2(goldProfitSuggested)}% and the bill still makes money.</span>
                       )}
                     </label>
                     <label className="grid gap-1.5">
@@ -680,12 +718,22 @@ export default function NewSale() {
                       <span className="text-[11px] text-muted">= {money(product.wastageAmount)}</span>
                     </label>
                     <label className="grid gap-1.5 sm:col-span-2">
-                      <span className="text-xs font-bold">Discount (₹)</span>
+                      {/* The unit matters now: a discount comes off the taxable
+                          value, so the bill falls by the discount plus the GST
+                          that is no longer due on it. */}
+                      <span className="text-xs font-bold">Discount (₹) <span className="font-normal text-muted">— off the taxable value</span></span>
                       <Input type="number" step="0.01" min="0" value={schemeSelected ? "" : discount} onChange={(e) => setDiscount(e.target.value)} disabled={schemeSelected} className={schemeSelected ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" />
+                      {discountNum > 0 && !schemeSelected && product.gstApplied && (product.taxRatePercent || 0) > 0 && (
+                        <span className="text-[11px] text-muted">Bill falls by {money(round2(discountNum * taxFactor))} — the discount plus the {product.taxRatePercent}% GST no longer due on it.</span>
+                      )}
                       {schemeSelected ? (
                         <span className="text-[11px] text-muted">Not available on a scheme bill — the covered gold slice is already billed at pure gold value.</span>
-                      ) : goldProfitCeiling != null ? (
-                        <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>{discountExceedsProfit ? `Max discount ${money(goldProfitCeiling)} — a discount may only reduce Gold Profit.` : `Up to ${money(goldProfitCeiling)} can be absorbed from Gold Profit.`}</span>
+                      ) : discountCeiling != null ? (
+                        <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
+                          {discountExceedsProfit
+                            ? `Max discount ${money(discountCeiling)} — more takes this bill ${ceilingReason}.`
+                            : `Up to ${money(discountCeiling)} can be given — whichever runs out first, Gold Profit or the cost floor.`}
+                        </span>
                       ) : <span className="text-[11px] text-muted">A discount may only reduce Gold Profit.</span>}
                     </label>
                   </div>
@@ -1013,8 +1061,17 @@ export default function NewSale() {
                     {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
                     {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
                     <Row label="Subtotal" value={money(product.subtotalBeforeTax)} divider />
+                    {/* A discount is excluded from the taxable value, so it is
+                        taken off BEFORE the tax line and the taxable value is
+                        stated - otherwise the column does not add up to the
+                        total the customer pays. */}
+                    {product.discountAmount > 0 && (
+                      <>
+                        <Row label="Discount" value={`− ${money(product.discountAmount)}`} tone="text-emerald-700" />
+                        <Row label="Taxable value" value={money(round2(product.subtotalBeforeTax - product.discountAmount))} />
+                      </>
+                    )}
                     <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
-                    {product.discountAmount > 0 && <Row label="Discount" value={`− ${money(product.discountAmount)}`} tone="text-emerald-700" />}
                     <BillTotalBand label="Bill Total" value={money(billTotal)} />
                     {/* Mirrors the Payment card — see the note in the scheme
                         layout for why nothing shows until it is chosen. */}
@@ -1226,13 +1283,14 @@ function OtpDialog({ otp, onClose, onDone }) {
   );
 }
 
-const PnlCard = ({ label, amount, pct, sub }) => {
+const PnlCard = ({ label, amount, pct, sub, detail }) => {
   const pos = (amount || 0) >= 0;
   return (
     <div className={`rounded-xl border p-3 text-center ${pos ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
       <div className={`text-[10px] font-bold uppercase tracking-wider ${pos ? "text-emerald-700" : "text-red-700"}`}>{label}</div>
       <div className={`num mt-0.5 text-base font-extrabold ${pos ? "text-emerald-700" : "text-red-700"}`}>{amount < 0 ? "-" : ""}{money(Math.abs(amount || 0))}</div>
       <div className={`text-[10px] font-semibold ${pos ? "text-emerald-600" : "text-red-600"}`}>{pos ? "Profit" : "Loss"}{pct != null ? ` · ${Math.abs(pct).toFixed(2)}%` : ""}{sub ? <span className="ml-1 text-[9px] font-medium text-muted">{sub}</span> : null}</div>
+      {detail ? <div className="num mt-1 text-[9px] font-medium leading-snug text-muted">{detail}</div> : null}
     </div>
   );
 };
@@ -1251,8 +1309,8 @@ const SectionHead = ({ step, title, meta }) => (
 );
 
 /** One cell of the item spec strip: label over value, hairline separated. */
-const SpecCell = ({ label, value, mono }) => (
-  <div className="min-w-0 flex-1 px-3.5 py-2.5 first:pl-0 last:pr-0">
+const SpecCell = ({ label, value, mono, flush = false }) => (
+  <div className={`min-w-0 flex-1 px-3.5 py-2.5 ${flush ? "first:pl-0 last:pr-0" : ""}`}>
     <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">{label}</div>
     <div className={`mt-0.5 truncate text-sm font-extrabold text-ink ${mono ? "num" : ""}`}>{value}</div>
   </div>
