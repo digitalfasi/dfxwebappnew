@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import NumberWheelGuard from "@/_shared/NumberWheelGuard";
 
 export const metadata: Metadata = {
   title: "DFX Solution — Admin",
@@ -23,7 +24,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {/* Stops a stray scroll from rewriting a focused number field. */}
+        <NumberWheelGuard />
+        {children}
+      </body>
     </html>
   );
 }

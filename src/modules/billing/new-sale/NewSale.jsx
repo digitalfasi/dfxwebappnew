@@ -79,8 +79,12 @@ export default function NewSale() {
   const [schemeAmounts, setSchemeAmounts] = useState({}); // {enrollmentId: string}
 
   // Payment
-  const [payMethod, setPayMethod] = useState("CASH");
-  const [payStatus, setPayStatus] = useState("PAID");
+  // No default method and no default status. A pre-selected "Cash / Paid in
+  // full" silently asserts money was collected: one distracted click on
+  // Create Bill and the invoice is settled in the ledger against cash nobody
+  // counted. The admin states both, every time.
+  const [payMethod, setPayMethod] = useState("");
+  const [payStatus, setPayStatus] = useState("");
   const [partialAmount, setPartialAmount] = useState("");
   const [payRef, setPayRef] = useState("");
 
@@ -166,7 +170,7 @@ export default function NewSale() {
           // PRICE is a probe: the backend answers with the gold-profit trim that
           // reaches it, which we then adopt (see the effect below) so the bill is
           // driven by Gold Profit % alone — never by a discount line.
-          customerPrice: !schemeSelected && priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
+          customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
           goldProfitPercent: priceDriver === "PROFIT" && goldProfit !== "" ? num(goldProfit) : undefined,
           // Carve the gold-savings slice so the Bill summary previews the exact
           // making/GST-free figures the OTP redemption will finalize.
@@ -257,6 +261,7 @@ export default function NewSale() {
 
   const partialNum = num(partialAmount);
   const partialInvalid = payStatus === "PARTIAL" && !(partialNum > 0 && partialNum < remaining);
+  const paymentChosen = !!payMethod && !!payStatus;
   const paidNow = payStatus === "PAID" ? remaining : payStatus === "PARTIAL" ? partialNum : 0;
   const outstanding = Math.max(0, Number((remaining - paidNow).toFixed(2)));
 
@@ -281,7 +286,7 @@ export default function NewSale() {
       makingChargeType: product.makingChargeType || undefined,
       wastageValue: wastageVal !== "" ? num(wastageVal) : undefined,
       wastageType: product.wastageType || undefined,
-      customerPrice: !schemeSelected && priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
+      customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
       goldProfitPercent: priceDriver === "PROFIT" && goldProfit !== "" ? num(goldProfit) : undefined,
     };
   };
@@ -325,11 +330,12 @@ export default function NewSale() {
 
   const canCreate =
     !!product && !creating && !requoting && !discountExceedsProfit &&
-    customerIdentified && !partialInvalid && !anyLineOverBalance && !redeemOverGold;
+    customerIdentified && paymentChosen && !partialInvalid && !anyLineOverBalance && !redeemOverGold;
 
   const resetAll = () => {
     setProduct(null); setProductCode(""); setCode("");
     setRate(""); setMakingVal(""); setWastageVal(""); setDiscount(""); setGst(true);
+    setPayMethod(""); setPayStatus(""); setPartialAmount(""); setPayRef("");
     setSaleMode(null); setCustomerPrice(""); setGoldProfit(""); setPriceDriver("ENGINE");
     clearCustomer(); setCustQuery(""); setCustResults([]); setWalkinName(""); setWalkinPhone("");
     setPayMethod("CASH"); setPayStatus("PAID"); setPartialAmount(""); setPayRef("");
@@ -342,6 +348,7 @@ export default function NewSale() {
       else if (discountExceedsProfit) toast("Discount exceeds available Gold Profit");
       else if (anyLineOverBalance) toast("A redemption exceeds its scheme balance");
       else if (redeemOverGold) toast(`Scheme redemption can't exceed the item's gold value (${money(goldValue)})`);
+      else if (!paymentChosen) toast("Choose the payment method and status before billing");
       else if (partialInvalid) toast("Partial amount must be greater than 0 and less than the amount remaining");
       return;
     }
@@ -431,7 +438,7 @@ export default function NewSale() {
   const goldValueLine = goldValuePure + goldProfitLine;
 
   return (
-    <div ref={scope} className="mx-auto max-w-[1040px] pb-14">
+    <div ref={scope} className="mx-auto max-w-[1240px] pb-14">
       <div data-motion="page-head" className="mb-6">
         <h2 className="text-2xl font-extrabold tracking-tight">New Sale</h2>
         <p className="mt-1 max-w-[64ch] text-sm text-muted">Enter the item's HUID, adjust the applicable rate and charges if needed, identify the buyer, then confirm the bill. Every amount is calculated by the backend.</p>
@@ -513,11 +520,15 @@ export default function NewSale() {
                       <span className="text-xs font-bold uppercase tracking-wider text-muted">Customer Price</span>
                       {requoting && <span className="text-[10px] font-semibold text-muted">Updating…</span>}
                     </div>
-                    <Input type="number" step="0.01" min="0" placeholder="₹0" disabled={schemeSelected}
-                      className={`mt-2 h-14 text-center text-2xl font-extrabold ${schemeSelected ? "opacity-60" : ""}`}
-                      value={schemeSelected ? (product.finalAmount != null ? String(round2(product.finalAmount)) : "") : (priceDriver === "PRICE" ? customerPrice : (product.finalAmount != null ? String(round2(product.finalAmount)) : ""))}
+                    <Input type="number" step="0.01" min="0" placeholder="₹0"
+                      className="mt-2 h-14 text-center text-2xl font-extrabold"
+                      value={priceDriver === "PRICE" ? customerPrice : (product.finalAmount != null ? String(round2(product.finalAmount)) : "")}
                       onChange={(e) => { setCustomerPrice(e.target.value); setPriceDriver("PRICE"); }} />
-                    <p className="mt-1 text-[11px] text-muted">{schemeSelected ? "Locked on a scheme bill — the redemption re-prices the bill from the gold rate and charges, so a typed-in total could not survive it. Steer the price with Gold Profit % instead." : "Type the quoted price — Gold Profit % below updates to match."}</p>
+                    <p className="mt-1 text-[11px] text-muted">
+                      {schemeSelected
+                        ? <>Bill total for the piece. It is converted into the Gold Profit % it implies, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
+                        : "Type the quoted price — Gold Profit % below updates to match."}
+                    </p>
                   </div>
                   {product.currentGoldValuePnl != null && (
                     <PnlCard label="Today's Gold Value Profit / Loss" amount={product.currentGoldValuePnl} pct={product.currentGoldValueMarginPct} sub="vs today's gold value" />
@@ -641,11 +652,11 @@ export default function NewSale() {
             <Card className="p-5 space-y-4">
               <h3 className="text-sm font-extrabold">Payment</h3>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Method</span>
-                  <Select value={payMethod} onValueChange={setPayMethod} options={PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABEL[m] }))} />
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Method *</span>
+                  <Select value={payMethod} onValueChange={setPayMethod} placeholder="Select method" options={PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABEL[m] }))} />
                 </label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Status</span>
-                  <Select value={payStatus} onValueChange={setPayStatus} options={PAYMENT_STATUSES.map((s) => ({ value: s, label: PAYMENT_STATUS_LABEL[s] }))} />
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Status *</span>
+                  <Select value={payStatus} onValueChange={setPayStatus} placeholder="Select status" options={PAYMENT_STATUSES.map((s) => ({ value: s, label: PAYMENT_STATUS_LABEL[s] }))} />
                 </label>
                 {payStatus === "PARTIAL" && (
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Paid now (₹) *</span>
@@ -655,16 +666,20 @@ export default function NewSale() {
                 )}
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Reference No.</span><Input value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="Optional" /></label>
               </div>
+              {!paymentChosen && <p className="text-[11px] font-semibold text-accent-strong">Choose a method and a status — nothing is treated as collected until you do.</p>}
               {schemeApplied && <p className="text-[11px] text-muted">Payment applies to the amount remaining after scheme redemption ({money(remaining)}).</p>}
             </Card>
           </div>
 
           {/* RIGHT: bill summary — pinned while the left column scrolls. The
               sticky lives on the COLUMN (the card alone could not stick once the
-              grid became items-start), and the card scrolls internally if it is
-              ever taller than the viewport. */}
+              grid became items-start). Deliberately NO inner overflow: a second
+              scrollbar inside a pinned panel hides the very figure being
+              checked while the page itself looks scrolled to the end. The
+              panel is kept short enough to fit instead — dense rows,
+              one-line notes. */}
           <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
-            <Card className="p-5 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+            <Card className="p-5">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-extrabold">Bill summary</h3>
                 <div className="flex items-center gap-2">
@@ -753,12 +768,20 @@ export default function NewSale() {
                         </p>
                         {(product.goldProfitAmount || 0) > 0 && (
                           <p className="text-[10px] leading-snug text-muted">
-                            Gold profit sits entirely in the normal portion — the scheme buys at pure gold value ({money(goldValue)} for the whole piece).
+                            Gold profit sits entirely in the normal portion.
                           </p>
                         )}
-                        {/* Payment reflection — always mirrors the left-side Payment card. */}
-                        <Row label={payStatus === "PARTIAL" ? "Paid now" : payStatus === "PENDING" ? "Paid" : "Amount Paid"} value={money(paidNow)} />
-                        <Row label="Outstanding" value={money(outstanding)} tone={outstanding > 0 ? "text-accent" : "text-emerald-700"} strong={outstanding > 0} />
+                        {/* Mirrors the Payment card. Until a status is picked
+                            there is no paid/outstanding figure to state — printing
+                            one asserts money that was never collected. */}
+                        {paymentChosen ? (
+                          <>
+                            <Row label={payStatus === "PARTIAL" ? "Paid now" : payStatus === "PENDING" ? "Paid" : "Amount Paid"} value={money(paidNow)} />
+                            <Row label="Outstanding" value={money(outstanding)} tone={outstanding > 0 ? "text-accent" : "text-emerald-700"} strong={outstanding > 0} />
+                          </>
+                        ) : (
+                          <Row label="Payment" value="Not selected" tone="text-muted" />
+                        )}
                       </div>
                     </>
                   );
@@ -774,9 +797,16 @@ export default function NewSale() {
                     <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
                     {product.discountAmount > 0 && <Row label="Discount" value={`− ${money(product.discountAmount)}`} tone="text-emerald-700" />}
                     <Row label="Bill Total" value={money(billTotal)} strong />
-                    {/* Payment reflection — always mirrors the left-side Payment card. */}
-                    <Row label={payStatus === "PARTIAL" ? "Paid now" : payStatus === "PENDING" ? "Paid" : "Amount Paid"} value={money(paidNow)} divider />
-                    <Row label="Outstanding" value={money(outstanding)} tone={outstanding > 0 ? "text-accent" : "text-emerald-700"} strong={outstanding > 0} />
+                    {/* Mirrors the Payment card — see the note in the scheme
+                        layout for why nothing shows until it is chosen. */}
+                    {paymentChosen ? (
+                      <>
+                        <Row label={payStatus === "PARTIAL" ? "Paid now" : payStatus === "PENDING" ? "Paid" : "Amount Paid"} value={money(paidNow)} divider />
+                        <Row label="Outstanding" value={money(outstanding)} tone={outstanding > 0 ? "text-accent" : "text-emerald-700"} strong={outstanding > 0} />
+                      </>
+                    ) : (
+                      <Row label="Payment" value="Not selected" tone="text-muted" divider />
+                    )}
                   </>
                 )}
               </div>
@@ -790,7 +820,7 @@ export default function NewSale() {
                       <div><div className="text-[10px] font-bold uppercase text-muted">Min Safe Price</div><div className="num text-sm font-extrabold">{minSafe != null ? money(minSafe) : "—"}</div></div>
                       <div><div className="text-[10px] font-bold uppercase text-muted">Max Discount</div><div className="num text-sm font-extrabold">{maxDiscount != null ? money(maxDiscount) : "—"}</div></div>
                     </div>
-                    <div className="mt-2 text-[10px] leading-snug text-emerald-800/80">Current Price = what you're charging now. Min Safe Price = lowest price with no loss. Max Discount = how much you can still cut before a loss.</div>
+                    <div className="mt-2 text-[10px] leading-snug text-emerald-800/80">Lowest price with no loss, and how much is still cuttable.</div>
                     {product.safePrice.message && <div className={`mt-2 text-[11px] ${product.safePrice.isLoss ? "font-semibold text-danger" : "text-emerald-800"}`}>{product.safePrice.message}</div>}
                   </div>
                 ) : (
@@ -805,7 +835,16 @@ export default function NewSale() {
                   <Button size="sm" variant="outline" className="flex-1" onClick={resetAll} disabled={creating}>Cancel</Button>
                 </div>
               </div>
-              {!customerIdentified && <p className="mt-2 text-center text-[11px] text-muted">Identify the buyer to enable billing.</p>}
+              {!canCreate && !creating && (
+                <p className="mt-2 text-center text-[11px] text-muted">
+                  {!customerIdentified ? "Identify the buyer to enable billing."
+                    : !paymentChosen ? "Select the payment method and status to enable billing."
+                    : partialInvalid ? "Enter a valid part payment to enable billing."
+                    : discountExceedsProfit ? "Reduce the discount to enable billing."
+                    : redeemOverGold ? "Reduce the scheme redemption to enable billing."
+                    : ""}
+                </p>
+              )}
             </Card>
           </div>
         </div>
