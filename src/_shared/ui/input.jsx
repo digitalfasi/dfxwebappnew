@@ -1,12 +1,20 @@
 import { cn } from "@/_shared/utils";
 
-export function Input({ className, ...props }) {
+/** `error` is truthy when the value is invalid: it paints the danger border and
+ *  marks the field aria-invalid, so the visual state and the state a screen
+ *  reader announces can never disagree. It is consumed here and never spread
+ *  onto the DOM node. */
+export function Input({ className, error, ...props }) {
   return (
     <input
+      aria-invalid={error ? true : undefined}
       className={cn(
-        "h-10 w-full rounded-xl border border-line bg-surface px-3.5 text-sm text-ink placeholder:text-faint",
+        "h-10 w-full rounded-xl border bg-surface px-3.5 text-sm text-ink placeholder:text-faint",
         "transition-[border-color,box-shadow] duration-150 ease-[cubic-bezier(0.2,0,0,1)]",
-        "focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)] focus:outline-none",
+        "focus:outline-none",
+        error
+          ? "border-danger focus:border-danger focus:shadow-[0_0_0_3px_var(--color-danger-line)]"
+          : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]",
         className
       )}
       {...props}
@@ -81,22 +89,86 @@ export function DigitsInput({ value, onValueChange, maxDigits = 2, allowDecimal 
  * downstream has to strip separators before sending it to the API — the class
  * of bug where a formatted string reaches a numeric column.
  */
-export function MoneyInput({ value, onValueChange, className, maxDigits = 12, ...props }) {
-  const digits = String(value ?? "").replace(/\D/g, "").slice(0, maxDigits);
-  const display = digits ? Number(digits).toLocaleString("en-IN") : "";
+export function MoneyInput({ value, onValueChange, className, maxDigits = 12, allowDecimal = false, symbolClassName, ...props }) {
+  // `allowDecimal` keeps one dot and up to two paise digits. The decimal tail is
+  // carried through exactly as typed - grouping only ever touches the rupees -
+  // so a half-typed "1250." survives the render and the caret does not jump.
+  const sanitize = (raw) => {
+    const str = String(raw ?? "");
+    if (!allowDecimal) return str.replace(/\D/g, "").slice(0, maxDigits);
+    const cleaned = str.replace(/[^\d.]/g, "");
+    const [int = "", ...rest] = cleaned.split(".");
+    const head = int.slice(0, maxDigits);
+    return rest.length ? `${head}.${rest.join("").replace(/\./g, "").slice(0, 2)}` : head;
+  };
+  const raw = sanitize(value);
+  const [rupees, paise] = raw.split(".");
+  const grouped = rupees ? Number(rupees).toLocaleString("en-IN") : "";
+  const display = paise !== undefined ? `${grouped}.${paise}` : grouped;
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted">₹</span>
+      <span className={cn("pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted", symbolClassName)}>₹</span>
       <Input
         type="text"
-        inputMode="numeric"
+        inputMode={allowDecimal ? "decimal" : "numeric"}
         value={display}
-        onChange={(e) => onValueChange?.(String(e.target.value).replace(/\D/g, "").slice(0, maxDigits))}
+        onChange={(e) => onValueChange?.(sanitize(e.target.value))}
         onPaste={(e) => {
           e.preventDefault();
-          onValueChange?.(String(e.clipboardData.getData("text")).replace(/\D/g, "").slice(0, maxDigits));
+          onValueChange?.(sanitize(e.clipboardData.getData("text")));
         }}
         className={cn("num pl-8", className)}
+        {...props}
+      />
+    </div>
+  );
+}
+
+/**
+ * The store-wide mobile number field: a fixed +91 prefix, ten digits, nothing
+ * else. The prefix is displayed and never typed, so it cannot be deleted,
+ * duplicated or pasted over, and `onValueChange` always receives the ten local
+ * digits alone — the shape every phone column in the product stores.
+ *
+ * Letters, symbols and an eleventh digit are dropped on keystroke AND on paste,
+ * so an invalid value never reaches state for even one render. `error` paints
+ * the standard danger treatment on the whole control, prefix included, because
+ * a partially-red input reads as a rendering fault rather than a validation
+ * message.
+ */
+export function PhoneInput({ value, onValueChange, error, className, id, ...props }) {
+  const clean = (raw) => String(raw).replace(/\D/g, "").slice(0, 10);
+  return (
+    <div
+      className={cn(
+        "flex h-10 items-stretch overflow-hidden rounded-xl border bg-surface transition",
+        error
+          ? "border-danger"
+          : "border-line focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]",
+        className,
+      )}
+    >
+      <span
+        className="num grid w-12 shrink-0 place-items-center border-r border-line-soft bg-canvas/60 text-sm font-bold text-muted"
+        aria-hidden="true"
+      >
+        +91
+      </span>
+      <input
+        id={id}
+        value={value ?? ""}
+        onChange={(e) => onValueChange?.(clean(e.target.value))}
+        onPaste={(e) => {
+          e.preventDefault();
+          onValueChange?.(clean(`${value ?? ""}${e.clipboardData.getData("text")}`));
+        }}
+        inputMode="numeric"
+        autoComplete="tel-national"
+        maxLength={10}
+        aria-label="10-digit mobile number, country code +91"
+        aria-invalid={error ? true : undefined}
+        placeholder="98765 43210"
+        className="num min-w-0 flex-1 bg-transparent px-3.5 text-sm tracking-[0.02em] outline-none"
         {...props}
       />
     </div>

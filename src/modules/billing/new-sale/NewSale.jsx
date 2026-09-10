@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Card } from "@/_shared/ui/card";
 import { Button } from "@/_shared/ui/button";
-import { Input, SearchInput } from "@/_shared/ui/input";
+import { Input, MoneyInput, PhoneInput, SearchInput } from "@/_shared/ui/input";
 import { Badge } from "@/_shared/ui/badge";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
@@ -265,8 +265,13 @@ export default function NewSale() {
   const paidNow = payStatus === "PAID" ? remaining : payStatus === "PARTIAL" ? partialNum : 0;
   const outstanding = Math.max(0, Number((remaining - paidNow).toFixed(2)));
 
+  // Empty is valid (a walk-in need not give a number); anything typed has to be
+  // all ten digits. PhoneInput already refuses letters, symbols and an 11th
+  // digit, so this only guards the half-typed case.
+  const walkinPhoneInvalid = customerMode === "walkin" && walkinPhone.length > 0 && walkinPhone.length !== 10;
+
   const customerIdentified =
-    customerMode === "existing" ? !!selectedCustomer?.id : walkinName.trim().length >= 2;
+    (customerMode === "existing" ? !!selectedCustomer?.id : walkinName.trim().length >= 2) && !walkinPhoneInvalid;
 
   const baseInputs = () => {
     const offline = saleMode === "OFFLINE";
@@ -577,10 +582,14 @@ export default function NewSale() {
                       <span className="text-xs font-bold uppercase tracking-[0.08em] text-accent-strong">Customer Price</span>
                       {requoting && <span className="text-[10px] font-semibold text-muted">Updating…</span>}
                     </div>
-                    <Input type="number" step="0.01" min="0" placeholder="₹0"
-                      className="num mt-2 h-14 bg-surface text-center text-2xl font-extrabold tracking-tight"
+                    <MoneyInput
+                      allowDecimal
+                      placeholder="0"
+                      className="mt-2 h-14 bg-surface pl-10 text-center text-2xl font-extrabold tracking-tight"
+                      symbolClassName="text-lg font-extrabold text-ink"
                       value={priceDriver === "PRICE" ? customerPrice : (product.finalAmount != null ? String(round2(product.finalAmount)) : "")}
-                      onChange={(e) => { setCustomerPrice(e.target.value); setPriceDriver("PRICE"); }} />
+                      onValueChange={(v) => { setCustomerPrice(v); setPriceDriver("PRICE"); }}
+                      aria-label="Customer price in rupees" />
                     <p className="mt-1 text-[11px] text-muted">
                       {schemeSelected
                         ? <>Bill total for the piece. It is converted into the Gold Profit % it implies, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
@@ -727,7 +736,13 @@ export default function NewSale() {
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Name *</span><Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Walk-in buyer name" /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Phone</span><Input value={walkinPhone} onChange={(e) => setWalkinPhone(e.target.value)} placeholder="Optional" /></label>
+                  {/* Optional, but if it is filled it must be a real mobile
+                      number - the bill carries it and the store calls it back. */}
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-bold">Phone <span className="font-normal text-muted">— optional, 10 digits</span></span>
+                    <PhoneInput value={walkinPhone} onValueChange={setWalkinPhone} error={walkinPhoneInvalid} />
+                    {walkinPhoneInvalid && <span className="text-[11px] font-semibold text-danger">Enter all 10 digits, or leave it empty</span>}
+                  </label>
                 </div>
               )}
             </Card>
@@ -781,8 +796,8 @@ export default function NewSale() {
                 <div className="mt-1 text-muted">
                   Buyer: <span className="font-semibold text-ink">{customerMode === "existing" ? (selectedCustomer?.name || "Not selected") : (walkinName.trim() || "Walk-in")}</span>
                   {(() => {
-                    const ph = customerMode === "existing" ? selectedCustomer?.phone : walkinPhone.trim();
-                    return ph && ph !== "—" ? ` · ${ph}` : "";
+                    const ph = customerMode === "existing" ? selectedCustomer?.phone : walkinPhone;
+                    return ph && ph !== "—" ? ` · +91 ${ph}` : "";
                   })()}
                 </div>
               </div>

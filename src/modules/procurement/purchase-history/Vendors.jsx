@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/_shared/ui/card";
 import { Button } from "@/_shared/ui/button";
-import { Input, SearchInput } from "@/_shared/ui/input";
+import { DigitsInput, Input, PhoneInput, SearchInput } from "@/_shared/ui/input";
 import { Badge } from "@/_shared/ui/badge";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
@@ -31,6 +31,19 @@ const MODE_TO_METHOD = { OFFLINE: "CASH", ONLINE: "UPI" };
 const methodToMode = (m) => (String(m || "").toUpperCase() === "CASH" ? "OFFLINE" : "ONLINE");
 const STATUS_TONE = { PAID: "success", PARTIAL: "warning", CREDIT: "danger" };
 const STATUS_LABEL = { PAID: "Paid", PARTIAL: "Partial", CREDIT: "Credit" };
+
+// Vendor identity rules, enforced here and again by the API.
+//   phone : ten local digits behind a fixed +91 - the PhoneInput cannot hold
+//           anything else, so this only has to catch a short number.
+//   email : the store's vendor records are Gmail accounts by policy, so a
+//           different domain is a data-entry mistake worth blocking.
+//   GST   : uppercase alphanumeric, 15 characters. Typed lowercase or pasted
+//           with spaces or punctuation, it is normalised rather than rejected -
+//           the admin should not have to retype a number that is already right.
+const onlyTenDigits = (v) => String(v).replace(/\D/g, "").slice(0, 10);
+const GSTIN_LEN = 15;
+const normalizeGst = (v) => String(v).replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, GSTIN_LEN);
+const VENDOR_EMAIL_RE = /^[A-Za-z0-9._%+-]+@gmail\.com$/;
 
 const fmtDate = (iso) => {
   if (!iso) return "—";
@@ -157,7 +170,7 @@ export default function Vendors() {
   const filteredVendors = useMemo(() => {
     const q = query.trim().toLowerCase();
     return vendors.filter((v) => {
-      const matchesQ = !q || v.name.toLowerCase().includes(q) || v.contactPerson.toLowerCase().includes(q) || v.phone.toLowerCase().includes(q);
+      const matchesQ = !q || v.name.toLowerCase().includes(q) || v.phone.toLowerCase().includes(q) || (v.gstNumber || "").toLowerCase().includes(q);
       const matchesStatus = statusFilter === "All" || (statusFilter === "Active" ? v.isActive : !v.isActive);
       return matchesQ && matchesStatus;
     });
@@ -209,7 +222,7 @@ export default function Vendors() {
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-2" data-motion="toolbar">
-        <SearchInput placeholder="Search vendor, contact, phone" value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 min-w-[220px]" />
+        <SearchInput placeholder="Search vendor, phone or GST" value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 min-w-[220px]" />
         <Select value={statusFilter} onValueChange={setStatusFilter} options={["All", "Active", "Inactive"]} className="w-[140px]" />
       </div>
 
@@ -233,8 +246,8 @@ export default function Vendors() {
                       <button className="font-bold text-ink hover:text-accent hover:underline" onClick={() => { setDetailTab("overview"); setDetailVendor(v); }}>{v.name}</button>
                     </td>
                     <td className="py-3.5">
-                      <div className="text-xs font-semibold">{v.contactPerson || "Not provided"}</div>
-                      <div className="text-xs text-muted">{v.phone || "Not provided"}</div>
+                      <div className="num text-xs font-semibold">{v.phone ? `+91 ${v.phone}` : "No phone"}</div>
+                      <div className="num text-xs text-muted">{v.gstNumber || "No GST"}</div>
                     </td>
                     <td className="py-3.5"><Badge tone={v.isActive ? "success" : "neutral"} dot>{v.isActive ? "Active" : "Inactive"}</Badge></td>
                     <td className="py-3.5 font-mono text-xs whitespace-nowrap">{Number(v.vendorChargePercent).toFixed(2)}%</td>
@@ -383,8 +396,7 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
                 <MiniStat label="Outstanding" value={money(totals.outstanding)} tone="text-accent" />
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Contact person" value={vendor.contactPerson || "Not provided"} />
-                <Field label="Phone" value={vendor.phone || "Not provided"} />
+                <Field label="Phone" value={vendor.phone ? `+91 ${vendor.phone}` : "Not provided"} />
                 <Field label="Email" value={vendor.email || "Not provided"} />
                 <Field label="GST number" value={vendor.gstNumber || "Not provided"} />
                 <Field label="Address" value={vendor.address || "Not provided"} className="sm:col-span-2" />
@@ -474,20 +486,35 @@ const Field = ({ label, value, className }) => (
 /* ------------------------------------------------------------------ */
 function VendorForm({ vendor, onClose, onSaved }) {
   const editing = !!vendor;
+  // Contact Person is gone: the vendor's own phone and GST are what the store
+  // actually deals with, and a second free-text name only ever went stale.
   const [f, setF] = useState({
-    name: vendor?.name || "", contactPerson: vendor?.contactPerson || "", phone: vendor?.phone || "",
-    email: vendor?.email || "", gstNumber: vendor?.gstNumber || "", address: vendor?.address || "",
+    name: vendor?.name || "", phone: onlyTenDigits(vendor?.phone || ""),
+    email: vendor?.email || "", gstNumber: normalizeGst(vendor?.gstNumber || ""), address: vendor?.address || "",
     vendorChargePercent: vendor ? String(vendor.vendorChargePercent) : "4", isActive: vendor ? vendor.isActive : true,
   });
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({});
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  // Clearing the field's own error as it is corrected keeps the message tied to
+  // the input the admin is looking at, rather than to the last submit.
+  const setField = (k, v) => { setF((p) => ({ ...p, [k]: v })); setErrors((p) => (p[k] ? { ...p, [k]: undefined } : p)); };
+
+  const validate = () => {
+    const e = {};
+    if (f.name.trim().length < 2) e.name = "Vendor name needs at least 2 characters";
+    if (f.phone.length !== 10) e.phone = "Enter the 10-digit mobile number";
+    if (f.email.trim() && !VENDOR_EMAIL_RE.test(f.email.trim())) e.email = "Use a valid @gmail.com address";
+    if (f.gstNumber && f.gstNumber.length !== GSTIN_LEN) e.gstNumber = `A GSTIN is ${GSTIN_LEN} characters`;
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const submit = async () => {
-    if (f.name.trim().length < 2) { toast("Vendor name is required (min 2 characters)"); return; }
-    if (!f.phone.trim()) { toast("Phone number is required"); return; }
+    if (!validate()) { toast("Check the highlighted fields"); return; }
     setSaving(true);
     try {
-      const payload = { ...f, name: f.name.trim() };
+      const payload = { ...f, name: f.name.trim(), email: f.email.trim(), gstNumber: normalizeGst(f.gstNumber) };
       const saved = editing ? await billingService.updateVendor(vendor.id, payload) : await billingService.createVendor(payload);
       toast(editing ? "Vendor updated" : "Vendor created");
       await onSaved(saved);
@@ -501,20 +528,58 @@ function VendorForm({ vendor, onClose, onSaved }) {
       <div className="relative w-full max-w-[560px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
         <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">{editing ? "Edit Vendor" : "Add Vendor"}</h3><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
         <div className="flex-1 overflow-y-auto px-6 py-5 grid gap-4">
-          <label className="grid gap-1.5"><span className="text-xs font-bold">Vendor Name *</span><Input value={f.name} onChange={set("name")} placeholder="e.g. Malabar Gold" /></label>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5"><span className="text-xs font-bold">Contact Person</span><Input value={f.contactPerson} onChange={set("contactPerson")} /></label>
-            <label className="grid gap-1.5"><span className="text-xs font-bold">Phone *</span><Input value={f.phone} onChange={set("phone")} /></label>
-            <label className="grid gap-1.5"><span className="text-xs font-bold">Email</span><Input type="email" value={f.email} onChange={set("email")} /></label>
-            <label className="grid gap-1.5"><span className="text-xs font-bold">GST Number</span><Input value={f.gstNumber} onChange={set("gstNumber")} /></label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-bold">Vendor Name *</span>
+            <Input value={f.name} onChange={set("name")} placeholder="e.g. Malabar Gold" error={errors.name} />
+            {errors.name && <span className="text-[11px] font-semibold text-danger">{errors.name}</span>}
+          </label>
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Phone * <span className="font-normal text-muted">— 10 digits</span></span>
+              <PhoneInput value={f.phone} onValueChange={(v) => setField("phone", v)} error={!!errors.phone} />
+              {errors.phone && <span className="text-[11px] font-semibold text-danger">{errors.phone}</span>}
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Email <span className="font-normal text-muted">— @gmail.com</span></span>
+              <Input type="email" inputMode="email" autoComplete="email" placeholder="vendor@gmail.com" value={f.email} onChange={(e) => setField("email", e.target.value)} error={errors.email} />
+              {errors.email && <span className="text-[11px] font-semibold text-danger">{errors.email}</span>}
+            </label>
+            <label className="grid gap-1.5 sm:col-span-2">
+              <span className="text-xs font-bold">GST Number <span className="font-normal text-muted">— 15 characters, uppercase</span></span>
+              {/* Normalised on every keystroke and on paste, so a number copied
+                  out of an invoice with spaces or in lowercase is accepted as
+                  typed and stored in the one canonical form. */}
+              <Input
+                value={f.gstNumber}
+                onChange={(e) => setField("gstNumber", normalizeGst(e.target.value))}
+                onPaste={(e) => { e.preventDefault(); setField("gstNumber", normalizeGst(f.gstNumber + e.clipboardData.getData("text"))); }}
+                placeholder="29ABCDE1234F1Z5"
+                className="num uppercase tracking-[0.04em]"
+                maxLength={GSTIN_LEN}
+                error={errors.gstNumber}
+              />
+              {errors.gstNumber
+                ? <span className="text-[11px] font-semibold text-danger">{errors.gstNumber}</span>
+                : <span className="text-[11px] text-muted">{f.gstNumber.length}/{GSTIN_LEN}</span>}
+            </label>
           </div>
           <label className="grid gap-1.5"><span className="text-xs font-bold">Address</span><Input value={f.address} onChange={set("address")} /></label>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5"><span className="text-xs font-bold">Default Tunch %</span><Input type="number" step="0.01" value={f.vendorChargePercent} onChange={set("vendorChargePercent")} /><span className="text-[11px] text-muted">Percent of the net weight paid at the 24K rate (18K = 75% + 4% = 79% of net), not added to the rate/g. Default 4%.</span></label>
+          {/* Tunch carries a two-line note, so both controls are pinned to the
+              top of the row and the note is reserved space below the pair -
+              that is what kept Status sitting off the grid line. */}
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Default Tunch % <span className="font-normal text-muted">— 0-9</span></span>
+              <DigitsInput value={f.vendorChargePercent} onValueChange={(v) => setField("vendorChargePercent", v)} maxDigits={1} />
+            </label>
             {editing && (
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Status</span><Select value={f.isActive ? "Active" : "Inactive"} onValueChange={(v) => setF({ ...f, isActive: v === "Active" })} options={["Active", "Inactive"]} /></label>
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">Status</span>
+                <Select value={f.isActive ? "Active" : "Inactive"} onValueChange={(v) => setF({ ...f, isActive: v === "Active" })} options={["Active", "Inactive"]} />
+              </label>
             )}
           </div>
+          <p className="-mt-1 text-[11px] text-muted">Tunch is a percent of the net weight paid at the 24K rate (18K = 75% + 4% = 79% of net). It is never added to the rate per gram. Default 4%.</p>
         </div>
         <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>

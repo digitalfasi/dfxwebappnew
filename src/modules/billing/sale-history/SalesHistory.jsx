@@ -215,7 +215,7 @@ export default function SalesHistory() {
           </Card>
           <Card data-motion="stat" className="p-4">
             <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Outstanding</div>
-            <div className="num mt-1 text-2xl font-extrabold">{formatINR(totalOutstanding)}</div>
+            <div className={`num mt-1 text-2xl font-extrabold ${totalOutstanding > 0 ? "text-danger" : ""}`}>{formatINR(totalOutstanding)}</div>
             <div className="text-xs text-muted">Across filtered bills</div>
           </Card>
         </div>
@@ -573,9 +573,9 @@ function SaleDetail({ sale, onClose, onChanged }) {
               <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Paid</div>
               <div className="num mt-0.5 text-sm font-bold">{formatINR(paid)}</div>
             </div>
-            <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
+            <div className={`rounded-xl border px-3 py-2.5 ${outstanding > 0 ? "border-danger-line bg-danger-soft" : "border-line bg-canvas/40"}`}>
               <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Outstanding</div>
-              <div className="num mt-0.5 text-sm font-bold">{formatINR(outstanding)}</div>
+              <div className={`num mt-0.5 text-sm font-bold ${outstanding > 0 ? "text-danger" : ""}`}>{formatINR(outstanding)}</div>
             </div>
           </div>
 
