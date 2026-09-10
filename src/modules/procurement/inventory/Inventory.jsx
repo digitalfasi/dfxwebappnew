@@ -430,7 +430,9 @@ export default function Inventory({ onNavigate }) {
       setBulkRows([newBulkRow()]);
       setBulkHeader({ vendor: "", date: "", invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
       await load();
-      toast(final != null ? `Bulk purchase recorded — ₹${final} payable` : "Bulk purchase recorded");
+      // Grouped like every other money figure — this was the one place a raw
+      // number still reached the screen.
+      toast(final != null ? `Bulk purchase recorded — ${money(final)} payable` : "Bulk purchase recorded");
     } catch (err) {
       toast(err?.message || "Bulk purchase failed");
     } finally {
