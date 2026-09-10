@@ -107,6 +107,9 @@ export const billingService = {
       // 24K value, so the backend needs the purity to pay the vendor for
       // Net × (purity % + Tunch %) grams of pure gold.
       purity: data.purity ?? null,
+      // Flat rupee cost of the stones in the piece. The server adds it to the
+      // payable after the gold math, so Tunch never touches it.
+      stone_charge_amount: data.stoneChargeAmount != null && data.stoneChargeAmount !== "" ? Number(data.stoneChargeAmount) : 0,
       vendor_charge_percent: data.vendorChargePercent ?? null,
       inventory_item_id: data.inventoryItemId || null,
       note: data.note || null,
@@ -312,6 +315,9 @@ export const billingService = {
         gross_weight_grams: Number(r.gross),
         net_gold_weight_grams: Number(r.net),
         purchase_rate_per_gram: Number(r.rate),
+        // Flat rupee cost of this row's stones - not gold, so it carries no
+        // purity conversion and no Tunch.
+        stone_charge_amount: r.stone !== "" && r.stone != null ? Number(r.stone) : 0,
         // Tunch per row. Null (omitted) lets the server fall back to the
         // header, then to the vendor default.
         vendor_charge_percent: r.tunch !== "" && r.tunch != null ? Number(r.tunch) : null,
@@ -731,6 +737,7 @@ function mapVendorPurchase(p = {}) {
     // netWeightGrams means a purchase recorded before the column existed.
     netWeightGrams: p.net_weight_grams ?? null,
     purity: p.purity ?? "",
+    stoneChargeAmount: p.stone_charge_amount ?? 0,
     weightGrams: p.weight_grams ?? 0,
     ratePerGram: p.rate_per_gram ?? 0,
     baseGoldAmount: p.base_gold_amount ?? 0,

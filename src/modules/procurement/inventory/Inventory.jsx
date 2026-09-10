@@ -45,14 +45,14 @@ const PAY_METHOD_OPTS = [
 // seeded from today's published rate by newBulkRow below — editable, because a
 // vendor invoice can be struck at a rate agreed earlier in the day.
 const DEFAULT_TUNCH_PERCENT = "4";
-const emptyBulkRow = () => ({ ident: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", net: "", rate: "", tunch: DEFAULT_TUNCH_PERCENT });
+const emptyBulkRow = () => ({ ident: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", net: "", rate: "", tunch: DEFAULT_TUNCH_PERCENT, stone: "" });
 
 // Real inventory loads from the DFX backend via billingService. No mock items.
 
 const EMPTY_PURCHASE = {
   photoFile: null, photo: null, huid: "", name: "", category: "Rings", subCategory: "Traditional",
   purity: "22K", gross: "", net: "", vendor: "", purchaseDate: "", invoice: "", rate: "",
-  tunch: "4", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
+  tunch: "4", stone: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
 };
 
 export default function Inventory({ onNavigate }) {
@@ -255,12 +255,21 @@ export default function Inventory({ onNavigate }) {
     const tunchGrams = fineGrams * tunchPct / 100;
     const base = fineGrams * rate24;
     const tunchAmt = tunchGrams * rate24;
+    // Stones are not gold: no purity conversion, no Tunch. A 45 g stone-set
+    // piece with 5 g of stones is 40 g of gold (that is the gross/net split)
+    // plus a flat rupee cost for the stones themselves.
+    const stone = Number(addForm.stone) || 0;
     return {
-      base, rate24, fineGrams, tunchGrams,
+      base, rate24, fineGrams, tunchGrams, stone,
       payableGrams: fineGrams + tunchGrams,
-      tunchAmt, final: base + tunchAmt,
+      tunchAmt, final: base + tunchAmt + stone,
     };
-  }, [addForm.net, addForm.rate, addForm.purity, addForm.tunch]);
+  }, [addForm.net, addForm.rate, addForm.purity, addForm.tunch, addForm.stone]);
+
+  // The non-gold part of the piece is simply what gross carries over net: a
+  // 45 g piece with 40 g of gold holds 5 g of stones. Stated rather than asked
+  // for, so the two weights can never disagree with a third field.
+  const stoneWeight = Math.max(0, (Number(addForm.gross) || 0) - (Number(addForm.net) || 0));
 
   const openDefaults = async () => {
     setShowDefaults(true);
@@ -315,6 +324,9 @@ export default function Inventory({ onNavigate }) {
         // Final Purchase Amount (Base + Tunch) — required purchase_cost. The
         // vendor payable below re-derives the same figure authoritatively.
         purchaseCost: Number(addAmounts.final.toFixed(2)),
+        // Carried onto the item so the sell side bills the stones back instead
+        // of the store absorbing their cost.
+        stoneChargeAmount: f.stone !== "" ? Number(f.stone) : 0,
         // Required by the inventory contract; store-default GST (not a Purchase
         // selling field). Sale-time GST is still resolved by the backend.
         taxRatePercent: storeTax,
@@ -335,6 +347,7 @@ export default function Inventory({ onNavigate }) {
           ratePerGram: Number(f.rate),
           purity: f.purity,
           vendorChargePercent: f.tunch !== "" ? Number(f.tunch) : undefined,
+          stoneChargeAmount: f.stone !== "" ? Number(f.stone) : 0,
           inventoryItemId: created.id,
           paymentMode: f.paymentMode,
           paidNow: f.paymentMode === "PARTIAL" ? Number(f.paidNow) : undefined,
@@ -380,7 +393,7 @@ export default function Inventory({ onNavigate }) {
   // the Tunch column shows "mixed" when one purity carries more than one rate.
   const bulkBreakdown = useMemo(() => {
     const groups = new Map();
-    let netTotal = 0, fineTotal = 0, tunchGTotal = 0, baseTotal = 0, tunchAmtTotal = 0;
+    let netTotal = 0, fineTotal = 0, tunchGTotal = 0, baseTotal = 0, tunchAmtTotal = 0, stoneTotal = 0;
     const rates = new Set();
 
     for (const r of bulkRows) {
@@ -394,14 +407,17 @@ export default function Inventory({ onNavigate }) {
       const tunchAmt = base * pct / 100;
       const tunchG = fine * pct / 100;
 
+      // Stones are money, not metal: they never enter a gram total.
+      const stone = Number(r.stone) || 0;
+
       if (rate > 0) rates.add(rate);
       netTotal += net; fineTotal += fine; tunchGTotal += tunchG;
-      baseTotal += base; tunchAmtTotal += tunchAmt;
+      baseTotal += base; tunchAmtTotal += tunchAmt; stoneTotal += stone;
 
       const key = r.purity;
-      const g = groups.get(key) || { purity: key, rows: 0, net: 0, fine: 0, tunchG: 0, base: 0, tunchAmt: 0, pcts: new Set() };
+      const g = groups.get(key) || { purity: key, rows: 0, net: 0, fine: 0, tunchG: 0, base: 0, tunchAmt: 0, stone: 0, pcts: new Set() };
       g.rows += 1; g.net += net; g.fine += fine; g.tunchG += tunchG;
-      g.base += base; g.tunchAmt += tunchAmt; g.pcts.add(pct);
+      g.base += base; g.tunchAmt += tunchAmt; g.stone += stone; g.pcts.add(pct);
       groups.set(key, g);
     }
 
@@ -411,9 +427,9 @@ export default function Inventory({ onNavigate }) {
     );
     return {
       groups: rowsOut,
-      netTotal, fineTotal, tunchGTotal, baseTotal, tunchAmtTotal,
+      netTotal, fineTotal, tunchGTotal, baseTotal, tunchAmtTotal, stoneTotal,
       payableGrams: fineTotal + tunchGTotal,
-      finalAmount: baseTotal + tunchAmtTotal,
+      finalAmount: baseTotal + tunchAmtTotal + stoneTotal,
       // One rate across the receipt is the normal case; a mixed receipt shows
       // the blended rate instead of pretending there was a single one.
       singleRate: rates.size === 1 ? [...rates][0] : null,
@@ -464,6 +480,7 @@ export default function Inventory({ onNavigate }) {
           net: r.net,
           rate: r.rate,
           tunch: r.tunch,
+          stone: r.stone,
         })),
       };
       const res = bulkType === "RAW_GOLD"
@@ -732,12 +749,23 @@ export default function Inventory({ onNavigate }) {
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><Select value={addForm.category} onValueChange={v=>setAddForm({...addForm, category:v, subCategory:""})} options={catChoices} placeholder={catChoices.length ? "Select category" : "Add categories in Master Inventory"} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category</span><Select value={addForm.subCategory} onValueChange={v=>setAddForm({...addForm, subCategory:v})} options={subChoicesFor(addForm.category)} placeholder={addForm.category ? "Select sub-category" : "Pick a category first"} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Purity</span><Select value={addForm.purity} onValueChange={v=>setAddForm({...addForm, purity:v})} options={PURITIES} /></label>
-                <div />
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Gross Weight (g) *</span><Input type="number" value={addForm.gross} onChange={e=>setAddForm({...addForm, gross:e.target.value})} /></label>
+                {/* Stones are priced, not weighed: one flat rupee figure for the
+                    whole piece. Their WEIGHT is already described by gross minus
+                    net, so nothing here converts grams. */}
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Stone Charge (₹) <span className="font-normal text-muted">— whole piece</span></span>
+                  <MoneyInput value={addForm.stone} onValueChange={v=>setAddForm({...addForm, stone:v})} maxDigits={8} placeholder="0" />
+                  <span className="text-[11px] text-muted">Flat cost of the stones. No purity conversion and no Tunch — they are not gold.</span>
+                </label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Gross Weight (g) *</span><Input type="number" value={addForm.gross} onChange={e=>setAddForm({...addForm, gross:e.target.value})} />
+                  {stoneWeight > 0
+                    ? <span className="text-[11px] font-semibold text-accent-strong">{stoneWeight.toFixed(3)} g is stone / non-gold (gross − net)</span>
+                    : <span className="text-[11px] text-muted">Whole piece, stones included.</span>}
+                </label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Net Gold Weight (g) *</span><Input type="number" value={addForm.net} onChange={e=>setAddForm({...addForm, net:e.target.value})} />
                   {addAmounts.fineGrams > 0
                     ? <span className="text-[11px] font-semibold text-accent-strong">≈ {addAmounts.fineGrams.toFixed(3)} g pure gold (24K equivalent = Net × {addForm.purity}/24) · + Tunch {addAmounts.tunchGrams.toFixed(3)} g = <strong>{addAmounts.payableGrams.toFixed(3)} g payable</strong></span>
-                    : <span className="text-[11px] text-muted">Pure-gold (24K) equivalent shown once net weight is entered.</span>}
+                    : <span className="text-[11px] text-muted">Gold only — the pure-gold (24K) equivalent appears here.</span>}
                 </label>
               </div>
 
@@ -803,9 +831,15 @@ export default function Inventory({ onNavigate }) {
                         OTHER Tunch convention - Tunch on the full net weight - and so
                         contradicted the 42.900 g on the same line. */}
                     <span className="num font-mono tabular-nums text-muted">{(Number(addForm.net) || 0) > 0 ? `${(addAmounts.payableGrams / Number(addForm.net) * 100).toFixed(2)}% of net` : "—"}</span></div>
+                  {addAmounts.stone > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">Stone charge{stoneWeight > 0 ? ` — ${stoneWeight.toFixed(3)} g of stone` : ""} · no Tunch</span>
+                      <span className="num font-mono tabular-nums">₹{addAmounts.stone.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
                   <div className="mt-1 flex items-center justify-between border-t border-line pt-1.5"><span className="font-bold">Final Purchase Amount</span><span className="num font-mono font-extrabold tabular-nums">₹{addAmounts.final.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
                 </div>
-                <p className="mt-1.5 text-[11px] text-muted">Purchase Cost = (24K equivalent × 24K rate) + Tunch % — Tunch is never added to the per-gram rate. Backend re-derives this authoritatively.</p>
+                <p className="mt-1.5 text-[11px] text-muted">Purchase Cost = (24K equivalent × 24K rate) + Tunch %{addAmounts.stone > 0 ? " + stone charge" : ""} — Tunch is never added to the per-gram rate{addAmounts.stone > 0 ? ", and never to the stones" : ""}. Backend re-derives this authoritatively.</p>
               </div>
 
               <div className="rounded-xl border border-line bg-canvas/40 p-4 space-y-3">
@@ -864,7 +898,7 @@ export default function Inventory({ onNavigate }) {
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-line">
-                <table className="w-full min-w-[1140px] border-collapse text-sm">
+                <table className="w-full min-w-[1260px] border-collapse text-sm">
                   <thead><tr className="bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                     <th className="px-3 py-2 w-[150px]">{bulkIdentLabel} *</th>
                     <th className="py-2 w-[160px]">Product Name *</th>
@@ -875,6 +909,8 @@ export default function Inventory({ onNavigate }) {
                     <th className="py-2 w-[100px]">Net (g) *</th>
                     <th className="py-2 w-[120px]">24K Cost/g (₹) *</th>
                     <th className="py-2 w-[90px]">Tunch %</th>
+                    {/* Jewellery only: bullion is gold and nothing else. */}
+                    {bulkType === "JEWELLERY" && <th className="py-2 w-[120px]">Stone (₹)</th>}
                     <th className="py-2 w-[130px] text-right">Total Cost</th>
                     <th className="py-2 w-[44px]"></th>
                   </tr></thead>
@@ -898,7 +934,11 @@ export default function Inventory({ onNavigate }) {
                           <td className="px-2 py-2"><Input type="number" value={r.rate} onChange={e=>setCell("rate",e.target.value)} className="h-9" /></td>
                           {/* One digit only: Tunch is quoted in whole single digits. */}
                           <td className="px-2 py-2"><DigitsInput value={r.tunch} onValueChange={v=>setCell("tunch",v)} maxDigits={1} className="h-9" /></td>
-                          <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(lineTotal + lineTotal * rowTunchPct(r) / 100) : "—"}</td>
+                          {/* Flat rupees for this row's stones: no purity, no Tunch. */}
+                          {bulkType === "JEWELLERY" && (
+                            <td className="px-2 py-2"><MoneyInput value={r.stone} onValueChange={v=>setCell("stone",v)} maxDigits={8} placeholder="0" className="h-9" /></td>
+                          )}
+                          <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(lineTotal + lineTotal * rowTunchPct(r) / 100 + (Number(r.stone) || 0)) : "—"}</td>
                           <td className="px-2 py-2"><Button size="sm" variant="outline" onClick={()=>setBulkRows(bulkRows.length>1 ? bulkRows.filter((_,ix)=>ix!==i) : [emptyBulkRow()])}>×</Button></td>
                         </tr>
                       );
@@ -946,7 +986,7 @@ export default function Inventory({ onNavigate }) {
                                 </span>
                               </td>
                               <td className="num py-2 pr-3 text-right font-mono font-bold tabular-nums">{(g.fine + g.tunchG).toFixed(3)} g</td>
-                              <td className="num py-2 text-right font-mono font-bold tabular-nums">{money(g.base + g.tunchAmt)}</td>
+                              <td className="num py-2 text-right font-mono font-bold tabular-nums">{money(g.base + g.tunchAmt + g.stone)}</td>
                             </tr>
                           );
                         })}
@@ -979,8 +1019,14 @@ export default function Inventory({ onNavigate }) {
                       <span className="text-muted">+ Tunch {bulkBreakdown.tunchGTotal.toFixed(3)} g (each row at its own %)</span>
                       <span className="num font-mono font-bold tabular-nums">{money(bulkBreakdown.tunchAmtTotal)}</span>
                     </div>
+                    {bulkBreakdown.stoneTotal > 0 && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted">+ Stone charges (flat, no Tunch)</span>
+                        <span className="num font-mono font-bold tabular-nums">{money(bulkBreakdown.stoneTotal)}</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between gap-3 border-t border-accent-line pt-1.5">
-                      <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold</span>
+                      <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold{bulkBreakdown.stoneTotal > 0 ? " + stones" : ""}</span>
                       <span className="num font-mono text-base font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount)}</span>
                     </div>
                     <p className="text-[11px] text-muted">

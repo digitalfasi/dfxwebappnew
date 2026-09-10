@@ -62,6 +62,9 @@ export default function NewSale() {
   const [saleMode, setSaleMode] = useState(null); // null until the admin picks Online/Offline
   const [customerPrice, setCustomerPrice] = useState("");
   const [goldProfit, setGoldProfit] = useState("");
+  // Why the last re-quote was refused. Held separately from the breakdown so
+  // the previous good figures stay on screen while the reason is stated.
+  const [quoteError, setQuoteError] = useState("");
   const [priceDriver, setPriceDriver] = useState("ENGINE"); // ENGINE | PRICE | PROFIT
 
   // Customer
@@ -127,7 +130,7 @@ export default function NewSale() {
     setLoading(true); setLookupError("");
     setProduct(null); setProductCode("");
     setDiscount(""); setGst(true);
-    setCustomerPrice(""); setGoldProfit(""); setPriceDriver("ENGINE");
+    setCustomerPrice(""); setGoldProfit(""); setPriceDriver("ENGINE"); setQuoteError("");
     setSaleMode(null); // a fresh product always starts at the Online/Offline choice
     try {
       const q = await billingService.getSaleQuote(key, { discountAmount: 0, gstApplied: true });
@@ -177,8 +180,11 @@ export default function NewSale() {
           schemeValue: schemeSelected ? schemeRedeemRequested : undefined,
         });
         setProduct(q);
-      } catch {
-        /* keep last good breakdown; backend still validates at commit */
+        setQuoteError("");
+      } catch (err) {
+        // Keep the last good breakdown - but say why it did not move. Silence
+        // here is what made a rejected customer price look like a dead field.
+        setQuoteError(err?.message || "This price could not be applied");
       } finally {
         setRequoting(false);
       }
@@ -193,10 +199,10 @@ export default function NewSale() {
   // alongside is the backend's own GOLD_PROFIT trim — the drop is absorbed from
   // gold profit only, never from making or wastage.
   useEffect(() => {
-    if (priceDriver !== "PRICE" || !product) return;
+    if (priceDriver !== "PRICE" || !product || schemeSelected) return;
     const d = String(round2(product.discountAmount || 0));
     setDiscount((prev) => (prev === d ? prev : d));
-  }, [product, priceDriver]);
+  }, [product, priceDriver, schemeSelected]);
 
   // Existing-customer search (debounced).
   useEffect(() => {
@@ -346,7 +352,7 @@ export default function NewSale() {
     setProduct(null); setProductCode(""); setCode("");
     setRate(""); setMakingVal(""); setWastageVal(""); setDiscount(""); setGst(true);
     setPayMethod(""); setPayStatus(""); setPartialAmount(""); setPayRef("");
-    setSaleMode(null); setCustomerPrice(""); setGoldProfit(""); setPriceDriver("ENGINE");
+    setSaleMode(null); setCustomerPrice(""); setGoldProfit(""); setPriceDriver("ENGINE"); setQuoteError("");
     clearCustomer(); setCustQuery(""); setCustResults([]); setWalkinName(""); setWalkinPhone("");
     setPayMethod("CASH"); setPayStatus("PAID"); setPartialAmount(""); setPayRef("");
     setLookupError(""); setOtp(null);
@@ -590,11 +596,18 @@ export default function NewSale() {
                       value={priceDriver === "PRICE" ? customerPrice : (product.finalAmount != null ? String(round2(product.finalAmount)) : "")}
                       onValueChange={(v) => { setCustomerPrice(v); setPriceDriver("PRICE"); }}
                       aria-label="Customer price in rupees" />
-                    <p className="mt-1 text-[11px] text-muted">
-                      {schemeSelected
-                        ? <>Bill total for the piece. It is converted into the Gold Profit % it implies, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
-                        : "Type the quoted price — Gold Profit % below updates to match."}
-                    </p>
+                    {quoteError ? (
+                      <p className="mt-1.5 rounded-lg border border-danger-line bg-danger-soft px-2.5 py-1.5 text-[11px] font-semibold leading-snug text-danger">
+                        {quoteError}
+                        {minSafe != null && <> The lowest price this bill can take is {money(minSafe)}.</>}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-muted">
+                        {schemeSelected
+                          ? <>Bill total for the piece. It is converted into the Gold Profit % it implies, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
+                          : "Type the quoted price — Gold Profit % below updates to match."}
+                      </p>
+                    )}
                   </div>
                   {product.currentGoldValuePnl != null && (
                     <PnlCard label="Today's Gold Value Profit / Loss" amount={product.currentGoldValuePnl} pct={product.currentGoldValueMarginPct} sub="vs today's gold value" />
@@ -832,6 +845,19 @@ export default function NewSale() {
                   const schemeG24 = schemeRows.reduce((t, r) => t + r.g24, 0);
                   const normalGold = Math.max(0, goldValueLine - schemeGold);
                   const normalSubtotal = round2(product.subtotalBeforeTax - schemeGold);
+                  // What the covered slice WOULD have carried. The backend
+                  // scales making/wastage by the un-covered share, so the
+                  // charge on screen is that share; the waived part is the rest
+                  // of the same rate, in the scheme's proportion. GST then
+                  // follows on gold + those charges, at the bill's own rate.
+                  //   waived making = making_billed x scheme / (gold - scheme)
+                  // None of it is added to any total: it is money not charged.
+                  const coveredShare = normalGold > 0 ? schemeGold / normalGold : 0;
+                  const waivedMaking = round2((product.makingChargeAmount || 0) * coveredShare);
+                  const waivedWastage = round2((product.wastageAmount || 0) * coveredShare);
+                  const waivedTaxRate = product.gstApplied ? (product.taxRatePercent || 0) : 0;
+                  const waivedGst = round2((schemeGold + waivedMaking + waivedWastage) * waivedTaxRate / 100);
+                  const waivedTotal = round2(waivedMaking + waivedWastage + waivedGst);
                   const makingLabel = chargePct(product.makingChargeType, makingVal || product.makingChargeValue);
                   const wastageLabel = chargePct(product.wastageType, wastageVal || product.wastageValue);
                   return (
@@ -876,12 +902,24 @@ export default function NewSale() {
                           </p>
                         )}
 
+                        {/* The waived charges are shown as the negatives they
+                            are, so the customer can see what the scheme bought
+                            him. They are NOT deducted from anything: the
+                            subtotal is the pure gold value, exactly as billed. */}
                         <div className="mt-2 space-y-0.5">
                           <Row label="Gold Value (pure gold value)" value={money(schemeGold)} />
-                          <Row label="Making Charge" value="₹0.00 · waived" tone="text-emerald-700" />
-                          {product.wastageAmount > 0 && <Row label="Wastage" value="₹0.00 · waived" tone="text-emerald-700" />}
-                          <Row label="GST" value="₹0.00 · waived" tone="text-emerald-700" />
+                          <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""} · waived`} value={waivedMaking > 0 ? `− ${money(waivedMaking)}` : "₹0.00"} tone="text-emerald-700" />
+                          {(product.wastageAmount > 0 || waivedWastage > 0) && (
+                            <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""} · waived`} value={waivedWastage > 0 ? `− ${money(waivedWastage)}` : "₹0.00"} tone="text-emerald-700" />
+                          )}
+                          <Row label={`GST${waivedTaxRate ? ` ${waivedTaxRate}%` : ""} · waived`} value={waivedGst > 0 ? `− ${money(waivedGst)}` : "₹0.00"} tone="text-emerald-700" />
                           <Row label="Subtotal" value={money(schemeGold)} divider strong />
+                          {waivedTotal > 0 && (
+                            <div className="mt-1.5 flex items-baseline justify-between gap-2 rounded-lg bg-emerald-100/70 px-2.5 py-1.5">
+                              <span className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-emerald-900">Not charged on this gold</span>
+                              <span className="num text-[12px] font-extrabold text-emerald-900">{money(waivedTotal)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -907,9 +945,9 @@ export default function NewSale() {
                         <Row label="Scheme Savings" value={`− ${money(redeemTotal)}`} tone="text-emerald-700" />
                         <Row label="Balance to Pay" value={money(remaining)} strong divider />
                         <p className="mt-1 text-[10px] leading-snug text-emerald-800/80">
-                          The scheme's{pureRate > 0 ? ` ${schemeG.toFixed(3)} g ` : " "}gold is bought at pure gold value — no making charge, wastage or GST on it. The remaining
+                          The scheme's{pureRate > 0 ? ` ${schemeG.toFixed(3)} g ` : " "}gold is bought at pure gold value — {waivedTotal > 0 ? <>the {money(waivedTotal)} of making charge, wastage and GST it would have carried is not charged</> : <>no making charge, wastage or GST on it</>}. The remaining
                           {pureRate > 0 ? ` ${normalG.toFixed(3)} g ` : " gold "}
-                          carries the full making charge, wastage and GST, so the Making &amp; GST above are already only on that share.
+                          carries them in full, so the Making &amp; GST above are already only on that share.
                         </p>
                         {(product.goldProfitAmount || 0) > 0 && (
                           <p className="text-[10px] leading-snug text-muted">
