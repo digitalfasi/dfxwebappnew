@@ -726,6 +726,11 @@ function mapVendorPurchase(p = {}) {
     inventoryItemId: p.inventory_item_id ?? null,
     purchaseDate: p.purchase_date ?? null,
     invoiceRef: p.invoice_ref ?? "",
+    // netWeightGrams is the metal received (45 g of 22K stays 45 g);
+    // weightGrams is the 24K equivalent the payment was calculated on. Null
+    // netWeightGrams means a purchase recorded before the column existed.
+    netWeightGrams: p.net_weight_grams ?? null,
+    purity: p.purity ?? "",
     weightGrams: p.weight_grams ?? 0,
     ratePerGram: p.rate_per_gram ?? 0,
     baseGoldAmount: p.base_gold_amount ?? 0,

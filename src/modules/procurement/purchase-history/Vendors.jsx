@@ -444,7 +444,7 @@ function PurchaseTable({ rows, loading, onRecordPayment, emptyHint, hideOutstand
       <table className={`w-full ${hideOutstanding ? "min-w-[700px]" : "min-w-[820px]"} border-collapse text-sm`}>
         <thead>
           <tr className="whitespace-nowrap bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-            <th className="px-4 py-2.5">Date</th><th className="py-2.5">Invoice</th><th className="py-2.5 text-right" title="Pure gold the payment was calculated on (net weight x purity/24). The piece's own gross and net weight are on the inventory item.">24K equiv.</th><th className="py-2.5 text-right">Purchase</th><th className="py-2.5 text-right">Paid</th>{!hideOutstanding && <th className="py-2.5 text-right">Outstanding</th>}<th className="py-2.5 pl-6">Status</th><th className="py-2.5 pr-4"></th>
+            <th className="px-4 py-2.5">Date</th><th className="py-2.5">Invoice</th><th className="py-2.5 text-right" title="The metal received, and beneath it the pure gold the payment was calculated on (net x purity/24)">Weight</th><th className="py-2.5 text-right">Purchase</th><th className="py-2.5 text-right">Paid</th>{!hideOutstanding && <th className="py-2.5 text-right">Outstanding</th>}<th className="py-2.5 pl-6">Status</th><th className="py-2.5 pr-4"></th>
           </tr>
         </thead>
         <tbody>
@@ -453,7 +453,22 @@ function PurchaseTable({ rows, loading, onRecordPayment, emptyHint, hideOutstand
             <tr key={p.id} className="border-t border-line-soft align-middle">
               <td className="px-4 py-2.5 whitespace-nowrap">{fmtDate(p.purchaseDate)}</td>
               <td className="py-2.5 text-xs">{p.invoiceRef || "Not provided"}</td>
-              <td className="py-2.5 text-right num whitespace-nowrap" title="Pure gold this payment was calculated on">{grams(p.weightGrams)}</td>
+              {/* Both figures, because they answer different questions: what
+                  came into the safe, and what the vendor was paid for. A row
+                  written before net weight was recorded shows the equivalent
+                  alone rather than implying the two are the same. */}
+              <td className="py-2.5 text-right whitespace-nowrap">
+                {p.netWeightGrams != null ? (
+                  <>
+                    <div className="num font-semibold" title="Metal received">
+                      {grams(p.netWeightGrams)}{p.purity ? <span className="ml-1 text-[11px] font-normal text-muted">{p.purity}</span> : null}
+                    </div>
+                    <div className="num text-[11px] text-muted" title="Pure gold the payment was calculated on">{grams(p.weightGrams)} @ 24K</div>
+                  </>
+                ) : (
+                  <div className="num" title="Pure gold the payment was calculated on — this purchase predates the received-weight column">{grams(p.weightGrams)} @ 24K</div>
+                )}
+              </td>
               <td className="py-2.5 text-right num font-semibold whitespace-nowrap">{money(p.purchaseAmount)}</td>
               <td className="py-2.5 text-right num text-emerald-700 whitespace-nowrap">{money(p.amountPaid)}</td>
               {!hideOutstanding && <td className="py-2.5 text-right num font-bold text-accent whitespace-nowrap">{money(p.amountOutstanding)}</td>}
