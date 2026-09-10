@@ -312,6 +312,9 @@ export const billingService = {
         gross_weight_grams: Number(r.gross),
         net_gold_weight_grams: Number(r.net),
         purchase_rate_per_gram: Number(r.rate),
+        // Tunch per row. Null (omitted) lets the server fall back to the
+        // header, then to the vendor default.
+        vendor_charge_percent: r.tunch !== "" && r.tunch != null ? Number(r.tunch) : null,
       })),
     };
     const res = await apiClient.post("/billing/inventory/bulk-purchase", body, { auth: true });

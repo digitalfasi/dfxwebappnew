@@ -1,12 +1,13 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/_shared/ui/card";
 import { Button } from "@/_shared/ui/button";
-import { Input, SearchInput } from "@/_shared/ui/input";
+import { DigitsInput, Input, MoneyInput, SearchInput } from "@/_shared/ui/input";
 import { Badge } from "@/_shared/ui/badge";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { billingService } from "@/modules/billing/billingService";
+import { money } from "@/_shared/utils";
 import { goldRateService } from "@/modules/gold-rate/goldRateService";
 import { masterInventoryService } from "@/modules/procurement/master-inventory/masterInventoryService";
 
@@ -39,7 +40,12 @@ const PAY_METHOD_OPTS = [
   { value: "OTHER", label: "Other (cheque / demand draft)" },
 ];
 
-const emptyBulkRow = () => ({ ident: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", net: "", rate: "" });
+// Tunch is per row (two lots on one invoice are negotiated separately) and
+// defaults to the trade norm of 4%. `rate` is the 24K rate for that row and is
+// seeded from today's published rate by newBulkRow below — editable, because a
+// vendor invoice can be struck at a rate agreed earlier in the day.
+const DEFAULT_TUNCH_PERCENT = "4";
+const emptyBulkRow = () => ({ ident: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", net: "", rate: "", tunch: DEFAULT_TUNCH_PERCENT });
 
 // Real inventory loads from the DFX backend via billingService. No mock items.
 
@@ -93,11 +99,15 @@ export default function Inventory({ onNavigate }) {
   const [catForm, setCatForm] = useState({ pricing: "SELLING_COST", price: "", gst: true, sub: "" });
   const [catImageFile, setCatImageFile] = useState(null);
   const [catImagePreview, setCatImagePreview] = useState(null);
+  // Set when the browser cannot load the stored asset (missing file, or a
+  // storage URL this host cannot reach). The placeholder is then shown instead
+  // of the browser's broken-image icon, and the field asks for an upload.
+  const [catImageBroken, setCatImageBroken] = useState(false);
   const [catBusy, setCatBusy] = useState(false);
 
   // Bulk receiving — Phase 4. Two types: Jewellery (HUID) / Raw Gold (Serial).
   const [bulkType, setBulkType] = useState("JEWELLERY");
-  const [bulkHeader, setBulkHeader] = useState({ vendor: "", date: "", invoice: "", tunch: "4", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
+  const [bulkHeader, setBulkHeader] = useState({ vendor: "", date: "", invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
   const [bulkRows, setBulkRows] = useState([emptyBulkRow()]);
   const [bulkSaving, setBulkSaving] = useState(false);
 
@@ -352,16 +362,24 @@ export default function Inventory({ onNavigate }) {
   // Each row's Cost/g is the 24K rate, so the row's base is its PURE gold
   // content (net × karat/24) at that rate — the purity never changes the rate.
   const bulkRowBase = (r) => (Number(r.net) || 0) * ((parseInt(r.purity, 10) || 0) / 24) * (Number(r.rate) || 0);
+  // A new row opens with today's 24K rate already in it, so the common case
+  // needs no typing at all; the field stays editable for a back-dated invoice.
+  const newBulkRow = useCallback(() => {
+    const live = rate24kPerGram(todayRate);
+    return { ...emptyBulkRow(), rate: live != null ? String(live) : "" };
+  }, [todayRate]);
+
   const bulkSubtotal = bulkRows.reduce((s, r) => s + bulkRowBase(r), 0);
   // Pure-gold (24K) equivalent of the whole receipt = Σ(net × karat/24). Lets the
   // admin see the actual fine-gold content bought, independent of each row's purity.
   const bulk24kEquiv = bulkRows.reduce((s, r) => s + (Number(r.net) || 0) * ((parseInt(r.purity, 10) || 0) / 24), 0);
-  // Tunch, same rule as a single purchase: a percent of each row's
-  // 24K-equivalent gold value. Backend re-derives all of it row by row.
-  const bulkTunchPct = bulkHeader.tunch !== "" ? Number(bulkHeader.tunch) || 0 : 0;
+  // Tunch, same rule as a single purchase — a percent of the row's
+  // 24K-equivalent gold value — but resolved PER ROW now that each row carries
+  // its own percentage. The backend re-derives the payable the same way.
+  const rowTunchPct = (r) => (r.tunch !== "" && r.tunch != null ? Number(r.tunch) || 0 : 0);
   const bulkTunchGrams = bulkRows.reduce(
-    (s, r) => s + (Number(r.net) || 0) * ((parseInt(r.purity, 10) || 0) / 24) * bulkTunchPct / 100, 0);
-  const bulkTunchAmount = bulkRows.reduce((s, r) => s + bulkRowBase(r) * bulkTunchPct / 100, 0);
+    (s, r) => s + (Number(r.net) || 0) * ((parseInt(r.purity, 10) || 0) / 24) * rowTunchPct(r) / 100, 0);
+  const bulkTunchAmount = bulkRows.reduce((s, r) => s + bulkRowBase(r) * rowTunchPct(r) / 100, 0);
 
   const handleBulkAdd = async () => {
     const h = bulkHeader;
@@ -385,7 +403,8 @@ export default function Inventory({ onNavigate }) {
         vendorId: matchedVendor.id,
         purchaseDate: h.date,
         invoiceRef: h.invoice || undefined,
-        tunchPercent: h.tunch,
+        // No header Tunch any more — every row sends its own and the server
+        // sums them, so a mixed-Tunch receipt is priced correctly.
         paymentMode: h.paymentMode,
         paidNow: h.paidNow,
         paymentMethod: h.paymentMode === "CREDIT" ? "CASH" : h.paymentMethod,
@@ -400,6 +419,7 @@ export default function Inventory({ onNavigate }) {
           gross: r.gross,
           net: r.net,
           rate: r.rate,
+          tunch: r.tunch,
         })),
       };
       const res = bulkType === "RAW_GOLD"
@@ -407,8 +427,8 @@ export default function Inventory({ onNavigate }) {
         : await billingService.bulkPurchase(payload);
       const final = res?.purchase?.purchaseAmount;
       setShowBulk(false);
-      setBulkRows([emptyBulkRow()]);
-      setBulkHeader({ vendor: "", date: "", invoice: "", tunch: "4", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
+      setBulkRows([newBulkRow()]);
+      setBulkHeader({ vendor: "", date: "", invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
       await load();
       toast(final != null ? `Bulk purchase recorded — ₹${final} payable` : "Bulk purchase recorded");
     } catch (err) {
@@ -429,6 +449,7 @@ export default function Inventory({ onNavigate }) {
     setCatForm({ pricing: "SELLING_COST", price: "", gst: true, sub: item.sub || "" });
     setCatImageFile(null);
     setCatImagePreview(null);
+    setCatImageBroken(false);
     setCatModal({ item, mode });
   };
   const submitCatalogue = async () => {
@@ -437,12 +458,20 @@ export default function Inventory({ onNavigate }) {
     if (catForm.pricing === "CATALOGUE_COST" && !(Number(catForm.price) > 0)) { toast("Enter a catalogue price greater than 0"); return; }
     // A catalogue image is mandatory server-side (publish reuses the item's own
     // image). If the item has none and none is chosen here, block before calling.
-    if (!it.imageUrl && !catImageFile) { toast("A catalogue image is required — upload one"); return; }
+    const usableExisting = it.imageUrl && !catImageBroken;
+    if (!usableExisting && !catImageFile) { toast("A catalogue image is required — upload one"); return; }
     setCatBusy(true);
     try {
-      // Attach/replace the item image first so publish finds one.
+      // Attach/replace the item image first so publish finds one. The
+      // response carries the stored image_url; adopting it here means the modal
+      // is showing the PERSISTED asset (not the local blob) before it closes,
+      // which is exactly what the reopen has to render.
       if (catImageFile) {
-        await billingService.setInventoryItemImage(it.id, catImageFile);
+        const saved = await billingService.setInventoryItemImage(it.id, catImageFile);
+        if (saved?.image_url) {
+          setCatModal((m) => (m ? { ...m, item: { ...m.item, imageUrl: saved.image_url } } : m));
+          setCatImageBroken(false);
+        }
       }
       await billingService.publishToCatalogue(it.id, {
         pricingSource: catForm.pricing,
@@ -465,6 +494,12 @@ export default function Inventory({ onNavigate }) {
   const addVendorInline = async () => {
     const name = newVendor.name.trim();
     if (name.length < 2) { toast("Vendor name required (min 2 chars)"); return; }
+    // Mirrors the server rule so a number the form accepts cannot be rejected
+    // by the API a second later.
+    if (newVendor.phone && !/^[6-9]\d{9}$/.test(newVendor.phone)) {
+      toast("Enter a 10-digit Indian mobile number starting 6-9");
+      return;
+    }
     setVendorSaving(true);
     try {
       const v = await billingService.createVendor({ name, phone: newVendor.phone.trim() || undefined });
@@ -481,7 +516,7 @@ export default function Inventory({ onNavigate }) {
   };
 
   return (
-    <div ref={scope} className="mx-auto max-w-[1200px]">
+    <div ref={scope} className="mx-auto max-w-[1400px]">
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Inventory</h2>
@@ -557,14 +592,41 @@ export default function Inventory({ onNavigate }) {
           <Select value={category} onValueChange={setCategory} options={["All Categories", ...catOptions]} className="w-[140px]" />
           <Select value={subCategory} onValueChange={setSubCategory} options={["All Sub-categories", ...subOptions]} className="w-[170px]" />
           <Select value={purity} onValueChange={setPurity} options={["All Purity", ...PURITIES]} className="w-[130px]" />
-          <button onClick={()=>{setQuery("");setProductName("");setStatus("All statuses");setVendor("All Vendors");setCategory("All Categories");setSubCategory("All Sub-categories");setPurity("All Purity");}} className="text-xs font-bold text-accent underline">Clear</button>
+          {/* Clear used to call setProductName, which does not exist on this
+              component, so the click threw a ReferenceError and nothing reset.
+              Every filter this screen owns is listed here, and the control is
+              right-aligned with the destructive treatment used elsewhere. */}
+          {(query || status !== "All statuses" || vendor !== "All Vendors" || category !== "All Categories" || subCategory !== "All Sub-categories" || purity !== "All Purity") && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setStatus("All statuses");
+                setVendor("All Vendors");
+                setCategory("All Categories");
+                setSubCategory("All Sub-categories");
+                setPurity("All Purity");
+              }}
+              className="ml-auto rounded-full border border-danger-line bg-danger-soft px-3.5 py-1.5 text-xs font-bold text-danger transition-colors hover:bg-danger hover:text-white"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       </div>
 
       <Card data-motion="reveal" className="overflow-hidden">
         <div className="border-b border-line px-6 py-3"><h3 className="text-sm font-extrabold">Product list</h3></div>
         <CardContent className="overflow-x-auto px-0 pb-0">
-          <table className="w-full min-w-[1040px] border-collapse text-sm">
+          {/* Fixed column widths: the Name cell truncates instead of pushing
+              into Category, and the full value stays available on hover. */}
+          <table className="w-full min-w-[1120px] table-fixed border-collapse text-sm">
+            <colgroup>
+              <col className="w-[130px]" /><col className="w-[220px]" /><col className="w-[130px]" />
+              <col className="w-[140px]" /><col className="w-[90px]" /><col className="w-[110px]" />
+              <col className="w-[150px]" /><col className="w-[110px]" /><col className="w-[110px]" />
+              <col className="w-[190px]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left align-middle text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                 <th className="px-6 py-3">HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Vendor</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
@@ -574,12 +636,12 @@ export default function Inventory({ onNavigate }) {
               {filtered.map(p => (
                 <tr key={p.id || p.code} className="border-b border-line-soft align-middle last:border-0 hover:bg-canvas/60 transition-colors">
                   <td className="px-6 py-3.5 font-mono text-xs font-semibold whitespace-nowrap">{p.huid || p.code || "Not provided"}</td>
-                  <td className="px-3 py-3.5"><span className="block max-w-[200px] font-semibold leading-snug">{p.name}</span></td>
-                  <td className="px-3 py-3.5 whitespace-nowrap">{p.category || "—"}</td>
-                  <td className="px-3 py-3.5 whitespace-nowrap text-muted">{p.sub || "—"}</td>
+                  <td className="px-3 py-3.5"><span className="block truncate font-semibold leading-snug" title={p.name}>{p.name}</span></td>
+                  <td className="px-3 py-3.5"><span className="block truncate" title={p.category || ""}>{p.category || "—"}</span></td>
+                  <td className="px-3 py-3.5"><span className="block truncate text-muted" title={p.sub || ""}>{p.sub || "—"}</span></td>
                   <td className="px-3 py-3.5"><Badge tone="neutral">{p.purity}</Badge></td>
                   <td className="px-3 py-3.5 text-right font-mono whitespace-nowrap tabular-nums">{p.net} g</td>
-                  <td className="px-3 py-3.5"><span className="block max-w-[160px] truncate text-xs" title={p.vendor}>{p.vendor || "—"}</span></td>
+                  <td className="px-3 py-3.5"><span className="block truncate text-xs" title={p.vendor}>{p.vendor || "—"}</span></td>
                   <td className="px-3 py-3.5"><Badge tone={p.status==="In Stock"?"success":p.status==="Sold"?"warning":"neutral"} dot>{p.status}</Badge></td>
                   <td className="px-3 py-3.5"><Badge tone={p.catalogue==="Yes"?"success":"neutral"}>{p.catalogue}</Badge></td>
                   <td className="py-3.5 pr-6 whitespace-nowrap">
@@ -638,14 +700,41 @@ export default function Inventory({ onNavigate }) {
                 <div className="grid gap-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold">Vendor *</span>
-                    <button type="button" onClick={()=>setShowAddVendor(s=>!s)} className="text-[11px] font-bold text-accent underline">{showAddVendor ? "Cancel" : "+ Add new vendor"}</button>
+                    {!showAddVendor && (
+                      <button type="button" onClick={()=>setShowAddVendor(true)} className="text-[11px] font-bold text-accent underline">+ Add new vendor</button>
+                    )}
                   </div>
                   <Select value={addForm.vendor} onValueChange={v=>setAddForm({...addForm, vendor:v})} options={vendorNames} placeholder={vendorNames.length ? "Select vendor…" : "No vendors — add one below"} />
                   {showAddVendor && (
-                    <div className="mt-1 grid gap-2 rounded-xl border border-line bg-surface p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-                      <label className="grid gap-1"><span className="text-[11px] font-bold text-muted">New vendor name *</span><Input value={newVendor.name} onChange={e=>setNewVendor({...newVendor, name:e.target.value})} placeholder="Vendor name" className="h-9 text-sm" /></label>
-                      <label className="grid gap-1"><span className="text-[11px] font-bold text-muted">Phone</span><Input value={newVendor.phone} onChange={e=>setNewVendor({...newVendor, phone:e.target.value})} placeholder="Phone" className="h-9 text-sm" /></label>
-                      <Button size="sm" disabled={vendorSaving} onClick={addVendorInline} className="bg-accent hover:bg-accent-strong">{vendorSaving ? "Adding…" : "Add vendor"}</Button>
+                    <div className="mt-1 grid gap-3 rounded-xl border border-line bg-surface p-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="grid gap-1.5"><span className="text-xs font-bold">New vendor name<span className="text-danger">*</span></span><Input value={newVendor.name} onChange={e=>setNewVendor({...newVendor, name:e.target.value})} placeholder="e.g. Sri Balaji Gold" /></label>
+                        {/* Same +91 prefix and 10-digit rule as a customer's phone,
+                            so the two modules validate and store identically. */}
+                        <label className="grid gap-1.5">
+                          <span className="text-xs font-bold">Phone <span className="font-normal text-muted">— 10 digits</span></span>
+                          <div className="flex h-10 items-stretch overflow-hidden rounded-xl border border-line bg-surface transition focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]">
+                            <span className="grid w-11 shrink-0 place-items-center border-r border-line-soft bg-canvas/60 text-sm font-bold text-muted" aria-hidden="true">+91</span>
+                            <DigitsInput
+                              value={newVendor.phone}
+                              onValueChange={v=>setNewVendor({...newVendor, phone:v})}
+                              maxDigits={10}
+                              placeholder="98765 43210"
+                              aria-label="Vendor mobile number"
+                              className="min-w-0 flex-1 rounded-none border-0 bg-transparent shadow-none focus:shadow-none"
+                            />
+                          </div>
+                          {newVendor.phone && !/^[6-9]\d{9}$/.test(newVendor.phone) && (
+                            <span className="text-[11px] font-semibold text-danger">Enter a 10-digit number starting 6-9.</span>
+                          )}
+                        </label>
+                      </div>
+                      {/* Shared buttons, primary action last: Add is the primary,
+                          Cancel is the secondary, both the standard size. */}
+                      <div className="flex justify-end gap-2.5">
+                        <Button variant="outline" size="sm" disabled={vendorSaving} onClick={()=>{setShowAddVendor(false);setNewVendor({ name: "", phone: "" });}}>Cancel</Button>
+                        <Button size="sm" disabled={vendorSaving} onClick={addVendorInline}>{vendorSaving ? "Adding…" : "Add vendor"}</Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -676,7 +765,7 @@ export default function Inventory({ onNavigate }) {
                     <label className="grid gap-1.5"><span className="text-xs font-bold">Mode of Payment</span><Select value={addForm.paymentMethod} onValueChange={v=>setAddForm({...addForm, paymentMethod:v})} options={PAY_METHOD_OPTS} /></label>
                   )}
                   {addForm.paymentMode === "PARTIAL" && (
-                    <label className="grid gap-1.5"><span className="text-xs font-bold">Paid Now (₹) *</span><Input type="number" value={addForm.paidNow} onChange={e=>setAddForm({...addForm, paidNow:e.target.value})} /></label>
+                    <label className="grid gap-1.5"><span className="text-xs font-bold">Paid Now *</span><MoneyInput value={addForm.paidNow} onValueChange={v=>setAddForm({...addForm, paidNow:v})} /></label>
                   )}
                 </div>
                 <p className="text-[11px] text-muted">CASH settles in full · CREDIT leaves the full amount outstanding · PARTIAL records Paid Now and leaves the remainder outstanding. Mode of Payment (Cash/UPI/Card/Bank/Cheque) is recorded in the Vendor Payment ledger.</p>
@@ -718,9 +807,8 @@ export default function Inventory({ onNavigate }) {
                 {bulkHeader.paymentMode !== "CREDIT" && (
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Mode of Payment</span><Select value={bulkHeader.paymentMethod} onValueChange={v=>setBulkHeader({...bulkHeader, paymentMethod:v})} options={PAY_METHOD_OPTS} /></label>
                 )}
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Tunch (%)</span><Input type="number" value={bulkHeader.tunch} onChange={e=>setBulkHeader({...bulkHeader, tunch:e.target.value})} /></label>
                 {bulkHeader.paymentMode === "PARTIAL" && (
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Paid Now (₹) *</span><Input type="number" value={bulkHeader.paidNow} onChange={e=>setBulkHeader({...bulkHeader, paidNow:e.target.value})} /></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Paid Now *</span><MoneyInput value={bulkHeader.paidNow} onValueChange={v=>setBulkHeader({...bulkHeader, paidNow:v})} /></label>
                 )}
               </div>
 
@@ -734,8 +822,9 @@ export default function Inventory({ onNavigate }) {
                     <th className="py-2 w-[100px]">Purity</th>
                     <th className="py-2 w-[100px]">Gross (g) *</th>
                     <th className="py-2 w-[100px]">Net (g) *</th>
-                    <th className="py-2 w-[110px]">24K Cost/g (₹) *</th>
-                    <th className="py-2 w-[120px] text-right">Total Cost</th>
+                    <th className="py-2 w-[120px]">24K Cost/g (₹) *</th>
+                    <th className="py-2 w-[90px]">Tunch %</th>
+                    <th className="py-2 w-[130px] text-right">Total Cost</th>
                     <th className="py-2 w-[44px]"></th>
                   </tr></thead>
                   <tbody>
@@ -756,7 +845,9 @@ export default function Inventory({ onNavigate }) {
                           <td className="px-2 py-2"><Input type="number" value={r.gross} onChange={e=>setCell("gross",e.target.value)} className="h-9" /></td>
                           <td className="px-2 py-2"><Input type="number" value={r.net} onChange={e=>setCell("net",e.target.value)} className="h-9" /></td>
                           <td className="px-2 py-2"><Input type="number" value={r.rate} onChange={e=>setCell("rate",e.target.value)} className="h-9" /></td>
-                          <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? `₹${lineTotal.toLocaleString("en-IN")}` : "—"}</td>
+                          {/* One digit only: Tunch is quoted in whole single digits. */}
+                          <td className="px-2 py-2"><DigitsInput value={r.tunch} onValueChange={v=>setCell("tunch",v)} maxDigits={1} className="h-9" /></td>
+                          <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(lineTotal + lineTotal * rowTunchPct(r) / 100) : "—"}</td>
                           <td className="px-2 py-2"><Button size="sm" variant="outline" onClick={()=>setBulkRows(bulkRows.length>1 ? bulkRows.filter((_,ix)=>ix!==i) : [emptyBulkRow()])}>×</Button></td>
                         </tr>
                       );
@@ -766,12 +857,12 @@ export default function Inventory({ onNavigate }) {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <Button variant="outline" size="sm" onClick={()=>setBulkRows([...bulkRows, emptyBulkRow()])}>Add Row</Button>
+                <Button variant="outline" size="sm" onClick={()=>setBulkRows([...bulkRows, newBulkRow()])}>Add Row</Button>
                 <div className="text-sm text-right">
                   <div>
                     <span className="text-muted">Base subtotal (pure gold @ 24K) </span>
                     <span className="font-mono font-bold tabular-nums">₹{bulkSubtotal.toLocaleString("en-IN")}</span>
-                    <span className="ml-2 text-muted">+ Tunch {bulkHeader.tunch || 0}% </span>
+                    <span className="ml-2 text-muted">+ Tunch (per row) </span>
                     <span className="font-mono font-bold tabular-nums">₹{bulkTunchAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="mt-0.5">
@@ -804,12 +895,25 @@ export default function Inventory({ onNavigate }) {
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Making Type</span><Select value={defaults.makingType} onValueChange={v=>setDefaults({...defaults, makingType:v})} options={["PERCENTAGE","FIXED","PER_GRAM"]} /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Making Value</span><Input type="number" value={defaults.makingValue} onChange={e=>setDefaults({...defaults, makingValue:e.target.value})} /></label>
+                  {/* A PERCENTAGE rule is two digits; a FIXED / PER_GRAM rule is
+                      rupees and needs real room (a Rs 500 flat making charge is an
+                      ordinary figure). The cap follows the unit, exactly as the
+                      server validates it. */}
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Making Value {defaults.makingType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.makingValue} onValueChange={v=>setDefaults({...defaults, makingValue:v})} maxDigits={defaults.makingType === "PERCENTAGE" ? 2 : 7} /></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Type</span><Select value={defaults.wastageType} onValueChange={v=>setDefaults({...defaults, wastageType:v})} options={["PERCENTAGE","FIXED","PER_GRAM"]} /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Value</span><Input type="number" value={defaults.wastageValue} onChange={e=>setDefaults({...defaults, wastageValue:e.target.value})} /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Gold Profit %</span><Input type="number" value={defaults.goldProfit} onChange={e=>setDefaults({...defaults, goldProfit:e.target.value})} /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Tax / GST %</span><Input type="number" value={defaults.tax} onChange={e=>setDefaults({...defaults, tax:e.target.value})} /></label>
-                  <label className="grid gap-1.5 sm:col-span-2"><span className="text-xs font-bold">Pricing Mode</span><Select value="AUTO" onValueChange={v=>setDefaults({...defaults, pricingMode:v})} options={["AUTO"]} /></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Value {defaults.wastageType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.wastageValue} onValueChange={v=>setDefaults({...defaults, wastageValue:v})} maxDigits={defaults.wastageType === "PERCENTAGE" ? 2 : 7} /></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Gold Profit % <span className="font-normal text-muted">— 0-99</span></span><DigitsInput value={defaults.goldProfit} onValueChange={v=>setDefaults({...defaults, goldProfit:v})} maxDigits={2} /></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Tax / GST % <span className="font-normal text-muted">— 0-9</span></span><DigitsInput value={defaults.tax} onValueChange={v=>setDefaults({...defaults, tax:v})} maxDigits={1} /><span className="text-[11px] text-muted">GST on jewellery is 3%.</span></label>
+                  {/* One mode exists, so this was a dropdown that could only ever
+                      pick what it already showed. Read-only until a second mode is
+                      a real product decision. */}
+                  <div className="grid gap-1.5 sm:col-span-2">
+                    <span className="text-xs font-bold">Pricing Mode</span>
+                    <div className="flex h-10 items-center gap-2 rounded-xl border border-line bg-canvas/60 px-3.5">
+                      <span className="text-sm font-bold text-ink">Auto</span>
+                      <span className="text-[11px] text-muted">— the server prices every item from the live rate and these defaults.</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -846,15 +950,25 @@ export default function Inventory({ onNavigate }) {
                 <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Catalogue image {(!catModal.item.imageUrl && !catImageFile) && <span className="text-danger">*</span>}</div>
                 <div className="mt-2 flex items-center gap-3">
                   <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl border border-line bg-canvas/40 text-muted">
-                    {(catImagePreview || catModal.item.imageUrl)
-                      ? <img src={catImagePreview || catModal.item.imageUrl} alt="" className="h-full w-full object-cover" />
+                    {(catImagePreview || (catModal.item.imageUrl && !catImageBroken))
+                      ? <img
+                          src={catImagePreview || catModal.item.imageUrl}
+                          alt={`${catModal.item.name} catalogue photo`}
+                          className="h-full w-full object-cover"
+                          onError={() => setCatImageBroken(true)}
+                        />
                       : <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>}
                   </div>
                   <label className="cursor-pointer text-xs font-bold text-accent underline">
-                    {(catModal.item.imageUrl || catImageFile) ? "Replace image" : "Upload image"}
+                    {((catModal.item.imageUrl && !catImageBroken) || catImageFile) ? "Replace image" : "Upload image"}
                     <input type="file" accept="image/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; if(f){ setCatImageFile(f); setCatImagePreview(URL.createObjectURL(f)); } }} />
                   </label>
                 </div>
+                {catImageBroken && !catImageFile && (
+                  <p className="mt-1 text-[11px] font-semibold text-danger">
+                    The stored photo could not be loaded. Upload one to replace it.
+                  </p>
+                )}
                 {(!catModal.item.imageUrl && !catImageFile) && <p className="mt-1 text-[11px] text-muted">This item has no photo yet. A catalogue image is required to publish.</p>}
               </div>
 
