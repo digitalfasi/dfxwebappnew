@@ -797,7 +797,12 @@ export default function Inventory({ onNavigate }) {
                 <div className="mt-2 space-y-1 text-sm">
                   <div className="flex items-center justify-between"><span className="text-muted">Gold at {addForm.purity} — {addAmounts.fineGrams.toFixed(3)} g pure @ 24K</span><span className="num font-mono tabular-nums">₹{addAmounts.base.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
                   <div className="flex items-center justify-between"><span className="text-muted">Tunch {addForm.tunch || 4}% of the 24K value — {addAmounts.tunchGrams.toFixed(3)} g pure</span><span className="num font-mono tabular-nums">₹{addAmounts.tunchAmt.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
-                  <div className="flex items-center justify-between border-t border-line-soft pt-1.5"><span className="text-muted">Payable gold — {addAmounts.payableGrams.toFixed(3)} g pure × ₹{addAmounts.rate24.toLocaleString("en-IN", { maximumFractionDigits: 2 })}/g (24K)</span><span className="num font-mono tabular-nums text-muted">{(Number(addForm.net) || 0) > 0 ? `${(((parseInt(addForm.purity,10)||0)*100/24) + (addForm.tunch !== "" ? Number(addForm.tunch) || 0 : 4)).toFixed(2)}% of net` : "—"}</span></div>
+                  <div className="flex items-center justify-between border-t border-line-soft pt-1.5"><span className="text-muted">Payable gold — {addAmounts.payableGrams.toFixed(3)} g pure × ₹{addAmounts.rate24.toLocaleString("en-IN", { maximumFractionDigits: 2 })}/g (24K)</span>{/* The share of the net weight actually being paid for, derived from
+                        the payable grams themselves. It used to add the purity and
+                        Tunch percentages together (91.67 + 4 = 95.67%), which is the
+                        OTHER Tunch convention - Tunch on the full net weight - and so
+                        contradicted the 42.900 g on the same line. */}
+                    <span className="num font-mono tabular-nums text-muted">{(Number(addForm.net) || 0) > 0 ? `${(addAmounts.payableGrams / Number(addForm.net) * 100).toFixed(2)}% of net` : "—"}</span></div>
                   <div className="mt-1 flex items-center justify-between border-t border-line pt-1.5"><span className="font-bold">Final Purchase Amount</span><span className="num font-mono font-extrabold tabular-nums">₹{addAmounts.final.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
                 </div>
                 <p className="mt-1.5 text-[11px] text-muted">Purchase Cost = (24K equivalent × 24K rate) + Tunch % — Tunch is never added to the per-gram rate. Backend re-derives this authoritatively.</p>
