@@ -275,6 +275,13 @@ export default function Schemes() {
             </div>
             <div className="mt-auto border-t border-dashed border-line pt-3 text-xs text-muted">
               <div>{s.perk} · {s.tenure}</div>
+              {s.enrolled !== null && (
+                <div className="mt-1 font-semibold">
+                  {s.enrolled === 0
+                    ? "No enrollments — can be deleted"
+                    : `${s.enrolled} enrollment${s.enrolled === 1 ? "" : "s"} — delete blocked`}
+                </div>
+              )}
             </div>
             {/* Edit and the lifecycle toggle share the row; Delete sits apart
                 as an icon so it can never be hit while reaching for
@@ -292,11 +299,15 @@ export default function Schemes() {
               )}
               <button
                 type="button"
-                title="Delete permanently"
+                title={
+                  s.enrolled > 0
+                    ? `Cannot delete — ${s.enrolled} enrollment${s.enrolled === 1 ? "" : "s"} reference this scheme. Deactivate it instead.`
+                    : "Delete permanently"
+                }
                 aria-label={`Delete ${s.name} permanently`}
-                disabled={busyId === s.id}
+                disabled={busyId === s.id || s.enrolled > 0}
                 onClick={() => setDeleting(s)}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-line text-muted transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:opacity-50"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-line text-muted transition-colors hover:border-danger hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-transparent disabled:hover:text-muted"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /><path d="M10 11v5M14 11v5" />

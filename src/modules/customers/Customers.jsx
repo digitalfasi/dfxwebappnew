@@ -6,6 +6,7 @@ import { SearchInput } from "@/_shared/ui/input";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
+import { money } from "@/_shared/utils";
 import { customerService } from "@/modules/customers/customerService";
 import { schemeService } from "@/modules/plan/scheme/schemeService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
@@ -68,7 +69,11 @@ function fmtDob(dob) {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-const SCHEME_OPTIONS = ["No scheme", "Gold Saver 11+1", "Silver Flexi", "Diamond Plus"];
+// The Add Customer scheme picker reads the tenant's real active schemes. It
+// used to offer three hardcoded names that exist nowhere in the database, and
+// the chosen value was then dropped on submit — so picking one silently did
+// nothing. NO_SCHEME is the sentinel for "create without enrolling".
+const NO_SCHEME = "";
 
 // Meaningful empty states in place of bare "-" / "—".
 const isBlank = (v) => v == null || v === "" || v === "—" || v === "-";
@@ -95,7 +100,8 @@ export default function Customers() {
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", dob: "", scheme: "No scheme" });
+  // `schemeId` is a real backend id (or NO_SCHEME), never a display name.
+  const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", dob: "", schemeId: NO_SCHEME });
   const [errors, setErrors] = useState({});
   // Password visibility toggle — an admin typing a password FOR a customer needs
   // to be able to read back what they are about to hand over.
@@ -192,19 +198,24 @@ export default function Customers() {
 
   // Open the enroll modal for the customer in the 360 drawer; lazy-load the
   // tenant's active schemes once.
-  async function openEnroll() {
-    setChosenSchemeId("");
-    setEnrollOpen(true);
+  const loadActiveSchemes = useCallback(async () => {
     if (schemeList.length) return;
     setSchemeListLoading(true);
     try {
       const all = await schemeService.getSchemes();
-      setSchemeList(all.filter((s) => s.isActive));
+      // Only an ACTIVE scheme may be sold, exactly as the Schemes grid marks it.
+      setSchemeList(all.filter((sc) => sc.isActive));
     } catch (err) {
       toast(err?.message || "Could not load schemes");
     } finally {
       setSchemeListLoading(false);
     }
+  }, [schemeList.length]);
+
+  async function openEnroll() {
+    setChosenSchemeId("");
+    setEnrollOpen(true);
+    await loadActiveSchemes();
   }
   async function submitEnroll() {
     if (!selected || !chosenSchemeId) { toast("Pick a scheme"); return; }
@@ -247,18 +258,19 @@ export default function Customers() {
     if (Object.keys(e).length) return;
     setSaving(true);
     try {
-      // scheme_id is a real backend id, unavailable until the Schemes phase, so
-      // enrollment-on-create is not wired here; the customer is created as
-      // walk-in/manual and can be enrolled later.
       const created = await customerService.createCustomer({
         name: form.name.trim(),
         password: form.password,
         phone: form.phone.trim(),
         email: form.email.trim() || undefined,
         dateOfBirth: form.dob,
+        // Enrol on create when a scheme was chosen — the backend's own
+        // scheme_id parameter. Previously the picked value never left this
+        // function, so the enrollment simply never happened.
+        schemeId: form.schemeId || undefined,
       });
       setShowAdd(false);
-      setForm({ name: "", phone: "", email: "", password: "", dob: "", scheme: "No scheme" });
+      setForm({ name: "", phone: "", email: "", password: "", dob: "", schemeId: NO_SCHEME });
       setErrors({});
       await loadCustomers();
       toast(`Customer created — ${created?.customer_code ?? created?.name ?? "OK"}`);
@@ -387,7 +399,9 @@ export default function Customers() {
           <h2 className="text-2xl font-extrabold tracking-tight">Customer Directory</h2>
           <p className="mt-1 max-w-[60ch] text-sm text-muted">Search, filter and open any customer to see full 360° profile, schemes and history.</p>
         </div>
-        <Button size="sm" onClick={() => setShowAdd(true)}>
+        {/* The scheme list is fetched when the form opens, so the picker is
+            already populated by the time the admin scrolls to it. */}
+        <Button size="sm" onClick={() => { setShowAdd(true); loadActiveSchemes(); }}>
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
           Add customer
         </Button>
@@ -669,8 +683,22 @@ export default function Customers() {
                 ) : null}
               </label>
               <label className="grid gap-1.5">
-                <span className="text-xs font-bold">Enroll in Scheme <span className="font-normal text-muted">(Optional) — No scheme</span></span>
-                <Select value={form.scheme} onValueChange={(v) => setForm({ ...form, scheme: v })} options={SCHEME_OPTIONS} />
+                <span className="text-xs font-bold">Enroll in Scheme <span className="font-normal text-muted">— optional</span></span>
+                <Select
+                  value={form.schemeId}
+                  onValueChange={(v) => setForm({ ...form, schemeId: v })}
+                  options={[
+                    { value: NO_SCHEME, label: schemeListLoading ? "Loading schemes…" : "No scheme" },
+                    ...schemeList.map((sc) => ({ value: sc.id, label: `${sc.name} · ${money(sc.amount)}/mo · ${sc.tenure}` })),
+                  ]}
+                />
+                <span className="text-[11px] text-muted">
+                  {schemeListLoading
+                    ? "Reading the store's active schemes…"
+                    : schemeList.length === 0
+                    ? "No active scheme to offer. Create one under Plans → Schemes."
+                    : `${schemeList.length} active scheme${schemeList.length === 1 ? "" : "s"} available. The customer is enrolled as soon as the account is created.`}
+                </span>
               </label>
               <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">Note: Phone is required. Leave email blank for a walk-in customer — a Customer ID is generated either way.</p>
             </div>

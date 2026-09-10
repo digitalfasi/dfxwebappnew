@@ -29,8 +29,10 @@ function mapCard(raw) {
     amount: raw.monthly_amount,
     tenure: `${raw.duration_months} installments`,
     perk: raw.bonus_description || raw.description || "Gold savings plan",
-    // Enrollment count is not exposed by /schemes; unknown, not zero.
-    enrolled: null,
+    // Enrollments referencing this scheme, any status — the server sends it so
+    // the grid knows whether a permanent delete is possible at all. Null on an
+    // older backend that does not: unknown, not zero.
+    enrolled: raw.enrollment_count ?? null,
     status: raw.is_active ? "Active" : "Inactive",
     // Raw backend fields kept verbatim so the Edit form can prefill without a
     // refetch. Not recomputed or faked — passed straight from /schemes.
