@@ -443,7 +443,7 @@ export default function NewSale() {
   const goldValueLine = goldValuePure + goldProfitLine;
 
   return (
-    <div ref={scope} className="mx-auto max-w-[1240px] pb-14">
+    <div ref={scope} className="mx-auto max-w-[1240px] pb-32 lg:pb-14">
       <div data-motion="page-head" className="mb-6">
         <h2 className="text-2xl font-extrabold tracking-tight">New Sale</h2>
         <p className="mt-1 max-w-[64ch] text-sm text-muted">Enter the item's HUID, adjust the applicable rate and charges if needed, identify the buyer, then confirm the bill. Every amount is calculated by the backend.</p>
@@ -451,7 +451,7 @@ export default function NewSale() {
 
       {/* HUID lookup */}
       <Card data-motion="reveal" className="p-5 sm:p-6">
-        <h3 className="text-sm font-extrabold">Find product by HUID</h3>
+        <SectionHead title="Find product by HUID" />
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1.5 flex-1 min-w-[220px]">
             <span className="text-xs font-bold">HUID *</span>
@@ -486,17 +486,22 @@ export default function NewSale() {
             {/* Product */}
             <Card className="p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="font-mono text-xs font-bold text-muted">HUID {product.huid || "Not provided"}</div>
-                  <div className="text-base font-extrabold">{product.name || "Not provided"}</div>
-                  <div className="mt-0.5 text-xs text-muted">{[product.category, product.subcategory].filter(Boolean).join(" · ") || "Not provided"}</div>
+                <div className="min-w-0">
+                  <SectionHead step={1} title={product.name || "Not provided"} />
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
+                    <span className="num font-bold">HUID {product.huid || "Not provided"}</span>
+                    <span aria-hidden="true" className="text-line">|</span>
+                    <span>{[product.category, product.subcategory].filter(Boolean).join(" · ") || "Not provided"}</span>
+                  </div>
                 </div>
                 <Badge tone={product.stockStatus === "IN_STOCK" ? "success" : "warning"}>{product.stockStatus === "IN_STOCK" ? "In stock" : (product.stockStatus || "—")}</Badge>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <MiniField label="Purity" value={product.purity || "Not provided"} />
-                <MiniField label="Net Weight" value={grams(product.netGoldWeightGrams)} />
-                <MiniField label={`${product.purity || ""} Rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} />
+              {/* One strip, hairline separated: the three facts that decide the
+                  price sit on a single line instead of three stacked boxes. */}
+              <div className="mt-3.5 flex divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60">
+                <SpecCell label="Purity" value={product.purity || "Not provided"} />
+                <SpecCell label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
+                <SpecCell label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
               </div>
             </Card>
 
@@ -515,18 +520,20 @@ export default function NewSale() {
                 {/* Value cards + Customer Price + Today's-gold-value P/L. Purchase
                     Cost and Purchase-Cost P/L are intentionally omitted. */}
                 <Card className="p-5 space-y-4">
-                  <h3 className="text-sm font-extrabold">Pricing</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <PriceStat label="Today's Gold Value" value={money(todaysGoldValue)} />
-                    <PriceStat label="Selling Price" value={money(sellingPrice)} />
+                  <SectionHead step={2} title="Pricing" meta={requoting ? "Updating…" : undefined} />
+                  {/* Reference figures stay small: the field below is the one
+                      the admin acts on, so it gets the visual weight. */}
+                  <div className="flex divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60">
+                    <SpecCell label="Today's gold value" value={money(todaysGoldValue)} mono />
+                    <SpecCell label="Selling price" value={money(sellingPrice)} mono />
                   </div>
-                  <div className="rounded-xl border border-line bg-canvas/40 p-4">
+                  <div className="rounded-2xl border border-accent-line bg-accent-soft p-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-muted">Customer Price</span>
+                      <span className="text-xs font-bold uppercase tracking-[0.08em] text-accent-strong">Customer Price</span>
                       {requoting && <span className="text-[10px] font-semibold text-muted">Updating…</span>}
                     </div>
                     <Input type="number" step="0.01" min="0" placeholder="₹0"
-                      className="mt-2 h-14 text-center text-2xl font-extrabold"
+                      className="num mt-2 h-14 bg-surface text-center text-2xl font-extrabold tracking-tight"
                       value={priceDriver === "PRICE" ? customerPrice : (product.finalAmount != null ? String(round2(product.finalAmount)) : "")}
                       onChange={(e) => { setCustomerPrice(e.target.value); setPriceDriver("PRICE"); }} />
                     <p className="mt-1 text-[11px] text-muted">
@@ -542,7 +549,7 @@ export default function NewSale() {
 
                 {/* Editable rate + Gold Profit % + Making/Wastage + Discount */}
                 <Card className="p-5 space-y-4">
-                  <h3 className="text-sm font-extrabold">Rate &amp; charges</h3>
+                  <SectionHead step={3} title="Rate & charges" />
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="grid gap-1.5">
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
@@ -583,7 +590,7 @@ export default function NewSale() {
 
             {/* Customer */}
             <Card className="p-5 space-y-4">
-              <h3 className="text-sm font-extrabold">Customer</h3>
+              <SectionHead step={4} title="Customer" />
               <div className="flex gap-2">
                 {[["existing", "Existing customer"], ["walkin", "Walk-in"]].map(([m, label]) => (
                   <button key={m} type="button" onClick={() => setCustomerMode(m)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-colors ${customerMode === m ? "border-accent bg-accent-soft text-accent-strong" : "border-line text-ink-soft hover:bg-canvas"}`}>{label}</button>
@@ -658,7 +665,7 @@ export default function NewSale() {
 
             {/* Payment */}
             <Card className="p-5 space-y-4">
-              <h3 className="text-sm font-extrabold">Payment</h3>
+              <SectionHead step={5} title="Payment" meta={paymentChosen ? undefined : "Required"} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Method *</span>
                   <Select value={payMethod} onValueChange={setPayMethod} placeholder="Select method" options={PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABEL[m] }))} />
@@ -734,9 +741,9 @@ export default function NewSale() {
                   const wastageLabel = chargePct(product.wastageType, wastageVal || product.wastageValue);
                   return (
                     <>
-                      <div className="mt-1 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                      <div className="mt-1 rounded-xl border border-emerald-200 border-l-[3px] border-l-emerald-500 bg-emerald-50/60 p-3">
                         <div className="flex items-baseline justify-between">
-                          <span className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-emerald-800">Scheme portion</span>
+                          <span className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-emerald-800">Scheme portion · paid</span>
                           <span className="text-[10px] font-bold text-emerald-800">{pureRate > 0 ? `${schemeG.toFixed(3)} g of ${product.purity}` : "—"}</span>
                         </div>
                         <div className="mt-1.5 space-y-0.5">
@@ -748,9 +755,9 @@ export default function NewSale() {
                         </div>
                       </div>
 
-                      <div className="mt-2 rounded-xl border border-line bg-canvas/40 p-3">
+                      <div className="mt-2 rounded-xl border border-line-soft border-l-[3px] border-l-accent bg-canvas/60 p-3">
                         <div className="flex items-baseline justify-between">
-                          <span className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-muted">Normal portion</span>
+                          <span className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-muted">Normal portion · payable</span>
                           <span className="text-[10px] font-bold text-muted">{pureRate > 0 ? `${normalG.toFixed(3)} g of ${product.purity}` : "—"}</span>
                         </div>
                         <div className="mt-1.5 space-y-0.5">
@@ -804,7 +811,7 @@ export default function NewSale() {
                     <Row label="Subtotal" value={money(product.subtotalBeforeTax)} divider />
                     <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
                     {product.discountAmount > 0 && <Row label="Discount" value={`− ${money(product.discountAmount)}`} tone="text-emerald-700" />}
-                    <Row label="Bill Total" value={money(billTotal)} strong />
+                    <BillTotalBand label="Bill Total" value={money(billTotal)} />
                     {/* Mirrors the Payment card — see the note in the scheme
                         layout for why nothing shows until it is chosen. */}
                     {paymentChosen ? (
@@ -843,6 +850,7 @@ export default function NewSale() {
                   <Button size="sm" variant="outline" className="flex-1" onClick={resetAll} disabled={creating}>Cancel</Button>
                 </div>
               </div>
+              {/* placeholder-anchor */}
               {!canCreate && !creating && (
                 <p className="mt-2 text-center text-[11px] text-muted">
                   {!customerIdentified ? "Identify the buyer to enable billing."
@@ -854,6 +862,26 @@ export default function NewSale() {
                 </p>
               )}
             </Card>
+          </div>
+
+          {/* Mobile action bar. On a phone the summary sits a screen below the
+              controls, so the figure under negotiation and the way to commit it
+              would both be off-screen. Safe-area padded for gesture-bar
+              devices. Hidden at lg, where the pinned summary already does it. */}
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_16px_rgba(30,41,59,0.08)] backdrop-blur lg:hidden">
+            <div className="mx-auto flex max-w-[640px] items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
+                  {schemeApplied ? "Balance to pay" : "Bill total"}
+                </div>
+                <div className="num truncate text-lg font-extrabold text-accent-strong">
+                  {money(schemeApplied ? remaining : billTotal)}
+                </div>
+              </div>
+              <Button size="sm" className="bg-accent hover:bg-accent-strong shrink-0 px-5" disabled={!canCreate} onClick={handleCreateBill}>
+                {creating ? "Working…" : schemeApplied ? "Bill & Redeem" : "Create Bill"}
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -994,21 +1022,6 @@ function OtpDialog({ otp, onClose, onDone }) {
   );
 }
 
-const MiniField = ({ label, value }) => (
-  <div className="rounded-xl border border-line bg-canvas/40 p-3">
-    <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{label}</div>
-    <div className="mt-0.5 num text-sm font-extrabold">{value}</div>
-  </div>
-);
-
-const PriceStat = ({ label, value, sub, tone }) => (
-  <div className="rounded-xl border border-line bg-canvas/40 p-3">
-    <div className="text-[10px] font-bold uppercase tracking-[0.06em] text-muted">{label}</div>
-    <div className={`num mt-0.5 text-sm font-extrabold ${tone || ""}`}>{value}</div>
-    {sub ? <div className={`mt-0.5 text-[10px] font-semibold ${tone || "text-muted"}`}>{sub}</div> : null}
-  </div>
-);
-
 const PnlCard = ({ label, amount, pct, sub }) => {
   const pos = (amount || 0) >= 0;
   return (
@@ -1019,6 +1032,36 @@ const PnlCard = ({ label, amount, pct, sub }) => {
     </div>
   );
 };
+
+/** Numbered step header. The bill is a sequence, so the sequence is shown. */
+const SectionHead = ({ step, title, meta }) => (
+  <div className="flex items-center gap-2.5">
+    {step != null && (
+      <span className="num grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-accent-line bg-accent-soft text-[11px] font-extrabold text-accent-strong">
+        {step}
+      </span>
+    )}
+    <h3 className="text-sm font-extrabold">{title}</h3>
+    {meta ? <span className="ml-auto text-[11px] font-semibold text-muted">{meta}</span> : null}
+  </div>
+);
+
+/** One cell of the item spec strip: label over value, hairline separated. */
+const SpecCell = ({ label, value, mono }) => (
+  <div className="min-w-0 flex-1 px-3.5 py-2.5 first:pl-0 last:pr-0">
+    <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">{label}</div>
+    <div className={`mt-0.5 truncate text-sm font-extrabold text-ink ${mono ? "num" : ""}`}>{value}</div>
+  </div>
+);
+
+/** The one figure the whole screen exists to produce — given its own band so
+    it stops competing with the charge rows above it. */
+const BillTotalBand = ({ label, value }) => (
+  <div className="mt-2 flex items-center justify-between gap-4 rounded-xl border border-accent-line bg-accent-soft px-3.5 py-2.5">
+    <span className="text-xs font-extrabold uppercase tracking-[0.06em] text-accent-strong">{label}</span>
+    <span className="num text-lg font-extrabold text-accent-strong">{value}</span>
+  </div>
+);
 
 const Row = ({ label, value, strong, divider, tone }) => (
   <div className={`flex items-center justify-between gap-4 py-1 ${divider ? "mt-1 border-t border-line pt-2" : ""} ${strong ? "mt-1 border-t border-line pt-2" : ""}`}>
