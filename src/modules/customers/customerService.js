@@ -59,6 +59,23 @@ export const customerService = {
     return (res.data?.customers ?? []).map(mapRow);
   },
 
+  /**
+   * GET /api/v1/admin/customers/summary — authoritative counters.
+   *
+   * The header cards used to count the rows of the fetched page, which is
+   * capped at limit=100, so "Total customers" stuck at 100 for any tenant past
+   * that. These are COUNT queries on the server.
+   */
+  async getSummary() {
+    const res = await apiClient.get("/admin/customers/summary", { auth: true });
+    const s = res.data?.summary ?? {};
+    return {
+      totalCustomers: s.total_customers ?? 0,
+      kycPending: s.kyc_pending ?? 0,
+      schemeEnrolled: s.scheme_enrolled ?? 0,
+    };
+  },
+
   /** POST /api/v1/admin/customers — walk-in/manual create; scheme_id optional. */
   async createCustomer({ name, password, phone, email, dateOfBirth, schemeId }) {
     const body = {

@@ -31,6 +31,17 @@ function fmtKycTime(iso) {
   } catch { return iso; }
 }
 
+// Indian mobile, same expression the backend enforces.
+const PHONE_RE = /^[6-9]\d{9}$/;
+// Stricter than "has an @": no spaces, a dot-separated TLD of 2+ letters.
+const EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+// A customer cannot be born before 1900 or in the future. The picker is bounded
+// to the same window as the validator, so the two can never disagree.
+const DOB_MIN = "1900-01-01";
+const DOB_MAX = new Date().toISOString().slice(0, 10);
+// Digits only, hard-capped at 10 — the +91 prefix is displayed, never typed.
+const onlyTenDigits = (v) => v.replace(/\D/g, "").slice(0, 10);
+
 function ageFromDob(dob) {
   if (!dob) return null;
   const d = new Date(dob);
@@ -69,6 +80,13 @@ export default function Customers() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", dob: "", scheme: "No scheme" });
   const [errors, setErrors] = useState({});
+  // Password visibility toggle — an admin typing a password FOR a customer needs
+  // to be able to read back what they are about to hand over.
+  const [showPwd, setShowPwd] = useState(false);
+  // Counters come from the backend, NOT from customers.length: the list is
+  // paginated (limit 100), so counting fetched rows froze "Total customers"
+  // at exactly 100 once a tenant passed that.
+  const [summary, setSummary] = useState(null);
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", password: "" });
   const [editErrors, setEditErrors] = useState({});
@@ -103,8 +121,14 @@ export default function Customers() {
     setLoading(true);
     setLoadError("");
     try {
-      const list = await customerService.getCustomers();
+      const [list, sum] = await Promise.all([
+        customerService.getCustomers(),
+        // A counter failure must not blank the table, so it degrades to the
+        // page-derived figures instead of throwing.
+        customerService.getSummary().catch(() => null),
+      ]);
       setCustomers(list);
+      if (sum) setSummary(sum);
     } catch (err) {
       setLoadError(err?.message || "Could not load customers.");
     } finally {
@@ -181,10 +205,13 @@ export default function Customers() {
     const e = {};
     if (!form.name.trim()) e.name = "Name is required";
     if (!form.dob) e.dob = "Date of birth is required";
+    else if (form.dob < DOB_MIN || form.dob > DOB_MAX) e.dob = `Date of birth must be between ${fmtDob(DOB_MIN)} and today`;
     if (!form.password || form.password.length < 8) e.password = "Min. 8 characters";
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Invalid email";
+    if (form.email && !EMAIL_RE.test(form.email.trim())) e.email = "Enter a valid email, e.g. name@example.com";
     if (!form.phone.trim()) e.phone = "Phone is required";
-    else if (!/^[0-9]{10}$/.test(form.phone.replace(/\D/g, ""))) e.phone = "Enter 10-digit phone";
+    // Mirrors the server rule (^[6-9]\d{9}$) so a number the form accepts can
+    // never be rejected by the API a second later.
+    else if (!PHONE_RE.test(form.phone.replace(/\D/g, ""))) e.phone = "Enter a 10-digit Indian mobile number starting 6-9";
     return e;
   }
 
@@ -230,8 +257,9 @@ export default function Customers() {
   async function handleSaveEdit() {
     const e = {};
     if (!editForm.name.trim()) e.name = "Name is required";
-    if (editForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) e.email = "Invalid email";
-    if (editForm.phone && !/^[0-9]{10}$/.test(editForm.phone.replace(/\D/g, ""))) e.phone = "Enter 10-digit phone";
+    if (editForm.email && !EMAIL_RE.test(editForm.email.trim())) e.email = "Enter a valid email, e.g. name@example.com";
+    if (editForm.phone && !PHONE_RE.test(editForm.phone.replace(/\D/g, ""))) e.phone = "Enter a 10-digit Indian mobile number starting 6-9";
+    if (editForm.password && editForm.password.length < 8) e.password = "Min. 8 characters";
     setEditErrors(e);
     if (Object.keys(e).length) return;
     setSaving(true);
@@ -349,9 +377,11 @@ export default function Customers() {
           { label: "Hybrid", count: customers.filter(c => c.type === "Hybrid").length, color: "#6366f1" },
           { label: "New", count: customers.filter(c => c.type === "New").length, color: "#94a3b8" },
         ];
-        const kycPending = customers.filter(c => c.kyc === "Pending Review").length;
-        const schemeEnrolled = customers.filter(c => c.type === "Scheme Customer" || c.type === "Hybrid").length;
-        const totalCustomers = customers.length;
+        // Backend counts when available; the page-derived numbers only as a
+        // fallback (and then they are what they are — this page's rows).
+        const kycPending = summary ? summary.kycPending : customers.filter(c => c.kyc === "Pending Review").length;
+        const schemeEnrolled = summary ? summary.schemeEnrolled : customers.filter(c => c.type === "Scheme Customer" || c.type === "Hybrid").length;
+        const totalCustomers = summary ? summary.totalCustomers : customers.length;
         const pct = (n) => (totalCustomers > 0 ? Math.round((n / totalCustomers) * 100) : 0);
 
         const StatCard = ({ label, value, note, icon, tint, ring, valueClass }) => (
@@ -530,23 +560,70 @@ export default function Customers() {
               </label>
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Phone<span className="text-danger">*</span> <span className="font-normal text-muted">— 10-digit mobile number</span></span>
-                <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="10-digit mobile number" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.phone ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
+                <div className={`flex h-10 items-stretch overflow-hidden rounded-xl border bg-surface transition ${errors.phone ? "border-danger" : "border-line focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`}>
+                  <span className="num grid w-12 shrink-0 place-items-center border-r border-line-soft bg-canvas/60 text-sm font-bold text-muted" aria-hidden="true">+91</span>
+                  <input
+                    value={form.phone}
+                    onChange={e => setForm({ ...form, phone: onlyTenDigits(e.target.value) })}
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    maxLength={10}
+                    aria-label="10-digit mobile number, country code +91"
+                    placeholder="98765 43210"
+                    className="num min-w-0 flex-1 bg-transparent px-3.5 text-sm tracking-[0.02em] outline-none"
+                  />
+                </div>
                 {errors.phone && <span className="text-xs font-semibold text-danger">{errors.phone}</span>}
               </label>
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Date of Birth<span className="text-danger">*</span> <span className="font-normal text-muted">— Required</span></span>
-                <input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.dob ? "border-danger focus:border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
+                <input type="date" value={form.dob} min={DOB_MIN} max={DOB_MAX} onChange={e => setForm({ ...form, dob: e.target.value })} className={`num h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.dob ? "border-danger focus:border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
+                {!errors.dob && <span className="text-[11px] text-muted">Any date from 1900 up to today.</span>}
                 {errors.dob && <span className="text-xs font-semibold text-danger">{errors.dob}</span>}
               </label>
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Email <span className="font-normal text-muted">— Optional</span></span>
-                <input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="customer@email.com" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.email ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={e => setForm({ ...form, email: e.target.value })}
+                  onBlur={e => {
+                    // Validate on blur, not per keystroke: flagging "invalid"
+                    // while someone is still typing the domain is noise.
+                    const v = e.target.value.trim();
+                    setErrors(prev => ({ ...prev, email: v && !EMAIL_RE.test(v) ? "Enter a valid email, e.g. name@example.com" : undefined }));
+                  }}
+                  autoComplete="email"
+                  placeholder="customer@example.com"
+                  className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.email ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`}
+                />
                 {errors.email && <span className="text-xs font-semibold text-danger">{errors.email}</span>}
               </label>
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Initial Password<span className="text-danger">*</span> <span className="font-normal text-muted">— Min. 8 characters</span></span>
-                <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="••••••••" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.password ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
-                {errors.password && <span className="text-xs font-semibold text-danger">{errors.password}</span>}
+                <div className={`flex h-10 items-stretch overflow-hidden rounded-xl border bg-surface transition ${errors.password ? "border-danger" : "border-line focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`}>
+                  <input
+                    type={showPwd ? "text" : "password"}
+                    value={form.password}
+                    onChange={e => setForm({ ...form, password: e.target.value })}
+                    minLength={8}
+                    autoComplete="new-password"
+                    placeholder="At least 8 characters"
+                    className="min-w-0 flex-1 bg-transparent px-3.5 text-sm outline-none"
+                  />
+                  <button type="button" onClick={() => setShowPwd(v => !v)} aria-label={showPwd ? "Hide password" : "Show password"} className="shrink-0 border-l border-line-soft px-3 text-[11px] font-bold text-muted transition-colors hover:bg-canvas/60 hover:text-ink">
+                    {showPwd ? "Hide" : "Show"}
+                  </button>
+                </div>
+                {/* Live requirement feedback, so the rule is visible as it is met
+                    rather than only after pressing Save. */}
+                {errors.password ? (
+                  <span className="text-xs font-semibold text-danger">{errors.password}</span>
+                ) : form.password ? (
+                  <span className={`text-[11px] font-semibold ${form.password.length >= 8 ? "text-emerald-700" : "text-muted"}`}>
+                    {form.password.length >= 8 ? "Meets the 8-character minimum." : `${8 - form.password.length} more character${8 - form.password.length === 1 ? "" : "s"} needed.`}
+                  </span>
+                ) : null}
               </label>
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Enroll in Scheme <span className="font-normal text-muted">(Optional) — No scheme</span></span>
@@ -582,7 +659,10 @@ export default function Customers() {
               </label>
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Phone</span>
-                <input value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} placeholder="10-digit mobile number" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${editErrors.phone ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
+                <div className={`flex h-10 items-stretch overflow-hidden rounded-xl border bg-surface transition ${editErrors.phone ? "border-danger" : "border-line focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`}>
+                  <span className="num grid w-12 shrink-0 place-items-center border-r border-line-soft bg-canvas/60 text-sm font-bold text-muted" aria-hidden="true">+91</span>
+                  <input value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: onlyTenDigits(e.target.value) })} inputMode="numeric" maxLength={10} aria-label="10-digit mobile number, country code +91" placeholder="98765 43210" className="num min-w-0 flex-1 bg-transparent px-3.5 text-sm outline-none" />
+                </div>
                 {editErrors.phone && <span className="text-xs font-semibold text-danger">{editErrors.phone}</span>}
               </label>
               <label className="grid gap-1.5">
@@ -750,13 +830,13 @@ export default function Customers() {
                   <div className="mt-3 grid gap-3 rounded-xl border border-line bg-canvas/40 p-4 text-sm">
                     <div className="grid grid-cols-2 gap-3">
                       <div><div className="text-xs text-muted">Phone</div><div className="num font-semibold">{orNP(selected.phone)}</div></div>
-                      <div><div className="text-xs text-muted">Gender</div><div className="font-semibold">{orNP(selected.gender)}</div></div>
+                      <div><div className="text-xs text-muted">Gender <span className="font-normal text-faint">· optional</span></div><div className="font-semibold">{orNP(selected.gender)}</div></div>
                     </div>
                     <div><div className="text-xs text-muted">Email</div><div className="font-semibold break-all">{orNP(selected.email)}</div></div>
-                    <div><div className="text-xs text-muted">Address</div><div className="font-semibold leading-snug">{orNP(selected.address)}</div></div>
+                    <div><div className="text-xs text-muted">Address <span className="font-normal text-faint">· optional</span></div><div className="font-semibold leading-snug">{orNP(selected.address)}</div></div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><div className="text-xs text-muted">ID Proof</div><div className="font-semibold">{isBlank(selected.idType) && isBlank(selected.idNo) ? "Not submitted" : `${orNS(selected.idType)} · ${orNS(selected.idNo)}`}</div></div>
-                      <div><div className="text-xs text-muted">Occupation</div><div className="font-semibold">{orNP(selected.occupation)}</div></div>
+                      <div><div className="text-xs text-muted">ID Proof <span className="font-normal text-faint">· optional</span></div><div className="font-semibold">{isBlank(selected.idType) && isBlank(selected.idNo) ? "Not submitted" : `${orNS(selected.idType)} · ${orNS(selected.idNo)}`}</div></div>
+                      <div><div className="text-xs text-muted">Occupation <span className="font-normal text-faint">· optional</span></div><div className="font-semibold">{orNP(selected.occupation)}</div></div>
                     </div>
                   </div>
                 </section>
@@ -782,7 +862,10 @@ export default function Customers() {
                       ))}
                     </div>
                   ) : (
-                    <div className="mt-3 rounded-xl border border-dashed border-line bg-canvas/30 p-6 text-center text-sm text-muted">No active schemes.<br /><button onClick={openEnroll} className="mt-2 font-bold text-accent underline">Enroll in a scheme</button></div>
+                    <div className="mt-3 rounded-xl border border-dashed border-line bg-canvas/30 p-6 text-center text-sm text-muted">
+                      No active schemes yet.
+                      <div className="mt-1 text-xs">Use <span className="font-bold text-ink">+ Add scheme</span> above to enroll this customer.</div>
+                    </div>
                   )}
                 </section>
 

@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/_shared/ui/card";
 import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
+import { Select } from "@/_shared/ui/select";
 import { Input } from "@/_shared/ui/input";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
@@ -243,43 +244,36 @@ export default function GoldRate() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-[0.07em]">24K rate / gram</span>
-                <Input type="number" value={rates.r24} onChange={setField("r24")} />
-              </label>
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-[0.07em]">22K rate / gram</span>
-                <Input type="number" value={rates.r22} onChange={setField("r22")} />
-                {live?.rates?.gold_22k?.withGst != null && (
-                  <span className="text-[11px] text-muted">
-                    Without GST {formatINR(live.rates.gold_22k.withoutGst)} · With GST {formatINR(live.rates.gold_22k.withGst)}
-                  </span>
-                )}
-              </label>
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-[0.07em]">18K rate / gram</span>
-                <Input type="number" value={rates.r18} onChange={setField("r18")} />
-              </label>
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-[0.07em]">14K rate / gram</span>
-                <Input type="number" value={rates.r14} onChange={setField("r14")} />
-                {live?.rates?.gold_14k?.derived && (
-                  <span className="text-[11px] text-muted">Derived · 24K × 14/24</span>
-                )}
-              </label>
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-[0.07em]">9K rate / gram</span>
-                <Input type="number" value={rates.r9} onChange={setField("r9")} />
-                {live?.rates?.gold_9k?.derived && (
-                  <span className="text-[11px] text-muted">Derived · 24K × 9/24</span>
-                )}
-              </label>
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-[0.07em]">Silver / gram</span>
-                <Input type="number" value={rates.silver} onChange={setField("silver")} />
-              </label>
+            {/* One cell shape for all six rates: label, then input. Nothing
+                else goes inside a cell — a note in only some cells changes those
+                rows' heights and breaks the shared baseline across the pair. */}
+            <div className="grid grid-cols-1 items-start gap-x-4 gap-y-3.5 sm:grid-cols-2">
+              {[
+                ["24K rate / gram", "r24"],
+                ["22K rate / gram", "r22"],
+                ["18K rate / gram", "r18"],
+                ["14K rate / gram", "r14"],
+                ["9K rate / gram", "r9"],
+                ["Silver / gram", "silver"],
+              ].map(([label, key]) => (
+                <label key={key} className="grid gap-1.5">
+                  <span className="h-4 text-[11px] font-bold uppercase leading-4 tracking-[0.07em]">{label}</span>
+                  <Input type="number" inputMode="decimal" value={rates[key]} onChange={setField(key)} />
+                </label>
+              ))}
             </div>
+            {/* The per-rate notes that used to sit inside individual cells. */}
+            {(live?.rates?.gold_22k?.withGst != null || live?.rates?.gold_14k?.derived || live?.rates?.gold_9k?.derived) && (
+              <ul className="mt-3 space-y-0.5">
+                {live?.rates?.gold_22k?.withGst != null && (
+                  <li className="text-[11px] text-muted">
+                    Live 22K — without GST {formatINR(live.rates.gold_22k.withoutGst)} · with GST {formatINR(live.rates.gold_22k.withGst)}
+                  </li>
+                )}
+                {live?.rates?.gold_14k?.derived && <li className="text-[11px] text-muted">14K is derived · 24K × 14/24</li>}
+                {live?.rates?.gold_9k?.derived && <li className="text-[11px] text-muted">9K is derived · 24K × 9/24</li>}
+              </ul>
+            )}
             <p className="mt-3 text-xs text-muted">
               Existing bill drafts are unaffected. Rate history keeps a full audit trail.
             </p>
@@ -308,17 +302,16 @@ export default function GoldRate() {
                 <CardTitle>Rate trend</CardTitle>
                 <CardDescription>Last {trendSeries.length} published days · {trendLabel}</CardDescription>
               </div>
-              <label className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-faint">Purity</span>
-                <select
+                <Select
                   value={trendKey}
-                  onChange={(e) => setTrendKey(e.target.value)}
-                  className="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-bold text-ink outline-none transition-colors hover:border-accent-line focus:border-accent-line"
-                  aria-label="Trend purity"
-                >
-                  {PURITY_OPTS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-                </select>
-              </label>
+                  onValueChange={setTrendKey}
+                  options={PURITY_OPTS.map((p) => ({ value: p.key, label: p.label }))}
+                  className="w-[104px]"
+                  triggerClassName="h-9 min-h-[36px] text-xs font-bold"
+                />
+              </div>
             </div>
           </CardHeader>
           <CardContent>

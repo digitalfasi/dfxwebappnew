@@ -16,7 +16,11 @@ import { paymentService } from "@/modules/payments/paymentService";
 // gold rate, gold weight, payment history) are backend-authoritative and read
 // through the existing services. No mock data. No frontend gold valuation.
 
-const FILTERS = ["All", "Active", "Completed", "Cancelled"];
+// "Overdue" is a live condition rather than a stored status, so it filters on
+// the backend-derived overdue fields instead of r.status.
+const FILTERS = ["All", "Active", "Overdue", "Completed", "Cancelled"];
+const ROWS_PER_PAGE = 20;
+const isOverdue = (r) => (r.overdueDays || 0) > 0 || (r.overdueAmount || 0) > 0;
 const TABS = ["Enrollment Details", "Passbook & Payments", "Remarks"];
 // Predefined close-scheme reasons (manual entry still allowed alongside).
 const CLOSE_PRESETS = [
@@ -58,6 +62,7 @@ export default function SchemeManagement() {
   usePressFeedback(scope);
   const [filter, setFilter] = useState("All");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null); // backend-authoritative KPI slices
   const [loading, setLoading] = useState(true);
@@ -93,10 +98,11 @@ export default function SchemeManagement() {
 
   useEffect(() => { loadRows(); }, [loadRows]);
 
-  const filtered = useMemo(
-    () => (filter === "All" ? rows : rows.filter((r) => r.status === filter)),
-    [rows, filter]
-  );
+  const filtered = useMemo(() => {
+    if (filter === "All") return rows;
+    if (filter === "Overdue") return rows.filter(isOverdue);
+    return rows.filter((r) => r.status === filter);
+  }, [rows, filter]);
 
   // Text search over the already-loaded rows — customer name or enrollment
   // number only. A pure display filter for the table; it never touches KPIs
@@ -111,11 +117,23 @@ export default function SchemeManagement() {
     );
   }, [filtered, query]);
 
+  // Pagination. 20 rows a page, and the page resets whenever the filter or the
+  // search changes — otherwise page 4 of a 3-page result renders empty.
+  const totalPages = Math.max(1, Math.ceil(searched.length / ROWS_PER_PAGE));
+  const pageSafe = Math.min(page, totalPages);
+  const paged = useMemo(
+    () => searched.slice((pageSafe - 1) * ROWS_PER_PAGE, pageSafe * ROWS_PER_PAGE),
+    [searched, pageSafe]
+  );
+  useEffect(() => { setPage(1); }, [filter, query]);
+
   // KPI row — read straight from the backend-authoritative `summary` slice for
   // the active filter. The frontend performs NO financial aggregation: it only
   // selects the matching slice (All/Active/Completed/Cancelled) and displays the
   // values the backend already computed. Null when the slice is unavailable.
-  const FILTER_TO_SLICE = { All: "all", Active: "active", Completed: "completed", Cancelled: "cancelled" };
+  // Overdue has no backend summary slice of its own; it borrows the Active
+  // slice, since every overdue enrollment is by definition still active.
+  const FILTER_TO_SLICE = { All: "all", Active: "active", Overdue: "active", Completed: "completed", Cancelled: "cancelled" };
   const kpis = summary?.[FILTER_TO_SLICE[filter]] ?? null;
 
   // Outstanding is backend-authoritative (enrollment.outstanding_amount). The
@@ -247,7 +265,15 @@ export default function SchemeManagement() {
         {FILTERS.map((f) => (
           <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${filter === f ? "border-ink bg-ink text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{f}</button>
         ))}
-        {filter !== "All" && <button onClick={() => setFilter("All")} className="ml-1 text-xs font-bold text-accent underline">Clear</button>}
+        {(filter !== "All" || query) && (
+          <button
+            type="button"
+            onClick={() => { setFilter("All"); setQuery(""); }}
+            className="ml-auto rounded-full border border-danger-line bg-danger-soft px-3.5 py-1.5 text-xs font-bold text-danger transition-colors hover:bg-danger hover:text-white"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
       <Card data-motion="reveal" className="overflow-hidden">
@@ -259,7 +285,7 @@ export default function SchemeManagement() {
               </tr>
             </thead>
             <tbody>
-              {searched.map((r) => (
+              {paged.map((r) => (
                 <tr key={r.enrollment} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
                   <td className="px-6 py-3.5"><div className="font-bold leading-tight">{r.customer}</div></td>
                   <td className="px-4 py-3.5 font-medium">{r.scheme}</td>
@@ -288,7 +314,22 @@ export default function SchemeManagement() {
           </table>
         </CardContent>
       </Card>
-      <div className="mt-3 text-xs font-semibold text-muted">Showing {searched.length} of {rows.length} enrollments</div>
+      {/* Row count + pager. Kept outside the table so the table itself never
+          needs its own scroll container. */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-xs font-semibold text-muted">
+          {searched.length === 0
+            ? `No enrollments match — ${rows.length} in total`
+            : `Showing ${(pageSafe - 1) * ROWS_PER_PAGE + 1}–${Math.min(pageSafe * ROWS_PER_PAGE, searched.length)} of ${searched.length}${searched.length !== rows.length ? ` (filtered from ${rows.length})` : ""}`}
+        </div>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" disabled={pageSafe <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</Button>
+            <span className="num px-2 text-xs font-bold text-muted">Page {pageSafe} of {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={pageSafe >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Next</Button>
+          </div>
+        )}
+      </div>
 
       {manage && (
         <div className="fixed inset-0 z-50 flex justify-end">
@@ -323,11 +364,14 @@ export default function SchemeManagement() {
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Planned Duration</td><td className="px-4 py-2.5 font-medium">{manage.total} months</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Successful Payments</td><td className="px-4 py-2.5 font-bold">{manage.paid} / {manage.total}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Total Paid</td><td className="px-4 py-2.5 font-bold">{money(totalPaid)}</td></tr>
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Overdue Amount</td><td className="px-4 py-2.5 font-bold">{money(outstanding(manage))}</td></tr>
+                      {/* Overdue and Next Due only mean something while the
+                          enrollment is still running. On a closed/completed
+                          record they read Nil rather than a stale figure. */}
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Overdue Amount</td><td className="px-4 py-2.5 font-bold">{manage.status === "Active" ? money(outstanding(manage)) : "Nil"}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Current Gold Balance</td><td className="px-4 py-2.5 font-bold text-accent-strong">{grams(goldBalance)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.joined)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.maturity)}</td></tr>
-                      <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.nextDue)}</td></tr>
+                      <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-mono text-xs">{manage.status === "Active" ? fmtDate(manage.nextDue) : "Nil"}</td></tr>
                     </tbody>
                   </table>
                   <p className="px-4 py-2 text-xs text-muted">Financial and schedule fields are fixed at enrollment and backend-authoritative.</p>
@@ -393,6 +437,17 @@ export default function SchemeManagement() {
 
               {!detailLoading && tab === "Remarks" && (
                 <div>
+                  {/* The closing reason is a DIFFERENT field from the
+                      operational remark: closing writes closure_reason, this box
+                      edits `remarks`. It was persisted all along but displayed
+                      nowhere, which read as data loss. Shown read-only here. */}
+                  {manage.closureReason && (
+                    <div className="mb-4 rounded-xl border border-line bg-canvas/50 p-3.5">
+                      <div className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-faint">Closing remark</div>
+                      <p className="mt-1 text-sm font-semibold text-ink">{manage.closureReason}</p>
+                      <p className="mt-1 text-[11px] text-muted">Recorded when the scheme was closed. Read-only.</p>
+                    </div>
+                  )}
                   <label className="mb-1.5 block text-xs font-bold">Operational remark</label>
                   <textarea
                     value={remark}

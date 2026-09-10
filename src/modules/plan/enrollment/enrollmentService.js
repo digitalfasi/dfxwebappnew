@@ -47,6 +47,10 @@ function mapRow(raw) {
     overdueDays: raw.overdue_days ?? 0,
     overdueAmount: raw.overdue_amount ?? 0,
     remarks: raw.remarks ?? "",
+    // Reason captured when the enrollment was CLOSED. A different field from
+    // `remarks` (the editable operational note) — the close transaction writes
+    // closure_reason, so it must be surfaced separately or it looks lost.
+    closureReason: raw.closure_reason ?? "",
   };
 }
 

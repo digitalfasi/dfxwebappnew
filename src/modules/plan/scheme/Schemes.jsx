@@ -4,8 +4,28 @@ import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
-import { formatINR } from "@/_shared/utils";
+import { Select } from "@/_shared/ui/select";
+import { formatINR, money } from "@/_shared/utils";
 import { schemeService, SCHEME_TYPES } from "@/modules/plan/scheme/schemeService";
+
+// Business limits, mirrored from app/modules/plan/scheme/schema.py. An
+// instalment plan (MONTHLY / FIXED_GOLD_RATE) runs at most 11 months at
+// Rs 1,000-15,000; a Flexible Digi Gold wallet takes Rs 500-1,00,000 per
+// deposit with no month coverage.
+const MAX_DURATION_MONTHS = 11;
+const MONTHLY_MIN = 1000;
+const MONTHLY_MAX = 15000;
+const DIGI_MIN = 500;
+const DIGI_MAX = 100000;
+
+// bonus_description stays a string in the contract; the UI captures the
+// percentage and composes the sentence, so the stored value is predictable
+// instead of whatever free text was typed.
+const bonusPctToText = (pct) => (pct === "" || pct == null ? "" : `${Number(pct)}% bonus on maturity`);
+const bonusTextToPct = (text) => {
+  const m = /(\d{1,2})\s*%/.exec(text || "");
+  return m ? m[1] : "";
+};
 
 // Real schemes are loaded from the DFX backend via schemeService.
 // No mock/demo schemes remain as an active source or fallback.
@@ -20,8 +40,12 @@ export default function Schemes() {
   const [saving, setSaving] = useState(false);
   const [show, setShow] = useState(false);
   const [editingId, setEditingId] = useState(null); // null = create, id = edit
+  // Scheme pending deactivation, shown in the app's own confirm modal. A
+  // browser confirm() leaks the host name into a customer-facing console and
+  // cannot carry the consequence text a destructive action needs.
+  const [confirming, setConfirming] = useState(null);
   const [busyId, setBusyId] = useState(null); // scheme id mid deactivate/reactivate
-  const [form, setForm] = useState({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonus: "" });
+  const [form, setForm] = useState({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonusPct: "" });
   const [tiers, setTiers] = useState([]);
   const [errors, setErrors] = useState({});
 
@@ -49,7 +73,7 @@ export default function Schemes() {
 
   function openCreate() {
     setEditingId(null);
-    setForm({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonus: "" });
+    setForm({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonusPct: "" });
     setTiers([]);
     setErrors({});
     setShow(true);
@@ -64,7 +88,7 @@ export default function Schemes() {
       type: s.schemeType || "MONTHLY",
       duration: String(s.durationMonths ?? ""),
       amount: String(s.monthlyAmount ?? ""),
-      bonus: s.bonusDescription || "",
+      bonusPct: bonusTextToPct(s.bonusDescription),
     });
     // Prefill the tiers the admin already selected (active tiers), so editing a
     // MONTHLY scheme shows them instead of an empty list.
@@ -78,11 +102,20 @@ export default function Schemes() {
   async function handleSave() {
     const e = {};
     if (!form.title.trim()) e.title = "Title is required";
-    if (!form.duration || Number(form.duration) <= 0) e.duration = "Enter valid months";
-    if (!form.amount || Number(form.amount) <= 0) e.amount = "Enter valid amount";
+    // Limits mirror the server rules in plan/scheme/schema.py — an instalment
+    // plan runs at most 11 months at Rs 1,000-15,000; a Digi Gold wallet takes
+    // Rs 500-1,00,000 per deposit and has no coverage cap.
+    const isWallet = form.type === "FLEXIBLE_DIGI_GOLD";
+    const dur = Number(form.duration);
+    const amt = Number(form.amount);
+    if (!form.duration || dur <= 0) e.duration = "Enter valid months";
+    else if (!isWallet && dur > MAX_DURATION_MONTHS) e.duration = `Duration cannot exceed ${MAX_DURATION_MONTHS} months`;
+    if (!form.amount || amt <= 0) e.amount = "Enter valid amount";
     // Flexible Digi Gold monthly amount is bounded ₹500–₹1,00,000 (mirrors the
     // backend rule). Other scheme types keep the open range.
-    else if (form.type === "FLEXIBLE_DIGI_GOLD" && (Number(form.amount) < 500 || Number(form.amount) > 100000)) e.amount = "Flexible Digi Gold amount must be ₹500–₹1,00,000";
+    else if (isWallet && (amt < DIGI_MIN || amt > DIGI_MAX)) e.amount = `Flexible Digi Gold amount must be ${money(DIGI_MIN)}–${money(DIGI_MAX)}`;
+    else if (!isWallet && (amt < MONTHLY_MIN || amt > MONTHLY_MAX)) e.amount = `Monthly amount must be ${money(MONTHLY_MIN)}–${money(MONTHLY_MAX)}`;
+    if (form.bonusPct !== "" && (Number(form.bonusPct) < 0 || Number(form.bonusPct) > 99)) e.bonusPct = "Bonus must be 0–99%";
     // Tiers apply to MONTHLY schemes on both create and edit.
     const cleanTiers = [];
     if (form.type === "MONTHLY") {
@@ -110,7 +143,7 @@ export default function Schemes() {
           schemeType: form.type,
           monthlyAmount: Number(form.amount),
           durationMonths: Number(form.duration),
-          bonusDescription: form.bonus.trim(),
+          bonusDescription: bonusPctToText(form.bonusPct),
           // Always send the tier set. Omitting it leaves tiers untouched, so a
           // scheme switched away from MONTHLY would keep stale selectable tiers;
           // an empty array makes the backend deactivate them.
@@ -128,11 +161,11 @@ export default function Schemes() {
           schemeType: form.type,
           monthlyAmount: Number(form.amount),
           durationMonths: Number(form.duration),
-          bonusDescription: form.bonus.trim() || undefined,
+          bonusDescription: bonusPctToText(form.bonusPct) || undefined,
           tiers: cleanTiers,
         });
         setShow(false);
-        setForm({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonus: "" });
+        setForm({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonusPct: "" });
         setTiers([]);
         setErrors({});
         await loadSchemes();
@@ -151,7 +184,7 @@ export default function Schemes() {
   // Deactivate = backend soft-delete (DELETE /schemes/{id} sets is_active=false).
   // History-safe: enrollments/payments referencing the scheme are preserved.
   async function handleDeactivate(s) {
-    if (!window.confirm(`Deactivate "${s.name}"? It will stop being offered to new customers. Existing enrollments and history are kept.`)) return;
+    setConfirming(null);
     setBusyId(s.id);
     try {
       await schemeService.deactivateScheme(s.id);
@@ -163,6 +196,8 @@ export default function Schemes() {
       setBusyId(null);
     }
   }
+
+  const confirmDeactivate = () => { if (confirming) handleDeactivate(confirming); };
 
   // Reactivate via the real update endpoint (PUT is_active=true).
   async function handleReactivate(s) {
@@ -222,7 +257,7 @@ export default function Schemes() {
             <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
               <Button variant="outline" size="sm" className="flex-1" disabled={busyId === s.id} onClick={() => openEdit(s)}>Edit</Button>
               {s.status === "Active" ? (
-                <Button variant="outline" size="sm" className="flex-1 text-danger hover:border-danger" disabled={busyId === s.id} onClick={() => handleDeactivate(s)}>
+                <Button variant="outline" size="sm" className="flex-1 text-danger hover:border-danger" disabled={busyId === s.id} onClick={() => setConfirming(s)}>
                   {busyId === s.id ? "…" : "Deactivate"}
                 </Button>
               ) : (
@@ -243,10 +278,35 @@ export default function Schemes() {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Title<span className="text-danger">*</span> — e.g. Festival Special Plan</span><input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Festival Special Plan" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.title ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.title && <span className="text-xs font-semibold text-danger">{errors.title}</span>}</label>
               <label className="grid gap-1.5"><span className="text-xs font-bold">Description — Short description shown to customers</span><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short description..." rows={2} className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Type<span className="text-danger">*</span> — how contributions convert to gold</span><select value={form.type} onChange={e => { const t = e.target.value; setForm(f => ({ ...f, type: t, amount: t === "FLEXIBLE_DIGI_GOLD" ? "" : f.amount })); }} className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none transition focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]">{SCHEME_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select><span className="text-[11px] text-muted">{form.type === "FIXED_GOLD_RATE" ? "Gold rate is locked at enrollment; contributions convert at that locked rate." : form.type === "FLEXIBLE_DIGI_GOLD" ? "Contributions convert to gold at the rate on the contribution date." : "Standard monthly savings plan."}</span></label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Duration (Months)<span className="text-danger">*</span> — 11</span><input type="number" value={form.duration} onChange={e => setForm({ ...form, duration: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.duration ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.duration && <span className="text-xs font-semibold text-danger">{errors.duration}</span>}</label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Monthly Amount (₹)<span className="text-danger">*</span> — {form.type === "FLEXIBLE_DIGI_GOLD" ? "₹500 to ₹1,00,000" : "1000"}</span><input type="number" value={form.amount} min={form.type === "FLEXIBLE_DIGI_GOLD" ? 500 : undefined} max={form.type === "FLEXIBLE_DIGI_GOLD" ? 100000 : undefined} placeholder={form.type === "FLEXIBLE_DIGI_GOLD" ? "Enter ₹500 – ₹1,00,000" : undefined} onChange={e => setForm({ ...form, amount: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.amount ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{form.type === "FLEXIBLE_DIGI_GOLD" && !errors.amount && <span className="text-[11px] text-muted">Flexible Digi Gold accepts ₹500 to ₹1,00,000.</span>}{errors.amount && <span className="text-xs font-semibold text-danger">{errors.amount}</span>}</label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Bonus Description — e.g. 8% bonus on maturity</span><input value={form.bonus} onChange={e => setForm({ ...form, bonus: e.target.value })} placeholder="8% bonus on maturity" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Type<span className="text-danger">*</span> — how contributions convert to gold</span><Select value={form.type} onValueChange={(t) => setForm(f => ({ ...f, type: t, amount: t === "FLEXIBLE_DIGI_GOLD" ? "" : f.amount }))} options={SCHEME_TYPES.map(t => ({ value: t.value, label: t.label }))} /><span className="text-[11px] text-muted">{form.type === "FIXED_GOLD_RATE" ? "Gold rate is locked at enrollment; contributions convert at that locked rate." : form.type === "FLEXIBLE_DIGI_GOLD" ? "Contributions convert to gold at the rate on the contribution date." : "Standard monthly savings plan."}</span></label>
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Duration (Months)<span className="text-danger">*</span> <span className="font-normal text-muted">— max {MAX_DURATION_MONTHS}</span></span><input type="number" min={1} max={MAX_DURATION_MONTHS} step={1} value={form.duration} onChange={e => setForm({ ...form, duration: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.duration ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.duration && <span className="text-xs font-semibold text-danger">{errors.duration}</span>}</label>
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Monthly Amount (₹)<span className="text-danger">*</span> <span className="font-normal text-muted">— {form.type === "FLEXIBLE_DIGI_GOLD" ? `${money(DIGI_MIN)} to ${money(DIGI_MAX)}` : `${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}`}</span></span><input type="number" step={1} value={form.amount} min={form.type === "FLEXIBLE_DIGI_GOLD" ? DIGI_MIN : MONTHLY_MIN} max={form.type === "FLEXIBLE_DIGI_GOLD" ? DIGI_MAX : MONTHLY_MAX} placeholder={form.type === "FLEXIBLE_DIGI_GOLD" ? "Enter ₹500 – ₹1,00,000" : undefined} onChange={e => setForm({ ...form, amount: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.amount ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{!errors.amount && <span className="text-[11px] text-muted">{form.type === "FLEXIBLE_DIGI_GOLD" ? `A wallet deposit may be ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, any number of times.` : `An instalment must be ${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}.`}</span>}{errors.amount && <span className="text-xs font-semibold text-danger">{errors.amount}</span>}</label>
+              {/* The bonus is a PERCENTAGE, so it is captured as a bounded number
+                  (0-99) rather than free text that accepted any digits at all.
+                  The stored description is composed from it, keeping the existing
+                  bonus_description contract unchanged. */}
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">Bonus on maturity (%) <span className="font-normal text-muted">— optional, 0–99</span></span>
+                <div className={`flex h-10 items-stretch overflow-hidden rounded-xl border bg-surface transition ${errors.bonusPct ? "border-danger" : "border-line focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={99}
+                    step={1}
+                    value={form.bonusPct}
+                    onChange={e => {
+                      const digits = e.target.value.replace(/\D/g, "").slice(0, 2);
+                      setForm({ ...form, bonusPct: digits });
+                    }}
+                    placeholder="8"
+                    className="num min-w-0 flex-1 bg-transparent px-3.5 text-sm outline-none"
+                  />
+                  <span className="grid w-10 shrink-0 place-items-center border-l border-line-soft bg-canvas/60 text-sm font-bold text-muted" aria-hidden="true">%</span>
+                </div>
+                {errors.bonusPct
+                  ? <span className="text-xs font-semibold text-danger">{errors.bonusPct}</span>
+                  : <span className="text-[11px] text-muted">{form.bonusPct ? `Saved as "${form.bonusPct}% bonus on maturity".` : "Leave empty for no bonus."}</span>}
+              </label>
               {form.type === "MONTHLY" && <div className="grid gap-2">
 
                 <div className="flex items-center justify-between">
@@ -266,6 +326,35 @@ export default function Schemes() {
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" onClick={() => setShow(false)}>Cancel</Button>
               <Button size="sm" disabled={saving} onClick={handleSave}>{saving ? (editingId ? "Saving…" : "Creating…") : (editingId ? "Save Changes" : "Create Scheme")}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deactivation confirm — the app's own dialog, replacing window.confirm.
+          A native confirm shows the host name ("localhost says…"), cannot state
+          the consequence, and looks nothing like the product. */}
+      {confirming && (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-ink/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="deactivate-title">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+            <div className="px-6 pt-5">
+              <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-danger">Deactivate scheme</div>
+              <h4 id="deactivate-title" className="mt-1 text-base font-extrabold">{confirming.name}</h4>
+              <p className="mt-2 text-sm text-muted">
+                It stops being offered to new customers. Existing enrollments, passbooks and payment history are kept
+                exactly as they are, and the scheme can be reactivated later.
+              </p>
+            </div>
+            <div className="mt-5 flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+              <Button variant="outline" size="sm" onClick={() => setConfirming(null)}>Cancel</Button>
+              <Button
+                size="sm"
+                className="bg-danger text-white hover:bg-danger/90"
+                disabled={busyId === confirming.id}
+                onClick={confirmDeactivate}
+              >
+                {busyId === confirming.id ? "Deactivating…" : "Deactivate"}
+              </Button>
             </div>
           </div>
         </div>
