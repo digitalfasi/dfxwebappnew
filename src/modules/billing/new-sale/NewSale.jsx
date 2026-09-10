@@ -150,8 +150,8 @@ export default function NewSale() {
     discountCeiling == null
       ? null
       : discountCeiling === costFloorCeiling && (goldProfitCeiling == null || costFloorCeiling <= goldProfitCeiling)
-        ? "below what the piece cost"
-        : "more than the Gold Profit on this bill";
+        ? "beyond that the bill sells below what the piece cost"
+        : "beyond that it is giving away more than this bill's Gold Profit";
   const discountExceedsProfit = !schemeSelected && discountCeiling != null && discountNum > discountCeiling + 1e-6;
   // A discount is absorbed from gold profit and nothing else, so the margin the
   // bill is really earning is the set profit less the discount. Stating it here
@@ -294,6 +294,16 @@ export default function NewSale() {
   const redeemTotal = useMemo(() => Number(redeemLines.reduce((t, l) => t + l.amount, 0).toFixed(2)), [redeemLines]);
   const anyLineOverBalance = redeemLines.some((l) => l.amount > l.available + 0.005);
   const schemeApplied = redeemLines.length > 0;
+  // What the CURRENT breakdown actually carries. The summary must be driven by
+  // this and never by the redeem box: a refused re-quote leaves the last good
+  // (non-scheme) breakdown on screen, and dressing that up as a scheme bill
+  // invents a scheme portion, unscaled charges and a total the server rejected.
+  const quotedScheme = Number(product?.schemeApplied) || 0;
+  const quoteHasScheme = quotedScheme > 0;
+  // Typed but not yet in the figures - the quote was refused or is still in
+  // flight. Worth saying out loud, because the summary below is the bill
+  // WITHOUT the redemption.
+  const schemePending = schemeApplied && Math.abs(quotedScheme - redeemTotal) > 0.5;
 
   // A scheme buys gold at pure gold value, so it can only cover up to the piece's
   // OWN gold value — it never pays for making, wastage, profit or GST. Guard the
@@ -695,8 +705,19 @@ export default function NewSale() {
                     </label>
                     <label className="grid gap-1.5">
                       <span className="text-xs font-bold">Gold Profit %</span>
+                      {/* A discount is absorbed from gold profit, so this
+                          states the margin actually being earned - it falls as
+                          the discount grows and reads 0 when the discount has
+                          consumed it. The percentage that was SET is kept and
+                          shown below; typing here still sets it. */}
                       <Input type="number" step="0.01" min="0" max="100" placeholder="10"
-                        value={priceDriver === "PROFIT" ? goldProfit : (goldProfitShown != null ? String(round2(goldProfitShown)) : "")}
+                        value={
+                          priceDriver === "PROFIT"
+                            ? goldProfit
+                            : effectiveProfitPct != null && discountNum > 0
+                              ? String(round2(effectiveProfitPct))
+                              : (goldProfitShown != null ? String(round2(goldProfitShown)) : "")
+                        }
                         onChange={(e) => { setGoldProfit(e.target.value); setPriceDriver("PROFIT"); }} />
                       <span className="text-[11px] text-muted">{schemeSelected ? "Earned on the un-covered grams only — waived on the scheme-covered slice." : "Margin over gold value — drives the selling price."}</span>
                       {/* What the margin becomes once the discount is taken off
@@ -704,8 +725,8 @@ export default function NewSale() {
                       {!schemeSelected && discountNum > 0 && effectiveProfitPct != null && (
                         <span className={`text-[11px] font-semibold ${effectiveProfitPct <= 0.005 ? "text-danger" : "text-accent-strong"}`}>
                           {effectiveProfitPct <= 0.005
-                            ? <>Discount of {money(discountNum)} wipes out Gold Profit — effective 0%</>
-                            : <>After the {money(discountNum)} discount — effective {round2(effectiveProfitPct)}% ({money(effectiveProfitAmount)})</>}
+                            ? <>Set {round2(goldProfitShown || 0)}% — the {money(discountNum)} discount wipes it out, so this bill earns 0%</>
+                            : <>Set {round2(goldProfitShown || 0)}% — after the {money(discountNum)} discount this bill earns {money(effectiveProfitAmount)}</>}
                         </span>
                       )}
                       {goldProfitSuggested != null && discountNum <= 0 && (
@@ -736,7 +757,7 @@ export default function NewSale() {
                       ) : discountCeiling != null ? (
                         <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
                           {discountExceedsProfit
-                            ? `Max discount ${money(discountCeiling)} — more takes this bill ${ceilingReason}.`
+                            ? `Max discount ${money(discountCeiling)} — ${ceilingReason}.`
                             : `Up to ${money(discountCeiling)} can be given — whichever runs out first, Gold Profit or the cost floor.`}
                         </span>
                       ) : <span className="text-[11px] text-muted">A discount may only reduce Gold Profit.</span>}
@@ -904,6 +925,11 @@ export default function NewSale() {
                 </div>
               </div>
 
+                {schemePending && (
+                  <div className="mb-2 rounded-lg border border-danger-line bg-danger-soft px-2.5 py-2 text-[11px] font-semibold leading-snug text-danger">
+                    This bill does not include the {money(redeemTotal)} scheme redemption yet — the figures below are the bill without it. Fix the price above and it will be applied.
+                  </div>
+                )}
               <div className="mt-3 space-y-0.5">
                 {/* Two layouts, one engine. A scheme bill is presented as the
                     SCHEME PORTION / NORMAL PORTION split from the gold billing
@@ -915,10 +941,11 @@ export default function NewSale() {
                       normal gold  = gold value line − scheme_applied_amount
                       Total        = scheme subtotal + normal subtotal = Bill Total
                     A non-scheme bill keeps the plain single list. */}
-                {schemeApplied ? (() => {
+                {quoteHasScheme ? (() => {
                   const pureRate = Number(product.goldRateApplied) || 0;
                   const netG = Number(product.netGoldWeightGrams) || 0;
-                  const schemeGold = product.schemeApplied || redeemTotal;
+                  // The server's figure, never the typed one.
+                  const schemeGold = quotedScheme;
                   const schemeG = pureRate > 0 ? schemeGold / pureRate : 0;
                   const normalG = Math.max(0, netG - schemeG);
                   // Scheme credit is held as 24K gold, so each line is shown in
