@@ -355,7 +355,12 @@ export default function NewSale() {
   // subtotal + tax fixed when a customer price is sent (it only moves the
   // discount line), so final + discount is stable and never follows the typed
   // customer price. Selling Price moves only when the rate/charges change.
-  const sellingPrice = product ? round2((product.finalAmount || 0) + (product.discountAmount || 0)) : 0;
+  // The asking price before any discount. The discount is pre-tax now, so
+  // adding it back has to include the GST that came off with it - otherwise
+  // this read 7,29,751.36 against a true asking price of 7,30,021.36.
+  const sellingPrice = product
+    ? round2((product.finalAmount || 0) + (product.discountAmount || 0) * (1 + (product.gstApplied ? (product.taxRatePercent || 0) : 0) / 100))
+    : 0;
 
   // Gold Profit % to show. Backend bills at full margin and expresses a
   // negotiated cut as a discount, surfacing the reduced % only in
