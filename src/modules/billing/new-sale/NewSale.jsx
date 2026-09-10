@@ -618,11 +618,24 @@ export default function NewSale() {
                       {!schemeLoading && schemeOptions.map((s) => {
                         const amt = num(schemeAmounts[s.enrollmentId]);
                         const over = amt > s.available + 0.005;
+                        // Scheme credit is 24K gold; the piece is billed in its own
+                        // purity. Both conversions are shown so the admin sees what
+                        // the rupees actually buy off this bill.
+                        const rate24 = Number(product?.goldRate24k) || 0;
+                        const pRate = Number(product?.goldRateApplied) || 0;
+                        const g24 = rate24 > 0 ? amt / rate24 : 0;
+                        const gEq = pRate > 0 ? amt / pRate : 0;
+                        const selected = amt > 0;
                         return (
-                          <div key={s.enrollmentId} className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-4 py-3">
+                          <div key={s.enrollmentId} className={`mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${selected && !over ? "border-emerald-300 bg-emerald-50/40" : "border-line"}`}>
                             <div className="min-w-0">
                               <div className="truncate text-sm font-semibold">{s.schemeName}</div>
-                              <div className="text-xs text-muted">Available {money(s.available)}</div>
+                              <div className="num text-xs text-muted">Available {money(s.available)}</div>
+                              {selected && !over && rate24 > 0 && (
+                                <div className="num mt-0.5 text-[11px] font-semibold text-emerald-800">
+                                  {g24.toFixed(3)} g of 24K{pRate > 0 ? ` = ${gEq.toFixed(3)} g of ${product.purity}` : ""}
+                                </div>
+                              )}
                             </div>
                             <label className="grid gap-1">
                               <Input type="number" step="0.01" min="0" className="w-[150px]" placeholder="Redeem ₹" value={schemeAmounts[s.enrollmentId] ?? ""} onChange={(e) => setSchemeAmounts((p) => ({ ...p, [s.enrollmentId]: e.target.value }))} error={over ? "Over balance" : undefined} />
@@ -631,6 +644,17 @@ export default function NewSale() {
                           </div>
                         );
                       })}
+                      {/* Combined position across schemes — the figure that has to
+                          stay inside the piece's gold value. */}
+                      {redeemLines.length > 1 && (
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300 bg-emerald-50/70 px-4 py-2.5">
+                          <span className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-emerald-900">{redeemLines.length} schemes selected</span>
+                          <span className="num text-xs font-extrabold text-emerald-900">
+                            {money(redeemTotal)}
+                            {Number(product?.goldRate24k) > 0 ? ` · ${(redeemTotal / Number(product.goldRate24k)).toFixed(3)} g of 24K` : ""}
+                          </span>
+                        </div>
+                      )}
                       {redeemOverGold && (
                         <div className="mt-2 rounded-xl border border-danger-line bg-danger-soft px-4 py-2.5 text-[11px] font-semibold text-danger">
                           Total scheme redemption {money(redeemTotal)} exceeds the item's gold value {money(goldValue)}. A scheme only pays for gold — reduce it to {money(goldValue)} or less.
@@ -735,6 +759,17 @@ export default function NewSale() {
                   const schemeGold = product.schemeApplied || redeemTotal;
                   const schemeG = pureRate > 0 ? schemeGold / pureRate : 0;
                   const normalG = Math.max(0, netG - schemeG);
+                  // Scheme credit is held as 24K gold, so each line is shown in
+                  // 24K grams (what the passbook holds) and the combined slice is
+                  // converted to the piece's own purity (what comes off its weight).
+                  const rate24 = Number(product.goldRate24k) || 0;
+                  const schemeRows = redeemLines.map((l) => ({
+                    key: l.enrollmentId,
+                    name: l.schemeName || "Scheme",
+                    amount: l.amount,
+                    g24: rate24 > 0 ? l.amount / rate24 : 0,
+                  }));
+                  const schemeG24 = schemeRows.reduce((t, r) => t + r.g24, 0);
                   const normalGold = Math.max(0, goldValueLine - schemeGold);
                   const normalSubtotal = round2(product.subtotalBeforeTax - schemeGold);
                   const makingLabel = chargePct(product.makingChargeType, makingVal || product.makingChargeValue);
@@ -746,7 +781,42 @@ export default function NewSale() {
                           <span className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-emerald-800">Scheme portion · paid</span>
                           <span className="text-[10px] font-bold text-emerald-800">{pureRate > 0 ? `${schemeG.toFixed(3)} g of ${product.purity}` : "—"}</span>
                         </div>
-                        <div className="mt-1.5 space-y-0.5">
+
+                        {/* One line per scheme: which passbook, how many rupees,
+                            how much 24K gold that is. With several schemes on one
+                            bill this is the only place the split is visible. */}
+                        <div className="mt-2 overflow-hidden rounded-lg border border-emerald-200 bg-white/70">
+                          <div className="flex items-center gap-2 border-b border-emerald-100 px-2.5 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.08em] text-emerald-700">
+                            <span className="flex-1">Scheme</span>
+                            <span className="w-24 text-right">Amount</span>
+                            <span className="w-20 text-right">Gold 24K</span>
+                          </div>
+                          {schemeRows.map((r) => (
+                            <div key={r.key} className="flex items-center gap-2 border-b border-emerald-50 px-2.5 py-1.5 text-[11px] last:border-b-0">
+                              <span className="min-w-0 flex-1 truncate font-semibold text-ink" title={r.name}>{r.name}</span>
+                              <span className="num w-24 text-right font-semibold text-ink">{money(r.amount)}</span>
+                              <span className="num w-20 text-right font-semibold text-emerald-800">{rate24 > 0 ? `${r.g24.toFixed(3)} g` : "—"}</span>
+                            </div>
+                          ))}
+                          {schemeRows.length > 1 && (
+                            <div className="flex items-center gap-2 border-t border-emerald-200 bg-emerald-50/70 px-2.5 py-1.5 text-[11px]">
+                              <span className="flex-1 font-extrabold text-emerald-900">{schemeRows.length} schemes · total</span>
+                              <span className="num w-24 text-right font-extrabold text-emerald-900">{money(schemeGold)}</span>
+                              <span className="num w-20 text-right font-extrabold text-emerald-900">{rate24 > 0 ? `${schemeG24.toFixed(3)} g` : "—"}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* The conversion the senior's model turns on: 24K scheme
+                            gold restated in the piece's purity, then taken off its
+                            weight. Stated as arithmetic so it can be checked. */}
+                        {rate24 > 0 && pureRate > 0 && (
+                          <p className="num mt-1.5 text-[10px] font-semibold leading-snug text-emerald-800">
+                            {schemeG24.toFixed(3)} g of 24K = {schemeG.toFixed(3)} g of {product.purity} · {netG.toFixed(3)} g − {schemeG.toFixed(3)} g = {normalG.toFixed(3)} g billed normally
+                          </p>
+                        )}
+
+                        <div className="mt-2 space-y-0.5">
                           <Row label="Gold Value (pure gold value)" value={money(schemeGold)} />
                           <Row label="Making Charge" value="₹0.00 · waived" tone="text-emerald-700" />
                           {product.wastageAmount > 0 && <Row label="Wastage" value="₹0.00 · waived" tone="text-emerald-700" />}
