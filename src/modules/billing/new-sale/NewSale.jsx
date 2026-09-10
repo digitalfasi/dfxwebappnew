@@ -317,13 +317,11 @@ export default function NewSale() {
   const minSafe = product?.safePrice?.minimumSafePrice;
   const maxDiscount = minSafe != null ? Math.max(0, round2(sellingPrice - minSafe)) : null;
 
-  // Today's live gold worth of the piece (net × live 24K × purity factor) — a
-  // display of backend rate×weight, independent of any offline rate override.
-  const todaysGoldValue = product
-    ? (product.goldRatePurityFactor != null
-        ? round2((product.netGoldWeightGrams || 0) * (product.goldRate24k || 0) * product.goldRatePurityFactor)
-        : product.goldValueAmount)
-    : 0;
+  // Today's gold worth of the piece at the PUBLISHED rate for its purity — the
+  // same rate the bill is priced at, so this tile and the bill can never
+  // disagree. (It used to recompute rate_24k × purity_factor here, which drifted
+  // from the billed figure every time the published purity rate differed.)
+  const todaysGoldValue = product ? (product.goldValueAmount || 0) : 0;
 
   const canCreate =
     !!product && !creating && !requoting && !discountExceedsProfit &&
@@ -533,7 +531,7 @@ export default function NewSale() {
                     <label className="grid gap-1.5">
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
                       <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
-                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Live ${product.purity || ""} rate ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} (24K × purity) — locked in Online.` : `Editable. Default ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} (24K × purity).`}</span>
+                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Published ${product.purity || ""} rate ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — locked in Online.` : `Editable. Default ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — the published ${product.purity || ""} rate.`}</span>
                     </label>
                     <label className="grid gap-1.5">
                       <span className="text-xs font-bold">Gold Profit %</span>
