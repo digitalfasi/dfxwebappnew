@@ -397,12 +397,16 @@ export default function Customers() {
         // Customer Types composition (Walk-in / Scheme / Hybrid / New), mirroring
         // the Purchase "Inventory Composition" layout. Counts come from the loaded
         // list — display aggregation only, no backend recompute.
+        // Composition over the WHOLE customer base, from the summary endpoint.
+        // Counting the loaded rows here while dividing by the tenant total made
+        // the four shares add up to a fraction of 100%.
+        const typeCounts = summary?.types ?? null;
         const typeComp = [
-          { label: "Walk-in", count: customers.filter(c => c.type === "Walk-in").length, color: "#c9a84c" },
-          { label: "Scheme", count: customers.filter(c => c.type === "Scheme Customer").length, color: "#0f9b7a" },
-          { label: "Hybrid", count: customers.filter(c => c.type === "Hybrid").length, color: "#6366f1" },
-          { label: "New", count: customers.filter(c => c.type === "New").length, color: "#94a3b8" },
-        ];
+          { label: "Walk-in", key: "Walk-in", color: "#c9a84c" },
+          { label: "Scheme", key: "Scheme Customer", color: "#0f9b7a" },
+          { label: "Hybrid", key: "Hybrid", color: "#6366f1" },
+          { label: "New", key: "New", color: "#94a3b8" },
+        ].map((t) => ({ ...t, count: typeCounts ? typeCounts[t.key] ?? 0 : null }));
         // Backend counts when available; the page-derived numbers only as a
         // fallback (and then they are what they are — this page's rows).
         const kycPending = summary ? summary.kycPending : customers.filter(c => c.kyc === "Pending Review").length;
@@ -463,10 +467,10 @@ export default function Customers() {
                       <span className="flex items-center gap-1.5 text-sm font-bold">
                         <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />{label}
                       </span>
-                      <span className="num font-mono text-xs font-semibold tabular-nums text-muted">{count} · {pct(count)}%</span>
+                      <span className="num font-mono text-xs font-semibold tabular-nums text-muted">{count === null ? "—" : `${count} · ${pct(count)}%`}</span>
                     </div>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line-soft">
-                      <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${pct(count)}%`, background: color }} />
+                      <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${pct(count ?? 0)}%`, background: color }} />
                     </div>
                   </div>
                 ))}

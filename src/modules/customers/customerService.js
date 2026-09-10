@@ -116,6 +116,15 @@ export const customerService = {
       totalCustomers: s.total_customers ?? 0,
       kycPending: s.kyc_pending ?? 0,
       schemeEnrolled: s.scheme_enrolled ?? 0,
+      // Composition over the whole base, counted server-side. Null when an
+      // older backend does not send it, so the caller can tell "no data" from
+      // a genuine zero.
+      types: s.type_walk_in === undefined ? null : {
+        "Walk-in": s.type_walk_in ?? 0,
+        "Scheme Customer": s.type_scheme ?? 0,
+        Hybrid: s.type_hybrid ?? 0,
+        New: s.type_new ?? 0,
+      },
     };
   },
 
