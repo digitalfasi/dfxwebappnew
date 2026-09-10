@@ -524,7 +524,7 @@ export default function Inventory({ onNavigate }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={openDefaults}>Store Pricing Defaults</Button>
-          <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>Bulk Purchase</Button>
+          <Button variant="outline" size="sm" onClick={() => { setBulkRows(rows => (rows.length === 1 && !rows[0].ident && !rows[0].name && !rows[0].net && !rows[0].rate) ? [newBulkRow()] : rows); setShowBulk(true); }}>Bulk Purchase</Button>
           <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => setShowAdd(true)}>Add Purchase</Button>
         </div>
       </div>
@@ -785,7 +785,7 @@ export default function Inventory({ onNavigate }) {
       {showBulk && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={()=>setShowBulk(false)} aria-label="Close" />
-          <div className="relative w-full max-w-[1240px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
+          <div className="relative w-full max-w-[1440px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-line px-6 py-4">
               <h3 className="text-base font-extrabold">Bulk Purchase Receiving</h3>
               <button onClick={()=>setShowBulk(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
