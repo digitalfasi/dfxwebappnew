@@ -28,17 +28,40 @@ export function Select({
   const ref = useRef(null);
   const triggerRef = useRef(null);
   const listRef = useRef(null);
-  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, maxHeight: 224 });
 
   useEffect(() => {
     const idx = normalized.findIndex((o) => o.value === value);
     setFocused(idx >= 0 ? idx : 0);
   }, [value, options]);
 
+  // The list is a fixed-position portal, so it has to be placed against the
+  // VIEWPORT, not the trigger alone. It opens downward by default, flips above
+  // the trigger when there is more room there, and its height is capped to the
+  // space actually available — otherwise a select low on the screen (or low in
+  // a dialog) runs its options off the bottom edge where they cannot be read.
   const updateCoords = () => {
     if (!triggerRef.current) return;
+    const GAP = 6;
+    const EDGE = 12; // breathing room against the window edge
+    const PREFERRED = 224;
+    const MIN = 132; // below this, scrolling a 3-option list is worse than flipping
     const r = triggerRef.current.getBoundingClientRect();
-    setCoords({ top: r.bottom + 6, left: r.left, width: r.width });
+    const below = window.innerHeight - r.bottom - GAP - EDGE;
+    const above = r.top - GAP - EDGE;
+    const openUp = below < Math.min(PREFERRED, above) && above > below;
+    const room = Math.max(openUp ? above : below, MIN);
+    const maxHeight = Math.min(PREFERRED, room);
+    // Keep the list inside the window horizontally too, for a trigger near the
+    // right edge whose list is wider than it is.
+    const width = Math.max(r.width, 160);
+    const left = Math.min(Math.max(EDGE, r.left), Math.max(EDGE, window.innerWidth - width - EDGE));
+    setCoords({
+      top: openUp ? Math.max(EDGE, r.top - GAP - maxHeight) : r.bottom + GAP,
+      left,
+      width: r.width,
+      maxHeight,
+    });
   };
 
   useEffect(() => {
@@ -90,8 +113,15 @@ export function Select({
       id={`${selectId}-portal`}
       ref={listRef}
       role="listbox"
-      style={{ position: "fixed", top: coords.top, left: coords.left, width: Math.max(coords.width, 160), zIndex: 9999 }}
-      className="max-h-56 overflow-auto rounded-xl border border-line bg-white p-1 shadow-xl"
+      style={{
+        position: "fixed",
+        top: coords.top,
+        left: coords.left,
+        width: Math.max(coords.width, 160),
+        maxHeight: coords.maxHeight,
+        zIndex: 9999,
+      }}
+      className="overflow-auto overscroll-contain rounded-xl border border-line bg-white p-1 shadow-xl"
     >
       {normalized.map((opt, i) => {
         const selected = opt.value === value;
