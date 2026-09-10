@@ -748,7 +748,12 @@ export default function Inventory({ onNavigate }) {
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name *</span><Input placeholder="e.g. Gold Bangle" value={addForm.name} onChange={e=>setAddForm({...addForm, name:e.target.value})} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><Select value={addForm.category} onValueChange={v=>setAddForm({...addForm, category:v, subCategory:""})} options={catChoices} placeholder={catChoices.length ? "Select category" : "Add categories in Master Inventory"} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category</span><Select value={addForm.subCategory} onValueChange={v=>setAddForm({...addForm, subCategory:v})} options={subChoicesFor(addForm.category)} placeholder={addForm.category ? "Select sub-category" : "Pick a category first"} /></label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Purity</span><Select value={addForm.purity} onValueChange={v=>setAddForm({...addForm, purity:v})} options={PURITIES} /></label>
+                {/* Both cells in this row carry one helper line, so the two
+                    controls sit on the same baseline and the row below starts
+                    level - the grid used to pair Purity with an empty cell. */}
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Purity</span><Select value={addForm.purity} onValueChange={v=>setAddForm({...addForm, purity:v})} options={PURITIES} />
+                  <span className="text-[11px] text-muted">Converts the net weight into pure gold — {addForm.purity} = {((parseInt(addForm.purity,10)||0)*100/24).toFixed(2)}% of net.</span>
+                </label>
                 {/* Stones are priced, not weighed: one flat rupee figure for the
                     whole piece. Their WEIGHT is already described by gross minus
                     net, so nothing here converts grams. */}

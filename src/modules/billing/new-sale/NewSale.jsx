@@ -35,6 +35,16 @@ function chargePct(type, value) {
   return "";
 }
 
+// Server validation messages carry raw amounts ("90462.63"). Grouping them the
+// Indian way keeps one number format across the screen, so a figure quoted in
+// an error can be compared with the bill beside it at a glance.
+function formatAmountsInText(text) {
+  return String(text ?? "").replace(
+    /\b\d{4,}(?:\.\d{1,2})?\b/g,
+    (n) => `₹${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+  );
+}
+
 export default function NewSale() {
   const scope = useRef(null);
   usePressFeedback(scope);
@@ -598,8 +608,15 @@ export default function NewSale() {
                       aria-label="Customer price in rupees" />
                     {quoteError ? (
                       <p className="mt-1.5 rounded-lg border border-danger-line bg-danger-soft px-2.5 py-1.5 text-[11px] font-semibold leading-snug text-danger">
-                        {quoteError}
-                        {minSafe != null && <> The lowest price this bill can take is {money(minSafe)}.</>}
+                        {/* The server's own floor is authoritative and is already
+                            in its message, so the safe-price hint is appended
+                            ONLY when the message names no floor of its own -
+                            two different "lowest price" figures side by side
+                            read as a contradiction. Bare amounts in the message
+                            are given Indian grouping so they match every other
+                            figure on the screen. */}
+                        {formatAmountsInText(quoteError)}
+                        {minSafe != null && !/floor|lowest/i.test(quoteError) && <> The lowest price this bill can take is {money(minSafe)}.</>}
                       </p>
                     ) : (
                       <p className="mt-1 text-[11px] text-muted">
