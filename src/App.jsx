@@ -17,6 +17,7 @@ import Support from "@/modules/support/Support";
 import Notifications from "@/modules/notifications/Notifications";
 import Settings from "@/modules/settings/Settings";
 import Inventory from "@/modules/procurement/inventory/Inventory";
+import MasterInventory from "@/modules/procurement/master-inventory/MasterInventory";
 import Vendors from "@/modules/procurement/purchase-history/Vendors";
 import NewSale from "@/modules/billing/new-sale/NewSale";
 import ReportsAnalytics from "@/modules/reports/ReportsAnalytics";
@@ -33,6 +34,7 @@ const PAGES = {
   "scheme-management": { title: "Enrollment Management", component: SchemeManagement },
   payments: { title: "Payments", component: Payments },
   inventory: { title: "Inventory", component: Inventory },
+  "master-inventory": { title: "Master Inventory", component: MasterInventory },
   vendors: { title: "Purchase History", component: Vendors },
   "new-sale": { title: "New Sale", component: NewSale },
   "sales-history": { title: "Sales History", component: SalesHistory },

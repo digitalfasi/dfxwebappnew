@@ -8,6 +8,7 @@ import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { billingService } from "@/modules/billing/billingService";
 import { goldRateService } from "@/modules/gold-rate/goldRateService";
+import { masterInventoryService } from "@/modules/procurement/master-inventory/masterInventoryService";
 
 // A purchase is ALWAYS priced at the 24K (pure gold) rate — the purity only
 // converts the net weight into the pure gold it contains, it never changes the
@@ -18,8 +19,9 @@ function rate24kPerGram(rateObj) {
   return r24 != null && Number(r24) > 0 ? Number(r24) : null;
 }
 
-const CATS = ["Bangles","Necklaces","Rings","Earrings","Chains","Pendants"];
-const SUBCATS = ["Traditional","Bridal","Diamond","Stone Studded","Jhumka"];
+// Categories and subcategories come from the Master Inventory the store
+// maintains under Procurement. They used to be two hardcoded arrays of six
+// invented names, so the pickers here never matched the store's real taxonomy.
 // Backend Purity contract (app/schemas/billing.py Purity literal).
 const PURITIES = ["24K","22K","20K","18K","14K","9K"];
 const STATUS_OPTS = ["All statuses","In Stock","Sold","Inactive"];
@@ -57,6 +59,8 @@ export default function Inventory({ onNavigate }) {
   const [saving, setSaving] = useState(false);
   const [vendorList, setVendorList] = useState([]);
   const [query, setQuery] = useState("");
+  // Active categories/subcategories from Master Inventory.
+  const [master, setMaster] = useState([]);
   const [status, setStatus] = useState("All statuses");
   const [vendor, setVendor] = useState("All Vendors");
   const [category, setCategory] = useState("All Categories");
@@ -103,13 +107,18 @@ export default function Inventory({ onNavigate }) {
     setLoading(true);
     setLoadError("");
     try {
-      const [inv, vendors, sd] = await Promise.all([
+      const [inv, vendors, sd, master] = await Promise.all([
         billingService.listInventory(),
         billingService.listVendors().catch(() => []),
         billingService.getStoreDefaults().catch(() => null),
+        // The taxonomy is a master the admin maintains; a failure here must not
+        // blank the stock table, so the pickers fall back to the names already
+        // present on the items.
+        masterInventoryService.getMaster().catch(() => null),
       ]);
       setItems(inv.items);
       setVendorList(vendors);
+      if (master) setMaster(master.categories);
       if (sd && sd.tax !== "" && sd.tax != null) setStoreTax(Number(sd.tax) || 0);
       // Neither the single Purchase nor the bulk header preselects a vendor —
       // both start in an empty placeholder state (real vendor master only).
@@ -123,6 +132,20 @@ export default function Inventory({ onNavigate }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Master Inventory's "View items" hands over the category/subcategory it was
+  // looking at. Read once and cleared, so a later visit to Inventory is not
+  // silently still filtered.
+  useEffect(() => {
+    let handoff = null;
+    try {
+      const raw = sessionStorage.getItem("dfx:inventoryFilter");
+      if (raw) { handoff = JSON.parse(raw); sessionStorage.removeItem("dfx:inventoryFilter"); }
+    } catch { /* unreadable storage simply means no handoff */ }
+    if (!handoff) return;
+    if (handoff.category) setCategory(handoff.category);
+    setSubCategory(handoff.subCategory || "All Sub-categories");
+  }, []);
 
   // Fetch today's rate once, so the Add Purchase form can price the gold live.
   useEffect(() => {
@@ -174,19 +197,34 @@ export default function Inventory({ onNavigate }) {
       .sort((a, b) => b.g - a.g);
   }, [filtered, compByCategory]);
 
-  // Filter options = the existing category/sub-category master list merged with
-  // the real values actually present on inventory, de-duplicated. Real inventory
-  // values never disappear just for being absent from the master list.
+  // Filter options = the master's ACTIVE names merged with the values actually
+  // present on stock, de-duplicated. A label already on an item never vanishes
+  // from the filter just because the master no longer offers it — otherwise
+  // that stock becomes unreachable.
+  const masterCats = useMemo(() => master.filter((c) => c.isActive), [master]);
   const catOptions = useMemo(() => {
-    const set = new Set(CATS);
+    const set = new Set(masterCats.map((c) => c.name));
     items.forEach(i => { if (i.category) set.add(i.category); });
     return [...set].sort();
-  }, [items]);
+  }, [masterCats, items]);
   const subOptions = useMemo(() => {
-    const set = new Set(SUBCATS);
+    const set = new Set();
+    masterCats.forEach((c) => c.subcategories.forEach((sc) => { if (sc.isActive) set.add(sc.name); }));
     items.forEach(i => { if (i.sub) set.add(i.sub); });
     return [...set].sort();
-  }, [items]);
+  }, [masterCats, items]);
+
+  // For the entry forms, only the master's own names — a purchase should be
+  // filed under a governed category, not under whatever was typed before.
+  const catChoices = useMemo(() => masterCats.map((c) => c.name), [masterCats]);
+  const subChoicesFor = useCallback((categoryName) => {
+    const cat = masterCats.find((c) => c.name === categoryName);
+    const subs = (cat?.subcategories ?? []).filter((sc) => sc.isActive).map((sc) => sc.name);
+    // No category picked yet (or one with no subcategories): offer every active
+    // subcategory rather than an empty list the user cannot get past.
+    if (subs.length) return subs;
+    return [...new Set(masterCats.flatMap((c) => c.subcategories.filter((sc) => sc.isActive).map((sc) => sc.name)))].sort();
+  }, [masterCats]);
 
   // Add Purchase amount preview, in the vendor's own terms: everything is
   // priced at the 24K rate and the purity only converts the weight.
@@ -583,8 +621,8 @@ export default function Inventory({ onNavigate }) {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5"><span className="text-xs font-bold">HUID *</span><Input placeholder="Hallmark Unique ID" value={addForm.huid} onChange={e=>setAddForm({...addForm, huid:e.target.value})} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name *</span><Input placeholder="e.g. Gold Bangle" value={addForm.name} onChange={e=>setAddForm({...addForm, name:e.target.value})} /></label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><Select value={addForm.category} onValueChange={v=>setAddForm({...addForm, category:v})} options={CATS} /></label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category</span><Select value={addForm.subCategory} onValueChange={v=>setAddForm({...addForm, subCategory:v})} options={SUBCATS} /></label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><Select value={addForm.category} onValueChange={v=>setAddForm({...addForm, category:v, subCategory:""})} options={catChoices} placeholder={catChoices.length ? "Select category" : "Add categories in Master Inventory"} /></label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category</span><Select value={addForm.subCategory} onValueChange={v=>setAddForm({...addForm, subCategory:v})} options={subChoicesFor(addForm.category)} placeholder={addForm.category ? "Select sub-category" : "Pick a category first"} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Purity</span><Select value={addForm.purity} onValueChange={v=>setAddForm({...addForm, purity:v})} options={PURITIES} /></label>
                 <div />
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Gross Weight (g) *</span><Input type="number" value={addForm.gross} onChange={e=>setAddForm({...addForm, gross:e.target.value})} /></label>
@@ -709,10 +747,10 @@ export default function Inventory({ onNavigate }) {
                           <td className="px-2 py-2"><Input value={r.ident} onChange={e=>setCell("ident",e.target.value)} placeholder={bulkIdentLabel} className="h-9 text-sm" /></td>
                           <td className="px-2 py-2"><Input value={r.name} onChange={e=>setCell("name",e.target.value)} placeholder="Name" className="h-9 text-sm" /></td>
                           <td className="px-2 py-2">{bulkType==="JEWELLERY"
-                            ? <Select value={r.category||"Rings"} onValueChange={v=>setCell("category",v)} options={CATS} />
+                            ? <Select value={r.category||""} onValueChange={v=>setCell("category",v)} options={catChoices} placeholder="Category" />
                             : <Input value={r.category} onChange={e=>setCell("category",e.target.value)} placeholder="e.g. Bar" className="h-9 text-sm" />}</td>
                           <td className="px-2 py-2">{bulkType==="JEWELLERY"
-                            ? <Select value={r.subCategory||"Traditional"} onValueChange={v=>setCell("subCategory",v)} options={SUBCATS} />
+                            ? <Select value={r.subCategory||""} onValueChange={v=>setCell("subCategory",v)} options={subChoicesFor(r.category)} placeholder="Sub-category" />
                             : <Input value={r.subCategory} onChange={e=>setCell("subCategory",e.target.value)} placeholder="Optional" className="h-9 text-sm" />}</td>
                           <td className="px-2 py-2"><Select value={r.purity} onValueChange={v=>setCell("purity",v)} options={PURITIES} /></td>
                           <td className="px-2 py-2"><Input type="number" value={r.gross} onChange={e=>setCell("gross",e.target.value)} className="h-9" /></td>
