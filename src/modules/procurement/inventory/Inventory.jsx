@@ -369,17 +369,61 @@ export default function Inventory({ onNavigate }) {
     return { ...emptyBulkRow(), rate: live != null ? String(live) : "" };
   }, [todayRate]);
 
-  const bulkSubtotal = bulkRows.reduce((s, r) => s + bulkRowBase(r), 0);
-  // Pure-gold (24K) equivalent of the whole receipt = Σ(net × karat/24). Lets the
-  // admin see the actual fine-gold content bought, independent of each row's purity.
-  const bulk24kEquiv = bulkRows.reduce((s, r) => s + (Number(r.net) || 0) * ((parseInt(r.purity, 10) || 0) / 24), 0);
-  // Tunch, same rule as a single purchase — a percent of the row's
-  // 24K-equivalent gold value — but resolved PER ROW now that each row carries
-  // its own percentage. The backend re-derives the payable the same way.
+  // Purity-wise settlement. Every figure here mirrors what the backend
+  // derives, so the preview and the recorded payable agree to the paisa:
+  //   fine (24K equivalent) = net x karat/24
+  //   base                  = fine x that row's 24K rate
+  //   Tunch                 = base x that row's Tunch %   (the fine-gold base,
+  //                           matching TUNCH_ON_FULL_NET_WEIGHT = False)
+  //   payable               = base + Tunch
+  // Rows are grouped by purity because that is how a vendor's slip reads, and
+  // the Tunch column shows "mixed" when one purity carries more than one rate.
+  const bulkBreakdown = useMemo(() => {
+    const groups = new Map();
+    let netTotal = 0, fineTotal = 0, tunchGTotal = 0, baseTotal = 0, tunchAmtTotal = 0;
+    const rates = new Set();
+
+    for (const r of bulkRows) {
+      const net = Number(r.net) || 0;
+      const karat = parseInt(r.purity, 10) || 0;
+      const rate = Number(r.rate) || 0;
+      if (net <= 0 || karat <= 0) continue;
+      const pct = r.tunch !== "" && r.tunch != null ? Number(r.tunch) || 0 : 0;
+      const fine = net * karat / 24;
+      const base = fine * rate;
+      const tunchAmt = base * pct / 100;
+      const tunchG = fine * pct / 100;
+
+      if (rate > 0) rates.add(rate);
+      netTotal += net; fineTotal += fine; tunchGTotal += tunchG;
+      baseTotal += base; tunchAmtTotal += tunchAmt;
+
+      const key = r.purity;
+      const g = groups.get(key) || { purity: key, rows: 0, net: 0, fine: 0, tunchG: 0, base: 0, tunchAmt: 0, pcts: new Set() };
+      g.rows += 1; g.net += net; g.fine += fine; g.tunchG += tunchG;
+      g.base += base; g.tunchAmt += tunchAmt; g.pcts.add(pct);
+      groups.set(key, g);
+    }
+
+    // Highest purity first — the order a jeweller reads a slip in.
+    const rowsOut = [...groups.values()].sort(
+      (a, b) => (parseInt(b.purity, 10) || 0) - (parseInt(a.purity, 10) || 0)
+    );
+    return {
+      groups: rowsOut,
+      netTotal, fineTotal, tunchGTotal, baseTotal, tunchAmtTotal,
+      payableGrams: fineTotal + tunchGTotal,
+      finalAmount: baseTotal + tunchAmtTotal,
+      // One rate across the receipt is the normal case; a mixed receipt shows
+      // the blended rate instead of pretending there was a single one.
+      singleRate: rates.size === 1 ? [...rates][0] : null,
+      blendedRate: fineTotal > 0 ? baseTotal / fineTotal : 0,
+    };
+  }, [bulkRows]);
+
+  // Tunch percentage for one row. Resolved per row now that each row carries
+  // its own; bulkBreakdown above aggregates them.
   const rowTunchPct = (r) => (r.tunch !== "" && r.tunch != null ? Number(r.tunch) || 0 : 0);
-  const bulkTunchGrams = bulkRows.reduce(
-    (s, r) => s + (Number(r.net) || 0) * ((parseInt(r.purity, 10) || 0) / 24) * rowTunchPct(r) / 100, 0);
-  const bulkTunchAmount = bulkRows.reduce((s, r) => s + bulkRowBase(r) * rowTunchPct(r) / 100, 0);
 
   const handleBulkAdd = async () => {
     const h = bulkHeader;
@@ -858,23 +902,89 @@ export default function Inventory({ onNavigate }) {
                 </table>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
                 <Button variant="outline" size="sm" onClick={()=>setBulkRows([...bulkRows, newBulkRow()])}>Add Row</Button>
-                <div className="text-sm text-right">
-                  <div>
-                    <span className="text-muted">Base subtotal (pure gold @ 24K) </span>
-                    <span className="font-mono font-bold tabular-nums">₹{bulkSubtotal.toLocaleString("en-IN")}</span>
-                    <span className="ml-2 text-muted">+ Tunch (per row) </span>
-                    <span className="font-mono font-bold tabular-nums">₹{bulkTunchAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="mt-0.5">
-                    <span className="font-bold">Final payable </span>
-                    <span className="font-mono font-extrabold tabular-nums">₹{(bulkSubtotal + bulkTunchAmount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
-                    <span className="ml-2 text-[11px] text-muted">backend re-derives this authoritatively</span>
-                  </div>
-                  {bulk24kEquiv > 0 && <div className="mt-0.5 text-[11px] font-semibold text-accent-strong">≈ {bulk24kEquiv.toFixed(3)} g pure gold (24K equivalent across all rows) · + Tunch {bulkTunchGrams.toFixed(3)} g = {(bulk24kEquiv + bulkTunchGrams).toFixed(3)} g payable</div>}
-                </div>
               </div>
+
+              {/* Settlement breakdown — the same four steps as the vendor's slip:
+                  weight by purity, its 24K equivalent, Tunch, then money. */}
+              {bulkBreakdown.groups.length > 0 && (
+                <div className="rounded-xl border border-accent-line bg-accent-soft/25 p-4">
+                  <div className="text-[11px] font-extrabold uppercase tracking-[0.07em] text-accent-strong">Settlement breakdown</div>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full min-w-[640px] border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b border-accent-line text-left text-[10px] font-bold uppercase tracking-[0.06em] text-muted">
+                          <th className="py-2 pr-3">Purity</th>
+                          <th className="py-2 pr-3 text-right">Net weight</th>
+                          <th className="py-2 pr-3 text-right">24K equivalent</th>
+                          <th className="py-2 pr-3 text-right">Tunch</th>
+                          <th className="py-2 pr-3 text-right">Payable gold</th>
+                          <th className="py-2 text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkBreakdown.groups.map((g) => {
+                          const pcts = [...g.pcts].sort((a, b) => a - b);
+                          return (
+                            <tr key={g.purity} className="border-b border-accent-line/40 last:border-0">
+                              <td className="py-2 pr-3">
+                                <span className="font-bold">{g.purity}</span>
+                                <span className="ml-1.5 text-[11px] text-muted">{g.rows} {g.rows === 1 ? "item" : "items"}</span>
+                              </td>
+                              <td className="num py-2 pr-3 text-right font-mono tabular-nums">{g.net.toFixed(3)} g</td>
+                              <td className="num py-2 pr-3 text-right font-mono tabular-nums">{g.fine.toFixed(3)} g</td>
+                              <td className="num py-2 pr-3 text-right font-mono tabular-nums">
+                                {g.tunchG.toFixed(3)} g
+                                <span className="ml-1 text-[11px] font-sans text-muted">
+                                  {pcts.length === 1 ? `@ ${pcts[0]}%` : `@ mixed ${pcts.join("/")}%`}
+                                </span>
+                              </td>
+                              <td className="num py-2 pr-3 text-right font-mono font-bold tabular-nums">{(g.fine + g.tunchG).toFixed(3)} g</td>
+                              <td className="num py-2 text-right font-mono font-bold tabular-nums">{money(g.base + g.tunchAmt)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-accent-line text-[13px]">
+                          <td className="py-2.5 pr-3 font-extrabold">Total</td>
+                          <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.netTotal.toFixed(3)} g</td>
+                          <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.fineTotal.toFixed(3)} g</td>
+                          <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.tunchGTotal.toFixed(3)} g</td>
+                          <td className="num py-2.5 pr-3 text-right font-mono font-extrabold tabular-nums text-accent-strong">{bulkBreakdown.payableGrams.toFixed(3)} g</td>
+                          <td className="num py-2.5 text-right font-mono font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* The money, stated as the arithmetic it is. */}
+                  <div className="mt-3 grid gap-1 border-t border-accent-line pt-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted">
+                        {bulkBreakdown.fineTotal.toFixed(3)} g pure gold ×{" "}
+                        {bulkBreakdown.singleRate != null
+                          ? `${money(bulkBreakdown.singleRate)}/g (24K)`
+                          : `${money(bulkBreakdown.blendedRate)}/g (24K, blended — rows differ)`}
+                      </span>
+                      <span className="num font-mono font-bold tabular-nums">{money(bulkBreakdown.baseTotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted">+ Tunch {bulkBreakdown.tunchGTotal.toFixed(3)} g (each row at its own %)</span>
+                      <span className="num font-mono font-bold tabular-nums">{money(bulkBreakdown.tunchAmtTotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t border-accent-line pt-1.5">
+                      <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold</span>
+                      <span className="num font-mono text-base font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount)}</span>
+                    </div>
+                    <p className="text-[11px] text-muted">
+                      Tunch is a percentage of the 24K-equivalent gold value and is never added to the rate per gram.
+                      The server re-derives every figure row by row when the purchase is recorded.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" onClick={()=>setShowBulk(false)}>Cancel</Button>
