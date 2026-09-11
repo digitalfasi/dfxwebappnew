@@ -21,8 +21,12 @@ function toBody(rates) {
 
 export const goldRateService = {
   /** GET /api/v1/gold-rates/today — returns null when none set for today. */
-  async getTodayRate() {
-    const res = await apiClient.get("/gold-rates/today", { auth: true });
+  async getTodayRate({ carryForward = false } = {}) {
+    // carryForward is for screens that need A rate to work with rather than an
+    // answer to "has today been published". The rate comes back with its own
+    // effective_date, which the caller MUST show - it may not be today's.
+    const qs = carryForward ? "?carry_forward=true" : "";
+    const res = await apiClient.get(`/gold-rates/today${qs}`, { auth: true });
     return res.data?.rate ?? null;
   },
 

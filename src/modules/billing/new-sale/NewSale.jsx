@@ -8,6 +8,7 @@ import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { money, grams } from "@/_shared/utils";
 import { billingService } from "@/modules/billing/billingService";
+import { useAuth } from "@/_shared/AuthContext";
 import { customerService } from "@/modules/customers/customerService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 
@@ -86,6 +87,10 @@ export default function NewSale() {
   // After an override the quote echoes the override back as goldRateApplied,
   // so it can no longer serve as the reference the backend bands against.
   const [publishedRate, setPublishedRate] = useState(null);
+  // Staff may raise a bill but not approve a loss on it - the backend refuses
+  // the flag from a Staff token, so the control is not offered to one either.
+  const { backendRole } = useAuth();
+  const canApproveBelowCost = backendRole === "Admin" || backendRole === "SuperAdmin";
 
   // Customer
   const [customerMode, setCustomerMode] = useState("existing");
@@ -223,7 +228,7 @@ export default function NewSale() {
           // ours as well would double-count it.
           discountAmount: priceDriver === "PRICE" ? undefined : discountNum,
           gstApplied: gst,
-          appliedRatePerGram: offline && rate !== "" ? num(rate) : undefined,
+          appliedRatePerGram: offline && rate !== "" && !rateOutOfBand ? num(rate) : undefined,
           makingChargeValue: makingVal !== "" ? num(makingVal) : undefined,
           makingChargeType: product?.makingChargeType || undefined,
           wastageValue: wastageVal !== "" ? num(wastageVal) : undefined,
@@ -385,6 +390,16 @@ export default function NewSale() {
     if (m === "ONLINE") setRate(product?.goldRateApplied != null ? String(product.goldRateApplied) : "");
   };
 
+  // The band the backend enforces on a negotiated rate/g (+/-50% of the rate
+  // published for this purity today). Checked here so a mistyped rate is a
+  // field message instead of a rejected request.
+  const rateBand = publishedRate != null
+    ? { low: publishedRate * 0.5, high: publishedRate * 1.5 }
+    : null;
+  const rateOutOfBand =
+    saleMode === "OFFLINE" && rate !== "" && rateBand != null &&
+    (num(rate) < rateBand.low || num(rate) > rateBand.high);
+
   // Natural asking price = payable before any negotiated discount. Backend keeps
   // subtotal + tax fixed when a customer price is sent (it only moves the
   // discount line), so final + discount is stable and never follows the typed
@@ -432,7 +447,7 @@ export default function NewSale() {
   const canCreate =
     !!product && !creating && !requoting && !discountExceedsProfit &&
     customerIdentified && paymentChosen && !partialInvalid && !anyLineOverBalance &&
-    !redeemOverGold && !belowCostIncomplete;
+    !redeemOverGold && !belowCostIncomplete && !rateOutOfBand;
 
   const resetAll = () => {
     setProduct(null); setProductCode(""); setCode("");
@@ -853,8 +868,12 @@ export default function NewSale() {
                           the published one — a tamper/typo net, not a haggling
                           limit. Stating the range here means the counter never
                           meets that rejection blind. */}
-                      {saleMode === "OFFLINE" && publishedRate != null && (
-                        <span className="text-[11px] text-muted">Allowed {money(publishedRate * 0.5)} – {money(publishedRate * 1.5)}.</span>
+                      {saleMode === "OFFLINE" && rateBand != null && (
+                        <span className={`text-[11px] ${rateOutOfBand ? "font-semibold text-danger" : "text-muted"}`}>
+                          {rateOutOfBand
+                            ? `Rate must be between ${money(rateBand.low)} and ${money(rateBand.high)} — ${money(publishedRate)} is today's published ${product.purity || ""} rate.`
+                            : `Allowed ${money(rateBand.low)} – ${money(rateBand.high)}.`}
+                        </span>
                       )}
                     </label>
                     <label className="grid gap-1.5">
@@ -1161,7 +1180,13 @@ export default function NewSale() {
                   it can be withdrawn). Selling under cost is legitimate —
                   clearance, damaged stock — but it is recorded against a name:
                   the sale carries the reason into its own audit row. */}
-              {(product.safePrice?.isLoss || allowBelowCost) && (
+              {(product.safePrice?.isLoss || allowBelowCost) && !canApproveBelowCost && (
+                <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50/70 p-3.5 text-[11px] leading-snug text-amber-900">
+                  This price is below what the piece cost. Only an Admin can approve a below-cost sale — ask an Admin to price this bill.
+                </div>
+              )}
+
+              {(product.safePrice?.isLoss || allowBelowCost) && canApproveBelowCost && (
                 <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50/70 p-3.5">
                   <label className="flex items-start gap-2">
                     <input
@@ -1204,6 +1229,7 @@ export default function NewSale() {
                     : discountExceedsProfit ? "Reduce the discount to enable billing."
                     : redeemOverGold ? "Reduce the scheme redemption to enable billing."
                     : belowCostIncomplete ? "Enter the reason for selling below cost to enable billing."
+                    : rateOutOfBand ? "Bring the sale rate back inside the allowed range to enable billing."
                     : ""}
                 </p>
               )}

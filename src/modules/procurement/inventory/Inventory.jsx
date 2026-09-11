@@ -157,9 +157,16 @@ export default function Inventory({ onNavigate }) {
     setSubCategory(handoff.subCategory || "All Sub-categories");
   }, []);
 
-  // Fetch today's rate once, so the Add Purchase form can price the gold live.
+  // Fetch the rate once, so the Add Purchase form can price the gold live.
+  // carryForward: a purchase booked just after midnight, before the morning
+  // rate is entered, used to open with an empty rate field and get a figure
+  // typed in from memory. The last published rate is carried forward instead -
+  // bounded server-side, and labelled below with the day it came from, so it is
+  // never mistaken for today's.
   useEffect(() => {
-    goldRateService.getTodayRate().then(setTodayRate).catch(() => setTodayRate(null));
+    goldRateService.getTodayRate({ carryForward: true })
+      .then(setTodayRate)
+      .catch(() => setTodayRate(null));
   }, []);
 
   // Auto-fill Purchase Rate/g = today's 24K rate, when the form opens. Changing
@@ -173,6 +180,12 @@ export default function Inventory({ onNavigate }) {
     setAddForm((f) => (f.rate !== "" ? f : { ...f, rate: rounded }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showAdd, todayRate]);
+
+  // The carried-forward rate keeps its own effective_date, so the form can say
+  // which day it priced from rather than implying it is today's.
+  const rateEffectiveLabel = todayRate?.effective_date || todayRate?.effectiveDate || null;
+  const rateIsCarriedForward = !!rateEffectiveLabel &&
+    rateEffectiveLabel !== new Date().toISOString().slice(0, 10);
 
   const totalGold = useMemo(() => items.filter(i=>i.status==="In Stock").reduce((s,i)=>s+i.net,0), [items]);
   const vendorNames = useMemo(() => vendorList.map((v) => v.name), [vendorList]);
@@ -824,7 +837,7 @@ export default function Inventory({ onNavigate }) {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date *</span><Input type="date" value={addForm.purchaseDate} onChange={e=>setAddForm({...addForm, purchaseDate:e.target.value})} /></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Invoice / Reference</span><Input value={addForm.invoice} onChange={e=>setAddForm({...addForm, invoice:e.target.value})} placeholder="INV-..." /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Rate (₹/g) — 24K *</span><Input type="number" value={addForm.rate} onChange={e=>setAddForm({...addForm, rate:e.target.value})} /><span className="text-[11px] text-muted">{rate24kPerGram(todayRate) != null ? "Always the 24K (pure gold) rate — auto-filled from today's 24K rate, editable. Purity only converts the net weight." : "No live 24K rate set today — enter the 24K rate manually."}</span></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Rate (₹/g) — 24K *</span><Input type="number" value={addForm.rate} onChange={e=>setAddForm({...addForm, rate:e.target.value})} /><span className="text-[11px] text-muted">{rate24kPerGram(todayRate) != null ? (rateIsCarriedForward ? `Always the 24K (pure gold) rate — auto-filled from the rate published on ${rateEffectiveLabel}, as today's is not published yet. Check it before saving.` : "Always the 24K (pure gold) rate — auto-filled from today's 24K rate, editable. Purity only converts the net weight.") : "No live 24K rate set today — enter the 24K rate manually."}</span></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Tunch (%)</span><Input type="number" value={addForm.tunch} onChange={e=>setAddForm({...addForm, tunch:e.target.value})} /><span className="text-[11px] text-muted">Percent of the 24K-equivalent gold value ({addForm.purity} = {((parseInt(addForm.purity,10)||0)*100/24).toFixed(2)}% of net, then + Tunch {addForm.tunch || 0}% on that). Never added to the rate/g.</span></label>
                 </div>
               </div>
