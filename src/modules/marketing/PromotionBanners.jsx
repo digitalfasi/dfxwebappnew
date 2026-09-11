@@ -63,8 +63,9 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
     }
   };
 
-  // Highest priority first (backend already sorts; keep stable client-side too).
-  const rows = [...promotions].sort((a, b) => b.priority - a.priority);
+  // Priority is ORDINAL: 1 shows first. Sorted here as well as server-side so
+  // the order on screen cannot disagree with the order customers see.
+  const rows = [...promotions].sort((a, b) => a.priority - b.priority);
 
   return (
     <div ref={scope} className="mx-auto max-w-[1100px]">
@@ -94,7 +95,7 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
                 return (
                   <tr key={p.id} className="border-b border-line-soft align-middle last:border-0 hover:bg-canvas/60 transition-colors [&>td]:px-3 [&>td]:py-3.5">
                     <td className="!pl-6">
-                      <div className="font-bold">{p.title}</div>
+                      <div className="font-bold">{p.title || "Untitled banner"}</div>
                       {p.subtitle && <div className="text-xs text-muted">{p.subtitle}</div>}
                     </td>
                     <td className="num font-mono text-xs">{p.priority}</td>

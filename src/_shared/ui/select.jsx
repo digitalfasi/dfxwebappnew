@@ -54,12 +54,17 @@ export function Select({
     const maxHeight = Math.min(PREFERRED, room);
     // Keep the list inside the window horizontally too, for a trigger near the
     // right edge whose list is wider than it is.
+    // The list is never narrower than 160px, so the clamp and the rendered
+    // width must both use THAT figure. They disagreed: the horizontal clamp
+    // reserved 160 while the list was rendered at the trigger's own width, so a
+    // narrow trigger - an Audience or Status select in a dialog - had its list
+    // pushed off its anchor and sitting to one side of the field it belongs to.
     const width = Math.max(r.width, 160);
     const left = Math.min(Math.max(EDGE, r.left), Math.max(EDGE, window.innerWidth - width - EDGE));
     setCoords({
       top: openUp ? Math.max(EDGE, r.top - GAP - maxHeight) : r.bottom + GAP,
       left,
-      width: r.width,
+      width,
       maxHeight,
     });
   };
@@ -117,7 +122,7 @@ export function Select({
         position: "fixed",
         top: coords.top,
         left: coords.left,
-        width: Math.max(coords.width, 160),
+        width: coords.width,
         maxHeight: coords.maxHeight,
         zIndex: 9999,
       }}

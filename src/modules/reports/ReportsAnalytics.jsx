@@ -589,17 +589,28 @@ function MetricCard({ icon, title, value, note, tone }) {
 function TopCustomersTable({ rows, compact }) {
   if (!rows?.length) return <div className="px-6 py-10 text-center text-sm font-semibold text-muted">No customer activity in this period</div>;
   return (
-    <table className={`w-full ${compact ? "min-w-[520px]" : "min-w-[720px]"} border-collapse text-sm`}>
-      <thead><tr className="border-y border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted"><th className="px-6 py-3">#</th><th className="py-3">Customer</th><th className="py-3">Scheme</th><th className="py-3 text-right">Invested</th>{!compact && <th className="py-3 text-right">Gold (g)</th>}<th className="py-3">Status</th></tr></thead>
+    <table className={`w-full ${compact ? "min-w-[560px]" : "min-w-[820px]"} border-collapse text-sm`}>
+      {/* Stated widths rather than browser-chosen ones: Gold (g) is right
+          aligned and Status is a badge, so with automatic sizing the number ran
+          straight into the badge with nothing between them. */}
+      <colgroup>
+        <col className="w-[64px]" />
+        <col />
+        <col />
+        <col className="w-[132px]" />
+        {!compact && <col className="w-[104px]" />}
+        <col className="w-[132px]" />
+      </colgroup>
+      <thead><tr className="border-y border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted"><th className="px-6 py-3">#</th><th className="py-3 pr-4">Customer</th><th className="py-3 pr-4">Scheme</th><th className="py-3 pr-6 text-right">Invested</th>{!compact && <th className="py-3 pr-6 text-right">Gold (g)</th>}<th className="py-3 pl-2 pr-6">Status</th></tr></thead>
       <tbody>
         {rows.map((c, i) => (
           <tr key={i} className="border-b border-line-soft last:border-0 hover:bg-canvas/60">
             <td className="px-6 py-3 font-bold">#{i + 1}</td>
-            <td className="py-3 font-bold">{c.customerName || "—"}</td>
-            <td className="py-3">{c.schemeName || "—"}</td>
-            <td className="num py-3 text-right font-bold">{inr(c.totalInvested)}</td>
-            {!compact && <td className="num py-3 text-right">{Number(c.goldWeightGrams || 0).toFixed(2)}</td>}
-            <td className="py-3"><Badge tone={c.status === "ACTIVE" ? "info" : c.status === "COMPLETED" ? "success" : "neutral"} dot>{c.status || "—"}</Badge></td>
+            <td className="truncate py-3 pr-4 font-bold">{c.customerName || "—"}</td>
+            <td className="truncate py-3 pr-4">{c.schemeName || "—"}</td>
+            <td className="num whitespace-nowrap py-3 pr-6 text-right font-bold">{inr(c.totalInvested)}</td>
+            {!compact && <td className="num whitespace-nowrap py-3 pr-6 text-right">{Number(c.goldWeightGrams || 0).toFixed(2)}</td>}
+            <td className="py-3 pl-2 pr-6"><Badge tone={c.status === "ACTIVE" ? "info" : c.status === "COMPLETED" ? "success" : "neutral"} dot>{c.status || "—"}</Badge></td>
           </tr>
         ))}
       </tbody>
@@ -610,15 +621,24 @@ function TopCustomersTable({ rows, compact }) {
 function SchemeTable({ rows }) {
   if (!rows?.length) return <div className="px-6 py-10 text-center text-sm font-semibold text-muted">No scheme data in this period</div>;
   return (
-    <table className="w-full min-w-[640px] border-collapse text-sm">
-      <thead><tr className="border-y border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted"><th className="px-6 py-3">Scheme</th><th className="py-3">Status</th><th className="py-3 text-right">Active Enrollments</th><th className="py-3 text-right">Collected</th></tr></thead>
+    <table className="w-full min-w-[720px] border-collapse text-sm">
+      {/* Collected is the widest figure on the row and was landing against the
+          table edge. It gets its own minimum width and the same right padding
+          as every other money column in the app. */}
+      <colgroup>
+        <col />
+        <col className="w-[120px]" />
+        <col className="w-[150px]" />
+        <col className="w-[160px]" />
+      </colgroup>
+      <thead><tr className="border-y border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted"><th className="px-6 py-3 pr-4">Scheme</th><th className="py-3 pr-4">Status</th><th className="py-3 pr-6 text-right">Active Enrollments</th><th className="py-3 pr-6 text-right">Collected</th></tr></thead>
       <tbody>
         {rows.map((s, i) => (
           <tr key={i} className="border-b border-line-soft last:border-0 hover:bg-canvas/60">
-            <td className="px-6 py-3 font-bold">{s.schemeName || "—"}</td>
-            <td className="py-3"><Badge tone={s.isActive ? "success" : "neutral"} dot>{s.isActive ? "Active" : "Inactive"}</Badge></td>
-            <td className="num py-3 text-right font-bold">{s.activeEnrollments}</td>
-            <td className="num py-3 text-right font-bold">{inr(s.totalCollected)}</td>
+            <td className="truncate px-6 py-3 pr-4 font-bold">{s.schemeName || "—"}</td>
+            <td className="py-3 pr-4"><Badge tone={s.isActive ? "success" : "neutral"} dot>{s.isActive ? "Active" : "Inactive"}</Badge></td>
+            <td className="num whitespace-nowrap py-3 pr-6 text-right font-bold">{s.activeEnrollments}</td>
+            <td className="num whitespace-nowrap py-3 pr-6 text-right font-bold">{inr(s.totalCollected)}</td>
           </tr>
         ))}
       </tbody>

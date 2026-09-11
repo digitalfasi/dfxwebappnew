@@ -7,6 +7,7 @@ import { Badge } from "@/_shared/ui/badge";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { catalogueService } from "@/modules/catalogue-studio/catalogueService";
+import { money as formatINR } from "@/_shared/utils";
 
 const CAT_QUICK = ["Chains", "Bangles", "Necklaces", "Rings", "Pendants", "Earrings"];
 const PURITY_QUICK = ["18K", "22K", "916", "24K"];
@@ -177,7 +178,7 @@ export default function CatalogueStudio() {
   if (view === "create") {
     return (
       <div ref={scope} className="mx-auto max-w-[1200px]">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="sticky top-0 z-20 -mx-2 mb-6 flex items-center justify-between border-b border-line bg-canvas/95 px-2 py-3 backdrop-blur">
           <button onClick={() => { setEditId(null); setView("catalogue"); }} className="flex items-center gap-2 text-sm font-bold hover:text-accent"><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>Back</button>
           <div className="flex gap-2"><span className="text-lg font-extrabold">{editId ? "Edit Product" : "Create Product"}</span></div>
           <Button size="sm" disabled={saving} onClick={handleSave}>{saving ? "Saving…" : editId ? "Save Changes" : "Save Product"}</Button>
@@ -208,17 +209,60 @@ export default function CatalogueStudio() {
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Weight (g) *</span><input type="number" value={form.weight} onChange={e => setForm({ ...form, weight: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none ${errors.weight ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.weight && <span className="text-xs font-semibold text-danger">{errors.weight}</span>}</label>
                 <div className="grid grid-cols-2 gap-3"><label className="grid gap-1.5"><span className="text-xs font-bold">Making-Charge Discount (%)</span><input value={form.offerDiscount} onChange={e => setForm({ ...form, offerDiscount: e.target.value })} placeholder="10" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent" /></label><label className="grid gap-1.5"><span className="text-xs font-bold">Discount Label</span><input value={form.offerLabel} onChange={e => setForm({ ...form, offerLabel: e.target.value })} placeholder="Festive" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent" /></label></div>
                 <div><div className="text-xs font-bold">Offer quick options:</div><div className="mt-1.5 flex flex-wrap gap-1.5">{OFFER_QUICK.map(o => <button key={o} onClick={() => setForm({ ...form, offerLabel: o })} className={`rounded-full border px-3 py-1 text-xs font-bold ${form.offerLabel === o ? "border-accent bg-accent text-white" : "border-line bg-white text-muted"}`}>{o}</button>)}</div></div>
-                <div><div className="text-xs font-bold">Tags</div><div className="mt-1.5 flex flex-wrap gap-1.5">{TAG_QUICK.map(t => <button key={t} onClick={() => setForm({ ...form, tags: form.tags.includes(t) ? form.tags.filter(x => x !== t) : [...form.tags, t] })} className={`rounded-full border px-3 py-1 text-xs font-bold ${form.tags.includes(t) ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted"}`}>{t}</button>)}</div><div className="mt-2 flex gap-2"><input value={form.customTag} onChange={e => setForm({ ...form, customTag: e.target.value })} placeholder="Custom tag" className="h-9 flex-1 rounded-xl border border-line bg-surface px-3 text-sm" /><Button size="sm" variant="outline" onClick={() => { if (form.customTag.trim()) { setForm({ ...form, tags: [...form.tags, form.customTag.trim()], customTag: "" }); } }}>Add</Button></div>{form.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{form.tags.map(t => <Badge key={t} tone="accent">{t}</Badge>)}</div>}</div>
+                <div><div className="text-xs font-bold">Tags</div><div className="mt-1.5 flex flex-wrap gap-1.5">{TAG_QUICK.map(t => <button key={t} onClick={() => setForm({ ...form, tags: form.tags.includes(t) ? form.tags.filter(x => x !== t) : [...form.tags, t] })} className={`rounded-full border px-3 py-1 text-xs font-bold ${form.tags.includes(t) ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted"}`}>{t}</button>)}</div><div className="mt-2 flex gap-2"><input value={form.customTag} onChange={e => setForm({ ...form, customTag: e.target.value })} placeholder="Custom tag" className="h-9 flex-1 rounded-xl border border-line bg-surface px-3 text-sm" /><Button size="sm" variant="outline" onClick={() => { const t = form.customTag.trim(); if (t && !form.tags.includes(t)) { setForm({ ...form, tags: [...form.tags, t], customTag: "" }); } else if (t) { setForm({ ...form, customTag: "" }); } }}>Add</Button></div>{form.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{form.tags.map(t => (
+                  <span key={t} className="inline-flex items-center gap-1 rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 text-xs font-bold text-accent-strong">
+                    {t}
+                    <button
+                      type="button"
+                      aria-label={`Remove tag ${t}`}
+                      title={`Remove ${t}`}
+                      onClick={() => setForm({ ...form, tags: form.tags.filter(x => x !== t) })}
+                      className="grid h-4 w-4 place-items-center rounded-full text-accent-strong/70 transition hover:bg-accent hover:text-white"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                  </span>
+                ))}</div>}</div>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Description</span><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Product description" className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent" /></label>
               </div>
             </Card>
 
             <Card className="p-5">
               <h3 className="font-bold">Live Customer Preview</h3>
-              <p className="text-xs text-muted">How this product appears to customers.</p>
+              <p className="text-xs text-muted">How this product appears to customers. Nothing here is saved until you press Save.</p>
               <div className="mt-3 flex gap-4 rounded-xl border border-line bg-canvas/40 p-4">
-                <img src={preview || "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=200"} alt="live" className="h-20 w-20 rounded-lg object-cover border border-line" />
-                <div><div className="font-bold">{form.name || "Product name"}</div><div className="text-sm font-bold text-accent-strong">₹{form.price || "—"}</div></div>
+                {/* A deliberate placeholder, not a stock photo: a product with no
+                    image must LOOK like it has none, or the preview quietly
+                    promises the customer something the catalogue cannot show. */}
+                {preview ? (
+                  <img src={preview} alt={form.name || "Product preview"} className="h-24 w-24 shrink-0 rounded-lg border border-line object-cover" />
+                ) : (
+                  <div className="flex h-24 w-24 shrink-0 flex-col items-center justify-center rounded-lg border border-dashed border-line bg-surface text-center text-[10px] font-bold leading-tight text-muted">
+                    No image<br />yet
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-bold">{form.name || "Product name"}</div>
+                  <div className="mt-0.5 text-xs text-muted">
+                    {[form.category, form.purity, form.weight ? `${form.weight} g` : null].filter(Boolean).join(" · ") || "Category · Purity · Weight"}
+                  </div>
+                  <div className="mt-1.5 text-sm font-bold text-accent-strong">
+                    {form.price ? formatINR(Number(form.price)) : "—"}
+                  </div>
+                  {form.offerLabel && (
+                    <div className="mt-1.5 inline-flex rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-bold text-accent-strong">
+                      {form.offerLabel}{form.offerDiscount ? ` — ${form.offerDiscount}% off making` : ""}
+                    </div>
+                  )}
+                  {form.tags.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {form.tags.map(t => <span key={t} className="rounded-full border border-line bg-white px-2 py-0.5 text-[10px] font-semibold text-muted">{t}</span>)}
+                    </div>
+                  )}
+                  {form.description && (
+                    <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-muted">{form.description}</p>
+                  )}
+                </div>
               </div>
             </Card>
 

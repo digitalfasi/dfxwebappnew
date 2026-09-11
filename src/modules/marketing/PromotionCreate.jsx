@@ -27,6 +27,7 @@ export default function PromotionCreate({ onNavigate, editingPromo, setEditingPr
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState(() => ({
+    title: editingPromo?.title || "",
     image: editingPromo?.imageUrl || null, // preview: stored URL (edit) or object URL (new)
     imageName: "",
     imageFile: null,
@@ -48,6 +49,7 @@ export default function PromotionCreate({ onNavigate, editingPromo, setEditingPr
   };
 
   const handleSave = async () => {
+    if (!form.title.trim()) { toast("Give the banner a title"); return; }
     if (!form.imageFile && !form.image) { toast("A banner image is required"); return; }
     if (!form.startDate || !form.endDate) { toast("Select start and end date"); return; }
     if (form.endDate < form.startDate) { toast("End date must be on or after start date"); return; }
@@ -58,6 +60,7 @@ export default function PromotionCreate({ onNavigate, editingPromo, setEditingPr
     // image, and the image needs an existing promotion id to upload against.
     const base = {
       bannerType: "IMAGE_ONLY",
+      title: form.title.trim(),
       priority: Number(form.priority) || 1,
       startDate: form.startDate,
       endDate: form.endDate,
@@ -106,6 +109,12 @@ export default function PromotionCreate({ onNavigate, editingPromo, setEditingPr
         <p className="mt-1 text-xs text-muted">The image is shown to customers in full — no text, button or colors are added over it.</p>
 
         <div className="mt-5 grid gap-5">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-bold">Title *</span>
+            <Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Festive Season Banner" maxLength={120} />
+            <span className="text-xs text-muted">Shown in the banner list so this banner can be told apart from the others. Not drawn over the image.</span>
+          </label>
+
           <div>
             <div className="text-xs font-bold">Banner image *</div>
             <label className="mt-1.5 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 px-4 py-10 text-center hover:border-accent hover:bg-canvas/60">
@@ -128,14 +137,19 @@ export default function PromotionCreate({ onNavigate, editingPromo, setEditingPr
             <label className="grid gap-1.5"><span className="text-xs font-bold">End date *</span><Input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} /></label>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Priority</span><Input type="number" min={1} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} /></label>
-              <p className="mt-1.5 text-xs text-muted">Higher priority banners are shown first when multiple are active.</p>
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <span className="text-xs font-bold">Priority</span>
+              <Input type="number" min={1} max={5} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} />
+              {/* Ordinal, not a score: 1 is shown first. The old copy said
+                  "higher priority first", which was the opposite of the rule. */}
+              <span className="text-xs text-muted">1 is shown first, 5 last.</span>
             </div>
-            <label className="grid gap-1.5"><span className="text-xs font-bold">Active status</span>
+            <div className="grid gap-1.5">
+              <span className="text-xs font-bold">Active status</span>
               <Select value={form.active ? "Active" : "Inactive"} onValueChange={v => setForm({ ...form, active: v === "Active" })} options={["Active", "Inactive"]} />
-            </label>
+              <span className="text-xs text-muted">Up to 5 banners can be active at once.</span>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2.5 border-t border-line pt-4">

@@ -1,9 +1,11 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/_shared/ui/card";
 import { Button } from "@/_shared/ui/button";
 import { Input } from "@/_shared/ui/input";
+import { Badge } from "@/_shared/ui/badge";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
+import { branchService } from "@/modules/branches/branchService";
 
 export default function Branches() {
   const scope = useRef(null);
@@ -11,12 +13,48 @@ export default function Branches() {
   usePressFeedback(scope);
 
   const [branches, setBranches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  // null = the form is creating; an id = the form is editing that branch.
+  const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ name: "", address: "", phone: "", latitude: "", longitude: "" });
   const [errors, setErrors] = useState({});
 
+  // Branches used to live in React state alone: everything registered here
+  // vanished on refresh and never reached the database, even though the
+  // /admin/branches endpoints existed the whole time.
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      setBranches(await branchService.getBranches());
+    } catch (err) {
+      setLoadError(err?.message || "Could not load branches");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
   const openCreate = () => {
+    setEditId(null);
     setForm({ name: "", address: "", phone: "", latitude: "", longitude: "" });
+    setErrors({});
+    setShowForm(true);
+  };
+
+  const openEdit = (b) => {
+    setEditId(b.id);
+    setForm({
+      name: b.name || "",
+      address: b.address || "",
+      phone: b.phone || "",
+      latitude: b.latitude != null ? String(b.latitude) : "",
+      longitude: b.longitude != null ? String(b.longitude) : "",
+    });
     setErrors({});
     setShowForm(true);
   };
@@ -31,18 +69,48 @@ export default function Branches() {
     return e;
   };
 
-  const handleCreate = () => {
+  const handleSave = async () => {
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length) { toast("Please fix the highlighted fields"); return; }
-    setBranches(prev => [{ id: Date.now(), name: form.name.trim(), address: form.address.trim(), phone: form.phone.trim(), latitude: form.latitude.trim(), longitude: form.longitude.trim() }, ...prev]);
-    toast("Branch created");
-    setShowForm(false);
+    if (saving) return;
+    setSaving(true);
+    const payload = {
+      name: form.name.trim(),
+      address: form.address.trim(),
+      phone: form.phone.trim(),
+      latitude: form.latitude.trim(),
+      longitude: form.longitude.trim(),
+    };
+    try {
+      if (editId) await branchService.updateBranch(editId, payload);
+      else await branchService.createBranch(payload);
+      setShowForm(false);
+      setEditId(null);
+      await load();
+      toast(editId ? "Branch updated" : "Branch created");
+    } catch (err) {
+      toast(err?.message || (editId ? "Could not update branch" : "Could not create branch"));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = (id) => {
-    setBranches(prev => prev.filter(b => b.id !== id));
-    toast("Branch removed");
+  // There is no delete endpoint, by design: a branch is referenced by the
+  // customer-facing branch locator, so it is deactivated rather than erased.
+  // The control says what it actually does.
+  const handleToggleActive = async (b) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await branchService.setBranchStatus(b.id, !b.isActive);
+      await load();
+      toast(b.isActive ? "Branch deactivated" : "Branch activated");
+    } catch (err) {
+      toast(err?.message || "Could not change the branch status");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -59,8 +127,16 @@ export default function Branches() {
         </Button>
       </div>
 
+      {loadError && (
+        <div className="mb-3 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm font-semibold text-danger">
+          {loadError} <button onClick={load} className="ml-2 underline">Retry</button>
+        </div>
+      )}
+
       {/* Branch list / details */}
-      {branches.length === 0 ? (
+      {loading ? (
+        <Card data-motion="reveal" className="p-10 text-center text-sm font-semibold text-muted">Loading branches…</Card>
+      ) : branches.length === 0 ? (
         <Card data-motion="reveal" className="p-10 text-center">
           <div className="mx-auto max-w-[420px]">
             <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-canvas border border-line text-muted">
@@ -78,7 +154,7 @@ export default function Branches() {
             <table className="w-full min-w-[760px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                  <th className="px-6 py-3">Branch name</th><th className="py-3">Address</th><th className="py-3">Phone</th><th className="py-3">Location coordinates</th><th className="py-3 text-right pr-6">Actions</th>
+                  <th className="px-6 py-3">Branch name</th><th className="py-3">Address</th><th className="py-3">Phone</th><th className="py-3">Location coordinates</th><th className="py-3">Status</th><th className="py-3 text-right pr-6">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -88,8 +164,14 @@ export default function Branches() {
                     <td className="py-3.5 text-muted max-w-[280px]">{b.address}</td>
                     <td className="py-3.5 font-mono text-xs">{b.phone}</td>
                     <td className="py-3.5 font-mono text-xs">{b.latitude}, {b.longitude}</td>
+                    <td className="py-3.5"><Badge tone={b.isActive ? "success" : "neutral"} dot>{b.isActive ? "Active" : "Inactive"}</Badge></td>
                     <td className="py-3.5 pr-6 text-right">
-                      <Button size="sm" variant="outline" onClick={() => handleDelete(b.id)} className="text-danger hover:bg-danger-soft">Delete</Button>
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(b)} disabled={saving}>Edit</Button>
+                        <Button size="sm" variant="outline" disabled={saving} onClick={() => handleToggleActive(b)} className={b.isActive ? "text-danger hover:bg-danger-soft" : ""}>
+                          {b.isActive ? "Deactivate" : "Activate"}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -107,7 +189,7 @@ export default function Branches() {
           <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={() => setShowForm(false)} aria-label="Close" />
           <div className="relative w-full max-w-[560px] max-h-[90vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-line px-6 py-4">
-              <h3 className="text-base font-extrabold">Register New Branch</h3>
+              <h3 className="text-base font-extrabold">{editId ? "Edit Branch" : "Register New Branch"}</h3>
               <button onClick={() => setShowForm(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5 grid gap-4">
@@ -144,8 +226,10 @@ export default function Branches() {
               </div>
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
-              <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={handleCreate}>Create Branch</Button>
+              <Button variant="outline" size="sm" onClick={() => { setShowForm(false); setEditId(null); }} disabled={saving}>Cancel</Button>
+              <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : editId ? "Save Changes" : "Create Branch"}
+              </Button>
             </div>
           </div>
         </div>

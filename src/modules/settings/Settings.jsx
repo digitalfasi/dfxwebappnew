@@ -6,6 +6,7 @@ import { Badge } from "@/_shared/ui/badge";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { settingsService } from "@/modules/settings/settingsService";
+import { isValidIndianPhone, isValidGstin, normalizeGstin, onlyTenDigits, PHONE_ERROR, GSTIN_ERROR } from "@/_shared/indianFormats";
 
 // Store configuration — reads and writes the real tenant profile
 // (GET/PUT /admin/tenant/profile).
@@ -60,10 +61,13 @@ export default function Settings() {
     if (form.contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contactEmail.trim())) {
       e.contactEmail = "Must be a valid email address";
     }
-    if (form.contactPhone.trim() && !/^[6-9]\d{9}$/.test(form.contactPhone.trim())) {
-      e.contactPhone = "Enter a valid 10-digit mobile number";
+    if (form.contactPhone.trim() && !isValidIndianPhone(form.contactPhone)) {
+      e.contactPhone = PHONE_ERROR;
     }
-    if (form.gstNumber.trim() && form.gstNumber.trim().length > 20) e.gstNumber = "GST number cannot exceed 20 characters";
+    // Structural, not just a length cap: "GSTIN" was accepting any 20
+    // characters, so a phone number or a half-typed value saved cleanly and
+    // surfaced later on an invoice.
+    if (form.gstNumber.trim() && !isValidGstin(form.gstNumber)) e.gstNumber = GSTIN_ERROR;
     if (form.logoUrl.trim() && form.logoUrl.trim().length > 500) e.logoUrl = "URL cannot exceed 500 characters";
     return e;
   };
@@ -148,12 +152,20 @@ export default function Settings() {
               </label>
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Contact Phone</span>
-                <Input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} placeholder="e.g. 9876543210" maxLength={10} className={errors.contactPhone ? "border-danger" : ""} />
+                {/* +91 is the only country code the product supports, so it is
+                    shown rather than typed, and a pasted "+91 98765 43210"
+                    reduces to the 10 subscriber digits instead of failing. */}
+                <div className={`flex h-10 items-center rounded-xl border bg-surface ${errors.contactPhone ? "border-danger" : "border-line focus-within:border-accent"}`}>
+                  <span className="num select-none border-r border-line px-3 text-sm font-semibold text-muted">+91</span>
+                  <input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: onlyTenDigits(e.target.value) })} inputMode="numeric" maxLength={10} aria-label="10-digit mobile number, country code +91" placeholder="98765 43210" className="num min-w-0 flex-1 bg-transparent px-3.5 text-sm outline-none" />
+                </div>
                 {errors.contactPhone ? <span className="text-xs font-semibold text-danger">{errors.contactPhone}</span> : <span className="text-xs text-muted">A 10-digit Indian mobile number.</span>}
               </label>
               <label className="grid gap-1.5 sm:col-span-2">
                 <span className="text-xs font-bold">GST Number</span>
-                <Input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} placeholder="e.g. 29ABCDE1234F1Z5" maxLength={20} className={errors.gstNumber ? "border-danger" : ""} />
+                {/* Upper-cased as it is typed: the column is unique, so the
+                    same GSTIN in lower case would register as a second tenant. */}
+                <Input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: normalizeGstin(e.target.value) })} placeholder="e.g. 29ABCDE1234F1Z5" maxLength={15} className={errors.gstNumber ? "border-danger" : ""} />
                 {errors.gstNumber && <span className="text-xs font-semibold text-danger">{errors.gstNumber}</span>}
               </label>
             </div>
