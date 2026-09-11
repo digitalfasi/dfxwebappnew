@@ -1,18 +1,64 @@
 /** @type {import('next').NextConfig} */
 
+// Content-Security-Policy.
+//
+// Written with the app's actual shape in mind rather than copied from a
+// template. Two honest limitations, stated here so nobody reads this as
+// stronger than it is:
+//
+//   'unsafe-inline' on script-src — Next's App Router inlines its hydration
+//   bootstrap and flight data into the document. Removing it needs a nonce
+//   threaded through a middleware on every request, which changes how every
+//   page is rendered; that is its own change with its own regression, not a
+//   line in a config file. What this CSP still buys, even with inline allowed:
+//   no script may be loaded from another origin, so an injected
+//   <script src="//attacker"> is dead.
+//
+//   'unsafe-inline' on style-src — Tailwind plus the inline style attributes
+//   this UI uses throughout. Inline CSS is a far smaller weapon than inline JS.
+//
+// The directives that cost nothing and close real holes are all strict:
+// object-src none (no Flash/PDF plugin injection), base-uri self (an injected
+// <base> cannot repoint every relative URL), frame-ancestors none (clickjacking,
+// and it is the header-equivalent that actually applies to modern browsers),
+// form-action self (an injected form cannot POST credentials elsewhere).
+//
+// connect-src must name the API origin: the SPA calls it with fetch, and 'self'
+// alone would block every request. It falls back to the local dev API.
+const API_ORIGIN = (() => {
+  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return "http://localhost:8000";
+  }
+})();
+
+const csp = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  // data: for inlined icons, blob: for anything the app renders client-side,
+  // and the API origin because product and catalogue images are served from it.
+  `img-src 'self' data: blob: ${API_ORIGIN}`,
+  "font-src 'self' data:",
+  `connect-src 'self' ${API_ORIGIN}`,
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "upgrade-insecure-requests",
+].join("; ");
+
 // The API origin ships a full set of security headers; the app origin shipped
 // none, so the pages that actually render a customer's data were the unguarded
-// half. These are the headers that cost nothing to set and need no per-page
-// thought.
-//
-// No Content-Security-Policy yet: the app is a client-rendered SPA with inline
-// styles, and a CSP written blind here would either break the UI or be so loose
-// it says nothing. It wants its own pass, with the page open in a browser.
+// half.
 const securityHeaders = [
+  { key: "Content-Security-Policy", value: csp },
   // Do not let a browser second-guess a declared type - "looks like HTML" is how
   // an uploaded image becomes a script.
   { key: "X-Content-Type-Options", value: "nosniff" },
-  // The admin console is never legitimately framed by anyone.
+  // Kept alongside frame-ancestors for browsers that honour only this one.
   { key: "X-Frame-Options", value: "DENY" },
   // Send the origin to other sites, the full path only to ourselves: an invoice
   // or customer id has no business travelling in a Referer header.
