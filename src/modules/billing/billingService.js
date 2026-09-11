@@ -424,7 +424,7 @@ export const billingService = {
     productCode, customerId, customerName, customerPhone,
     discountAmount = 0, gstApplied = true, appliedRatePerGram,
     makingChargeValue, makingChargeType, wastageValue, wastageType,
-    customerPrice, goldProfitPercent,
+    customerPrice, goldProfitPercent, schemeValue,
     paymentMethod = "CASH", paymentStatus = "PAID",
     initialPaymentAmount, paymentReferenceNo,
   }) {
@@ -443,6 +443,11 @@ export const billingService = {
     if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
     if (makingChargeValue != null && makingChargeValue !== "") { body.making_charge_value = Number(makingChargeValue); if (makingChargeType) body.making_charge_type = makingChargeType; }
     if (wastageValue != null && wastageValue !== "") { body.wastage_value = Number(wastageValue); if (wastageType) body.wastage_type = wastageType; }
+    // The scheme credit about to be redeemed against this bill. Validation
+    // only - the sale is stored uncarved and the carve still happens inside the
+    // OTP-gated redemption - but it means a discount that could not survive the
+    // carve is refused now rather than with the customer at the OTP step.
+    if (schemeValue) body.scheme_value = Number(schemeValue);
     if (paymentStatus === "PARTIAL") body.initial_payment_amount = initialPaymentAmount;
     if (paymentReferenceNo) body.payment_reference_no = paymentReferenceNo;
     const res = await apiClient.post("/billing/sell", body, { auth: true });
@@ -811,6 +816,11 @@ function mapSaleQuote(data = {}, productCode = "", gstApplied = true) {
     // finalAmount INCLUDES this slice; the customer's cash balance is
     // finalAmount − schemeApplied.
     schemeApplied: b.scheme_applied_amount ?? 0,
+    // The same arithmetic laid out the way the customer reads it: the scheme
+    // netted off the gold value at the top, and what that credit buys of THIS
+    // piece in grams.
+    chargeableGoldValue: b.chargeable_gold_value_amount ?? 0,
+    schemeGramsEquivalent: b.scheme_grams_equivalent ?? 0,
     finalAmount: b.final_amount ?? 0,
     // Profit views (Admin-only; null for Staff). Today's-gold-value P/L is the
     // card New Sale shows; historical (vs purchase cost) stays available but the
@@ -891,6 +901,12 @@ function mapSaleRow(raw) {
     taxRatePercent: raw.tax_rate_percent ?? 0,
     taxAmount: raw.tax_amount ?? 0,
     discountAmount: raw.discount_amount ?? 0,
+    // What a scheme covered on this bill, frozen at redemption. 0 on an
+    // ordinary sale, so an existing invoice reads exactly as it always did.
+    schemeApplied: raw.scheme_applied_amount ?? 0,
+    schemeGrams: raw.scheme_grams ?? null,
+    schemeType: raw.scheme_type ?? null,
+    schemePurity: raw.scheme_purity ?? null,
     finalAmount: raw.final_amount ?? 0,
     // Admin-only internal figures (backend returns null for Staff).
     purchaseCost: raw.purchase_cost_snapshot ?? null,

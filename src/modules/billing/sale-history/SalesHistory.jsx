@@ -303,7 +303,16 @@ export default function SalesHistory() {
                   onClick={() => setSelectedId(b.id)}
                   className="cursor-pointer border-b border-line-soft align-middle transition-colors duration-150 last:border-0 hover:bg-canvas/60 [&>td]:px-3 [&>td]:py-3.5"
                 >
-                  <td className="!pl-5 font-mono text-xs font-semibold">{b.inv}</td>
+                  <td className="!pl-5 font-mono text-xs font-semibold">
+                    {b.inv}
+                    {/* A scheme bill used to be indistinguishable from a cheap
+                        one here. Marked as a chip rather than a 15th column:
+                        this table is already wide, and a column would take
+                        width from every other one. */}
+                    {b.schemeApplied > 0 && (
+                      <span className="mt-0.5 block font-sans text-[10px] font-bold uppercase tracking-[0.04em] text-accent-strong">Scheme {formatINR(b.schemeApplied)}</span>
+                    )}
+                  </td>
                   <td className="whitespace-nowrap text-muted">{formatDate(b.saleTimestamp)}</td>
                   <td className="min-w-[130px]">
                     <div className="font-bold">{b.customer}</div>
@@ -537,6 +546,19 @@ function SaleDetail({ sale, onClose, onChanged }) {
             <div className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-muted">Price breakdown</div>
             <div className="rounded-xl border border-line px-4 py-3 text-sm">
               <BreakdownRow label={`Gold Value${sale.goldRateApplied ? ` (₹${Number(sale.goldRateApplied).toFixed(2)}/g)` : ""}`} value={formatINR(sale.goldValueAmount)} />
+              {/* What the customer's scheme paid for. The covered gold is billed
+                  at pure gold value - no making, no wastage, no GST - so it is
+                  shown coming off the gold value, which is where it was
+                  actually applied, rather than as a deduction from the total. */}
+              {sale.schemeApplied > 0 && (
+                <>
+                  <BreakdownRow
+                    label={`Less: scheme credit${sale.schemeGrams ? ` (${Number(sale.schemeGrams).toFixed(3)} g${sale.schemePurity ? ` of ${sale.schemePurity}` : ""})` : ""}`}
+                    value={`− ${formatINR(sale.schemeApplied)}`}
+                  />
+                  <BreakdownRow label="Chargeable gold value" value={formatINR((sale.goldValueAmount || 0) - sale.schemeApplied)} />
+                </>
+              )}
               <BreakdownRow label={`Making ${chargeLabel(sale.makingChargeType, sale.makingChargeValue)}`} value={formatINR(sale.makingChargeAmount)} />
               <BreakdownRow label={`Wastage ${chargeLabel(sale.wastageType, sale.wastageValue)}`} value={formatINR(sale.wastageAmount)} />
               {sale.stoneChargeAmount > 0 && <BreakdownRow label="Stone" value={formatINR(sale.stoneChargeAmount)} />}

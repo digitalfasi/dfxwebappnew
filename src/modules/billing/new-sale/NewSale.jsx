@@ -354,6 +354,11 @@ export default function NewSale() {
       wastageType: product.wastageType || undefined,
       customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
       goldProfitPercent: priceDriver === "PROFIT" && goldProfit !== "" ? num(goldProfit) : undefined,
+      // The credit about to be redeemed against this bill. Validation only -
+      // the sale is stored uncarved and the carve still happens inside the OTP
+      // redemption - but a discount that could not survive that carve is now
+      // refused here, at the counter, instead of at the OTP step.
+      schemeValue: schemeSelected ? schemeRedeemRequested : undefined,
     };
   };
 
