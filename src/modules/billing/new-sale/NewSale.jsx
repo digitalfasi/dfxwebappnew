@@ -546,17 +546,20 @@ export default function NewSale() {
     handleFind(); // refresh the product from the backend's true state
   };
 
-  // The bill prints gold value and store margin as SEPARATE rows: folding the
-  // margin into a single "Gold Value" line made the bill impossible to check by
-  // hand (weight x rate did not equal the printed figure, and Making 3% was 3%
-  // of the pure gold value, not of the printed one). The store's margin is not
-  // a line the customer may see, though - no jeweller prints it, and the
-  // invoice and quotation never did - so the summary now folds it into Gold
-  // Value the way those documents do, and the percentages above are read
-  // against the pure gold value they are actually charged on.
+  // Gold value and the store's margin are SEPARATE rows. Folding the margin in
+  // was tried, to match the invoice and quotation, and it produced a line that
+  // reads "13.000 g x 14,155.00" beside 2,02,416.50 - a multiplication printed
+  // next to a number that multiplication does not produce. A bill the customer
+  // cannot check by hand is worse than a bill that shows the margin, so the
+  // rows are split and every percentage is read against the pure gold value it
+  // is actually charged on.
   const goldValuePure = product ? (product.goldValueAmount || 0) : 0;
   const goldProfitLine = product ? (product.goldProfitAmount || 0) : 0;
-  const goldValueLine = goldValuePure + goldProfitLine;
+  const netGrams = product ? (Number(product.netGoldWeightGrams) || 0) : 0;
+  const appliedRate = product ? (Number(product.goldRateApplied) || 0) : 0;
+  // "13.000 g x 14,155.00" belongs only next to the figure it produces.
+  const goldValueLabel = `Gold Value${netGrams > 0 && appliedRate > 0 ? ` (${netGrams.toFixed(3)} g \u00d7 ${money(appliedRate)})` : ""}`;
+  const goldProfitLabel = `Gold Profit${product?.goldProfitPercent ? ` ${product.goldProfitPercent}%` : ""}`;
 
   return (
     <div ref={scope} className="mx-auto max-w-[1240px] pb-32 lg:pb-14">
@@ -800,9 +803,15 @@ export default function NewSale() {
                         print. Showing the un-carved one is how this strip came
                         to display a price the server had already refused. */}
                     <SpecCell
-                      label="Selling price"
+                      label={quoteHasScheme ? "Bill total before scheme credit" : "Selling price"}
                       value={schemeSelected && !quoteHasScheme ? "—" : money(sellingPrice)}
-                      sub={schemeSelected && !quoteHasScheme ? "once the scheme is applied" : undefined}
+                      sub={
+                        schemeSelected && !quoteHasScheme
+                          ? "once the scheme is applied"
+                          : quoteHasScheme
+                            ? `less scheme credit ${money(quotedScheme)} = ${money(round2(sellingPrice - quotedScheme))} payable`
+                            : undefined
+                      }
                       mono
                     />
                   </div>
@@ -1029,24 +1038,31 @@ export default function NewSale() {
                     g24: rate24 > 0 ? l.amount / rate24 : 0,
                   }));
                   const schemeG24 = schemeRows.reduce((t, r) => t + r.g24, 0);
-                  const normalGold = Math.max(0, goldValueLine - schemeGold);
+                  // The backend's own carved figure: pure gold value less the
+                  // credit, with no margin in it. Never re-derived here.
+                  const chargeableGold = product.chargeableGoldValue || 0;
                   const normalSubtotal = round2(product.subtotalBeforeTax - schemeGold);
                   // What the covered slice WOULD have carried. The backend
-                  // scales making/wastage by the un-covered share, so the
-                  // charge on screen is that share; the waived part is the rest
-                  // of the same rate, in the scheme's proportion. GST then
-                  // follows on gold + those charges, at the bill's own rate.
-                  //   waived making = making_billed x scheme / (gold - scheme)
+                  // scales gold profit, making and wastage by
+                  //   normal_factor = (gold_value - scheme) / gold_value,
+                  // so each billed charge is already the un-covered share and
+                  // the waived part is  billed x scheme / chargeable_gold.
+                  // This used to divide by (gold value + profit - scheme) and
+                  // omitted the waived PROFIT altogether, which is how the
+                  // banner read 2,323.64 against a true 6,556.00. GST then
+                  // follows on the covered gold plus everything waived on it.
                   // None of it is added to any total: it is money not charged.
-                  const coveredShare = normalGold > 0 ? schemeGold / normalGold : 0;
+                  const coveredShare = chargeableGold > 0 ? schemeGold / chargeableGold : 0;
+                  const waivedProfit = round2((product.goldProfitAmount || 0) * coveredShare);
                   const waivedMaking = round2((product.makingChargeAmount || 0) * coveredShare);
                   const waivedWastage = round2((product.wastageAmount || 0) * coveredShare);
                   const waivedTaxRate = product.gstApplied ? (product.taxRatePercent || 0) : 0;
-                  const waivedGst = round2((schemeGold + waivedMaking + waivedWastage) * waivedTaxRate / 100);
-                  const waivedTotal = round2(waivedMaking + waivedWastage + waivedGst);
+                  const waivedGst = round2((schemeGold + waivedProfit + waivedMaking + waivedWastage) * waivedTaxRate / 100);
+                  const waivedTotal = round2(waivedProfit + waivedMaking + waivedWastage + waivedGst);
                   const makingLabel = chargePct(product.makingChargeType, makingVal || product.makingChargeValue);
                   const wastageLabel = chargePct(product.wastageType, wastageVal || product.wastageValue);
                   const chargeableLabel = pureRate > 0 ? `${normalG.toFixed(3)} g of ${product.purity}` : null;
+                  const schemeGLabel = pureRate > 0 ? `${(product.schemeGramsEquivalent || schemeG).toFixed(3)} g of ${product.purity}` : null;
                   const taxLabel = product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : "";
                   const disc = product.discountAmount || 0;
                   const totalPayable = round2(billTotal - schemeGold);
@@ -1057,7 +1073,7 @@ export default function NewSale() {
                           billed at pure gold value - instead of being deducted
                           from the total at the bottom. Same arithmetic, read
                           the way the customer reads it. */}
-                      <Row label={`Gold Value${netG > 0 && pureRate > 0 ? ` (${netG.toFixed(3)} g × ${money(pureRate)})` : ""}`} value={money(goldValueLine)} />
+                      <Row label={goldValueLabel} value={money(round2(goldValuePure))} />
 
                       {/* Which passbook paid what. With one scheme this is the
                           same figure as the line below, so it is shown only
@@ -1075,11 +1091,18 @@ export default function NewSale() {
                       )}
 
                       <Row
-                        label={`Less: scheme credit${pureRate > 0 ? ` (${schemeG.toFixed(3)} g of ${product.purity})` : ""}`}
+                        label={`Less: scheme credit${schemeGLabel ? ` (${schemeGLabel})` : ""}`}
                         value={`− ${money(schemeGold)}`}
                         tone="text-emerald-700"
                       />
-                      <Row label={`Chargeable gold value${chargeableLabel ? ` (${chargeableLabel})` : ""}`} value={money(normalGold)} divider />
+                      <Row label={`Chargeable gold value${chargeableLabel ? ` (${chargeableLabel})` : ""}`} value={money(chargeableGold)} divider />
+
+                      {/* Everything below is levied on the CHARGEABLE gold, so
+                          it sits below that line - which is also the only order
+                          in which the column adds up to Total Payable. */}
+                      {(product.goldProfitAmount || 0) > 0 && (
+                        <Row label={goldProfitLabel} value={money(round2(product.goldProfitAmount))} />
+                      )}
 
                       <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
                       <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
@@ -1126,7 +1149,8 @@ export default function NewSale() {
                   );
                 })() : (
                   <>
-                    <Row label="Gold Value" value={money(round2(goldValueLine))} />
+                    <Row label={goldValueLabel} value={money(round2(goldValuePure))} />
+                    {goldProfitLine > 0 && <Row label={goldProfitLabel} value={money(round2(goldProfitLine))} />}
                     <Row label={`Making Charge${chargePct(product.makingChargeType, makingVal || product.makingChargeValue) ? ` ${chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}` : ""}`} value={money(product.makingChargeAmount)} />
                     <Row label={`Wastage${chargePct(product.wastageType, wastageVal || product.wastageValue) ? ` ${chargePct(product.wastageType, wastageVal || product.wastageValue)}` : ""}`} value={money(product.wastageAmount)} />
                     {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
