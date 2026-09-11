@@ -76,6 +76,16 @@ export default function NewSale() {
   // the previous good figures stay on screen while the reason is stated.
   const [quoteError, setQuoteError] = useState("");
   const [priceDriver, setPriceDriver] = useState("ENGINE"); // ENGINE | PRICE | PROFIT
+  // Below-cost approval. The backend refuses a customer price under the item's
+  // cost unless the sale carries an explicit approval and a reason, and records
+  // that approval in the audit trail. Clearance and damaged stock are real, so
+  // this is a gate with a key, not a wall.
+  const [allowBelowCost, setAllowBelowCost] = useState(false);
+  const [belowCostReason, setBelowCostReason] = useState("");
+  // The published rate for this item's purity, captured on the first quote.
+  // After an override the quote echoes the override back as goldRateApplied,
+  // so it can no longer serve as the reference the backend bands against.
+  const [publishedRate, setPublishedRate] = useState(null);
 
   // Customer
   const [customerMode, setCustomerMode] = useState("existing");
@@ -183,6 +193,7 @@ export default function NewSale() {
       setProduct(q);
       setProductCode(q.productCode);
       setRate(q.goldRateApplied != null ? String(q.goldRateApplied) : "");
+      setPublishedRate(q.goldRateApplied != null ? q.goldRateApplied : null);
       setMakingVal(q.makingChargeValue != null ? String(q.makingChargeValue) : "");
       setWastageVal(q.wastageValue != null ? String(q.wastageValue) : "");
       toast(`Found ${q.huid || key}`);
@@ -222,6 +233,9 @@ export default function NewSale() {
           // driven by Gold Profit % alone — never by a discount line.
           customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
           goldProfitPercent: priceDriver === "PROFIT" && goldProfit !== "" ? num(goldProfit) : undefined,
+          // Preview under the same rule the sale will apply, so the figures on
+          // screen are the figures that will be billed.
+          allowBelowCost: allowBelowCost || undefined,
           // Carve the gold-savings slice so the Bill summary previews the exact
           // making/GST-free figures the OTP redemption will finalize.
           schemeValue: schemeSelected ? schemeRedeemRequested : undefined,
@@ -238,7 +252,7 @@ export default function NewSale() {
     }, 450);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productCode, saleMode, rate, makingVal, wastageVal, discountNum, gst, customerPrice, goldProfit, priceDriver, schemeSelected, schemeRedeemRequested]);
+  }, [productCode, saleMode, rate, makingVal, wastageVal, discountNum, gst, customerPrice, goldProfit, priceDriver, schemeSelected, schemeRedeemRequested, allowBelowCost]);
 
   // Customer Price drives the bill: the backend returns the derived discount, so
   // mirror it into the Discount field. Quote 2,50,000 at 2,20,000 and the 30,000
@@ -354,6 +368,8 @@ export default function NewSale() {
       wastageType: product.wastageType || undefined,
       customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
       goldProfitPercent: priceDriver === "PROFIT" && goldProfit !== "" ? num(goldProfit) : undefined,
+      allowBelowCost: allowBelowCost || undefined,
+      belowCostReason: allowBelowCost ? belowCostReason.trim() : undefined,
       // The credit about to be redeemed against this bill. Validation only -
       // the sale is stored uncarved and the carve still happens inside the OTP
       // redemption - but a discount that could not survive that carve is now
@@ -409,13 +425,19 @@ export default function NewSale() {
   // from the billed figure every time the published purity rate differed.)
   const todaysGoldValue = product ? (product.goldValueAmount || 0) : 0;
 
+  // The backend refuses an approved below-cost sale that carries no reason, so
+  // the button waits for it rather than letting the counter meet a 400.
+  const belowCostIncomplete = allowBelowCost && belowCostReason.trim().length < 3;
+
   const canCreate =
     !!product && !creating && !requoting && !discountExceedsProfit &&
-    customerIdentified && paymentChosen && !partialInvalid && !anyLineOverBalance && !redeemOverGold;
+    customerIdentified && paymentChosen && !partialInvalid && !anyLineOverBalance &&
+    !redeemOverGold && !belowCostIncomplete;
 
   const resetAll = () => {
     setProduct(null); setProductCode(""); setCode("");
     setRate(""); setMakingVal(""); setWastageVal(""); setDiscount(""); setGst(true);
+    setAllowBelowCost(false); setBelowCostReason(""); setPublishedRate(null);
     setPayMethod(""); setPayStatus(""); setPartialAmount(""); setPayRef("");
     setSaleMode(null); setCustomerPrice(""); setGoldProfit(""); setPriceDriver("ENGINE"); setQuoteError("");
     clearCustomer(); setCustQuery(""); setCustResults([]); setWalkinName(""); setWalkinPhone("");
@@ -826,7 +848,14 @@ export default function NewSale() {
                     <label className="grid gap-1.5">
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
                       <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
-                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Published ${product.purity || ""} rate ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — locked in Online.` : `Editable. Default ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — the published ${product.purity || ""} rate.`}</span>
+                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Published ${product.purity || ""} rate ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — locked in Online.` : `Editable. Default ${publishedRate != null ? money(publishedRate) : "—"} — the published ${product.purity || ""} rate.`}</span>
+                      {/* The backend refuses a rate more than 50% either side of
+                          the published one — a tamper/typo net, not a haggling
+                          limit. Stating the range here means the counter never
+                          meets that rejection blind. */}
+                      {saleMode === "OFFLINE" && publishedRate != null && (
+                        <span className="text-[11px] text-muted">Allowed {money(publishedRate * 0.5)} – {money(publishedRate * 1.5)}.</span>
+                      )}
                     </label>
                     <label className="grid gap-1.5">
                       <span className="text-xs font-bold">Gold Profit %</span>
@@ -1127,6 +1156,38 @@ export default function NewSale() {
                 )
               )}
 
+              {/* Below-cost approval. Offered only once the backend says this
+                  price is a loss (or while an approval is already standing, so
+                  it can be withdrawn). Selling under cost is legitimate —
+                  clearance, damaged stock — but it is recorded against a name:
+                  the sale carries the reason into its own audit row. */}
+              {(product.safePrice?.isLoss || allowBelowCost) && (
+                <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50/70 p-3.5">
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-3.5 w-3.5 accent-amber-600"
+                      checked={allowBelowCost}
+                      onChange={(e) => { setAllowBelowCost(e.target.checked); if (!e.target.checked) setBelowCostReason(""); }}
+                    />
+                    <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-amber-900">Approve selling below cost</span>
+                  </label>
+                  <div className="mt-1.5 pl-[22px] text-[10px] leading-snug text-amber-900/80">
+                    This price is under what the piece cost. The approval and its reason are written to the audit trail.
+                  </div>
+                  {allowBelowCost && (
+                    <input
+                      type="text"
+                      value={belowCostReason}
+                      onChange={(e) => setBelowCostReason(e.target.value)}
+                      maxLength={255}
+                      placeholder="Reason (e.g. clearance, damaged stock)"
+                      className="mt-2 w-full rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-amber-500"
+                    />
+                  )}
+                </div>
+              )}
+
               <div className="mt-5 flex flex-col gap-2">
                 <Button size="sm" className="bg-accent hover:bg-accent-strong w-full" disabled={!canCreate} onClick={handleCreateBill}>{creating ? "Working…" : schemeApplied ? "Create Bill & Redeem" : "Create Bill"}</Button>
                 <div className="flex gap-2">
@@ -1142,6 +1203,7 @@ export default function NewSale() {
                     : partialInvalid ? "Enter a valid part payment to enable billing."
                     : discountExceedsProfit ? "Reduce the discount to enable billing."
                     : redeemOverGold ? "Reduce the scheme redemption to enable billing."
+                    : belowCostIncomplete ? "Enter the reason for selling below cost to enable billing."
                     : ""}
                 </p>
               )}

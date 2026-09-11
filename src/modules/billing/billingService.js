@@ -388,7 +388,7 @@ export const billingService = {
   async getSaleQuote(productCode, {
     discountAmount = 0, gstApplied = true, appliedRatePerGram,
     makingChargeValue, makingChargeType, wastageValue, wastageType,
-    customerPrice, goldProfitPercent, schemeValue,
+    customerPrice, goldProfitPercent, schemeValue, allowBelowCost,
   } = {}) {
     const params = new URLSearchParams();
     if (discountAmount) params.set("discount_amount", String(discountAmount));
@@ -403,6 +403,10 @@ export const billingService = {
     // Offline margin override: drives the engine price from this profit %.
     if (goldProfitPercent != null && goldProfitPercent !== "") params.set("gold_profit_percent", String(goldProfitPercent));
     if (appliedRatePerGram != null && appliedRatePerGram !== "") params.set("applied_rate_per_gram", String(appliedRatePerGram));
+    // Preview the bill as an approved below-cost sale. Without it the quote
+    // refuses a customer price under the item's cost - exactly as the sale
+    // will - so the preview and the eventual bill never disagree.
+    if (allowBelowCost) params.set("allow_below_cost", "true");
     // A value override must travel with its own type so a FIXED amount is never
     // reinterpreted as a PERCENTAGE by the backend engine.
     if (makingChargeValue != null && makingChargeValue !== "") { params.set("making_charge_value", String(makingChargeValue)); if (makingChargeType) params.set("making_charge_type", makingChargeType); }
@@ -425,6 +429,7 @@ export const billingService = {
     discountAmount = 0, gstApplied = true, appliedRatePerGram,
     makingChargeValue, makingChargeType, wastageValue, wastageType,
     customerPrice, goldProfitPercent, schemeValue,
+    allowBelowCost, belowCostReason,
     paymentMethod = "CASH", paymentStatus = "PAID",
     initialPaymentAmount, paymentReferenceNo,
   }) {
@@ -441,6 +446,9 @@ export const billingService = {
     if (customerPrice != null && customerPrice !== "") body.customer_price = Number(customerPrice);
     if (goldProfitPercent != null && goldProfitPercent !== "") body.gold_profit_percent = Number(goldProfitPercent);
     if (appliedRatePerGram != null && appliedRatePerGram !== "") body.applied_rate_per_gram = Number(appliedRatePerGram);
+    // Selling under cost is allowed but never silent: the backend requires the
+    // reason and writes its own SALE_BELOW_COST_APPROVED audit row.
+    if (allowBelowCost) { body.allow_below_cost = true; body.below_cost_reason = belowCostReason; }
     if (makingChargeValue != null && makingChargeValue !== "") { body.making_charge_value = Number(makingChargeValue); if (makingChargeType) body.making_charge_type = makingChargeType; }
     if (wastageValue != null && wastageValue !== "") { body.wastage_value = Number(wastageValue); if (wastageType) body.wastage_type = wastageType; }
     // The scheme credit about to be redeemed against this bill. Validation
