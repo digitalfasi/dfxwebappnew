@@ -200,6 +200,11 @@ export default function SchemeManagement() {
   const totalPaid = balance?.total_paid ?? manage?.totalPaid ?? null;
   // Authoritative total gold balance from the passbook summary (backend).
   const goldBalance = passbook?.summary?.total_gold_weight ?? null;
+  // A MONEY enrollment redeems the rupees paid in, so the gold its
+  // contributions were once valued at is not a balance and must not be shown as
+  // one - at the counter a gram figure reads as something the customer can
+  // spend. Gold schemes (and anything whose basis is not on record) keep it.
+  const redeemsAsMoney = manage?.redemptionBasis === "MONEY";
 
   async function saveRemark() {
     if (!manage) return;
@@ -396,7 +401,9 @@ export default function SchemeManagement() {
                       {manage.redemptionBasis && (
                         <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Redeems As</td><td className="px-4 py-2.5 font-medium">{manage.redemptionBasis === "MONEY" ? <>Money — the amount paid in</> : <>Gold — what the grams are worth today</>}</td></tr>
                       )}
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Current Gold Balance</td><td className="px-4 py-2.5 font-bold text-accent-strong">{grams(goldBalance)}</td></tr>
+                      {!redeemsAsMoney && (
+                        <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Current Gold Balance</td><td className="px-4 py-2.5 font-bold text-accent-strong">{grams(goldBalance)}</td></tr>
+                      )}
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.joined)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.maturity)}</td></tr>
                       <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-mono text-xs">{isClosed ? "Nil" : fmtDate(manage.nextDue)}</td></tr>
@@ -409,12 +416,15 @@ export default function SchemeManagement() {
               {!detailLoading && tab === "Passbook & Payments" && (
                 <div className="space-y-5">
                   <div>
-                    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted">Passbook — gold credited</div>
+                    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{redeemsAsMoney ? "Passbook — contributions" : "Passbook — gold credited"}</div>
                     <div className="overflow-x-auto rounded-xl border border-line">
                       <table className="w-full min-w-[560px] border-collapse text-sm">
                         <thead>
                           <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                            <th className="px-4 py-2.5">Date</th><th className="py-2.5 text-right">Payment</th><th className="py-2.5 text-right">Applicable Rate</th><th className="py-2.5 text-right">Gold Credited</th><th className="py-2.5 text-right pr-4">Gold Balance</th>
+                            <th className="px-4 py-2.5">Date</th><th className="py-2.5 text-right">Payment</th>
+                            {redeemsAsMoney ? <th className="py-2.5 pr-4 text-right">Running Total</th> : (
+                              <><th className="py-2.5 text-right">Applicable Rate</th><th className="py-2.5 text-right">Gold Credited</th><th className="py-2.5 text-right pr-4">Gold Balance</th></>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -422,13 +432,19 @@ export default function SchemeManagement() {
                             <tr key={e.id} className="border-b border-line-soft last:border-0">
                               <td className="px-4 py-2.5 font-mono text-xs">{e.date}</td>
                               <td className="py-2.5 text-right font-bold">{money(e.amount)}</td>
-                              <td className="py-2.5 text-right font-mono text-xs">{rate(e.goldRate)}</td>
-                              <td className="py-2.5 text-right font-mono">{grams(e.goldWeight)}</td>
-                              <td className="py-2.5 pr-4 text-right font-mono font-bold text-ink">{grams(e.goldBalance)}</td>
+                              {redeemsAsMoney ? (
+                                <td className="py-2.5 pr-4 text-right font-mono font-bold text-ink">{money(passbookRows.slice(0, passbookRows.indexOf(e) + 1).reduce((t, x) => t + (Number(x.amount) || 0), 0))}</td>
+                              ) : (
+                                <>
+                                  <td className="py-2.5 text-right font-mono text-xs">{rate(e.goldRate)}</td>
+                                  <td className="py-2.5 text-right font-mono">{grams(e.goldWeight)}</td>
+                                  <td className="py-2.5 pr-4 text-right font-mono font-bold text-ink">{grams(e.goldBalance)}</td>
+                                </>
+                              )}
                             </tr>
                           ))}
                           {passbookRows.length === 0 && (
-                            <tr><td colSpan={5} className="px-4 py-10 text-center text-muted">No passbook entries yet.</td></tr>
+                            <tr><td colSpan={redeemsAsMoney ? 3 : 5} className="px-4 py-10 text-center text-muted">No passbook entries yet.</td></tr>
                           )}
                         </tbody>
                       </table>
