@@ -25,12 +25,17 @@
 //
 // connect-src must name the API origin: the SPA calls it with fetch, and 'self'
 // alone would block every request. It falls back to the local dev API.
+// Empty when the API is reached by a relative path (the deployed setup sends
+// NEXT_PUBLIC_API_URL=/api/v1 through the same origin) - 'self' already covers
+// it, and naming a guessed absolute origin would both be wrong and, if it were
+// localhost, block every API call the browser makes.
 const API_ORIGIN = (() => {
-  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  const raw = process.env.NEXT_PUBLIC_API_URL || "";
+  if (!/^https?:\/\//i.test(raw)) return "";
   try {
     return new URL(raw).origin;
   } catch {
-    return "http://localhost:8000";
+    return "";
   }
 })();
 
@@ -40,9 +45,9 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   // data: for inlined icons, blob: for anything the app renders client-side,
   // and the API origin because product and catalogue images are served from it.
-  `img-src 'self' data: blob: ${API_ORIGIN}`,
+  `img-src 'self' data: blob: ${API_ORIGIN}`.trim(),
   "font-src 'self' data:",
-  `connect-src 'self' ${API_ORIGIN}`,
+  `connect-src 'self' ${API_ORIGIN}`.trim(),
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
