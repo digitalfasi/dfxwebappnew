@@ -59,6 +59,12 @@ function mapRow(raw) {
     // Canonical scheme type (MONTHLY / FIXED_GOLD_RATE / FLEXIBLE_DIGI_GOLD).
     // Screens switch presentation on this, never on the scheme's name.
     schemeType: raw.scheme_type || null,
+    // Frozen at joining: the purity a gold scheme buys in, and whether this
+    // enrollment redeems as MONEY (rupees paid in) or GOLD (what those grams
+    // are worth today). Both are facts about the customer's own terms, not
+    // about the scheme as it stands now.
+    goldPurity: raw.gold_purity || "",
+    redemptionBasis: raw.redemption_basis || "",
     joined: raw.joined_date,
     maturity: raw.maturity_date,
     status: labelStatus(raw.status),

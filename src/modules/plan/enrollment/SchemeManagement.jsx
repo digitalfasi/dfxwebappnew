@@ -385,6 +385,17 @@ export default function SchemeManagement() {
                           enrollment is still running. On a closed/completed
                           record they read Nil rather than a stale figure. */}
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Outstanding</td><td className={`px-4 py-2.5 ${isWalletScheme(manage.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(manage.schemeType) ? NOT_APPLICABLE : (isClosed ? "Nil" : money(outstanding(manage)))}</td></tr>
+                      {/* The customer's own terms, frozen when he joined: a
+                          Monthly plan redeems the rupees he paid; the two gold
+                          schemes redeem what his grams are worth today, which
+                          is why the purity he chose matters. Stated here so the
+                          counter can explain a balance instead of guessing. */}
+                      {manage.goldPurity && (
+                        <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Scheme Purity</td><td className="px-4 py-2.5 font-bold">{manage.goldPurity}</td></tr>
+                      )}
+                      {manage.redemptionBasis && (
+                        <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Redeems As</td><td className="px-4 py-2.5 font-medium">{manage.redemptionBasis === "MONEY" ? <>Money — the amount paid in</> : <>Gold — what the grams are worth today</>}</td></tr>
+                      )}
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Current Gold Balance</td><td className="px-4 py-2.5 font-bold text-accent-strong">{grams(goldBalance)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.joined)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.maturity)}</td></tr>
