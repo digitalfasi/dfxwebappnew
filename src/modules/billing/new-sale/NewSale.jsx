@@ -641,146 +641,9 @@ export default function NewSale() {
               </div>
             </Card>
 
-            {/* Purchase Cost and Purchase-Cost P/L are intentionally omitted from
-                this screen — the counter sees selling figures only. */}
-                <Card className="p-5 space-y-4">
-                  <SectionHead step={2} title="Pricing" meta={requoting ? "Updating…" : undefined} />
-                  {/* Reference figures stay small: the field below is the one
-                      the admin acts on, so it gets the visual weight. */}
-                  {/* Two equal columns with their own padding. SpecCell's
-                      edge-flush rule is for the spec strip that sits directly on
-                      the card; inside this bordered box it pulled the first
-                      label onto the border. */}
-                  <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1">
-                    <SpecCell label="Today's gold value" value={money(todaysGoldValue)} mono />
-                    <SpecCell label="Selling price" value={money(sellingPrice)} mono />
-                  </div>
-                  <div className="rounded-2xl border border-accent-line bg-accent-soft p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-[0.08em] text-accent-strong">Customer Price</span>
-                      {requoting && <span className="text-[10px] font-semibold text-muted">Updating…</span>}
-                    </div>
-                    <MoneyInput
-                      allowDecimal
-                      placeholder="0"
-                      className="mt-2 h-14 bg-surface pl-10 text-center text-2xl font-extrabold tracking-tight"
-                      symbolClassName="text-lg font-extrabold text-ink"
-                      value={priceDriver === "PRICE" ? customerPrice : (product.finalAmount != null ? String(round2(product.finalAmount)) : "")}
-                      onValueChange={(v) => { setCustomerPrice(v); setPriceDriver("PRICE"); }}
-                      aria-label="Customer price in rupees" />
-                    {quoteError ? (
-                      <p className="mt-1.5 rounded-lg border border-danger-line bg-danger-soft px-2.5 py-1.5 text-[11px] font-semibold leading-snug text-danger">
-                        {/* The server's own floor is authoritative and is already
-                            in its message, so the safe-price hint is appended
-                            ONLY when the message names no floor of its own -
-                            two different "lowest price" figures side by side
-                            read as a contradiction. Bare amounts in the message
-                            are given Indian grouping so they match every other
-                            figure on the screen. */}
-                        {formatAmountsInText(quoteError)}
-                        {minSafe != null && !/floor|lowest/i.test(quoteError) && <> The lowest price this bill can take is {money(minSafe)}.</>}
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-[11px] text-muted">
-                        {schemeSelected
-                          ? <>Bill total for the piece. It is converted into the Gold Profit % it implies, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
-                          /* It becomes a discount line, not a new profit %. Saying
-                             "Gold Profit % updates to match" was untrue on a
-                             normal bill and is what made the field look broken. */
-                          : <>Type the quoted price. The gap to {money(sellingPrice)} is recorded as a discount and comes out of Gold Profit — the percentage itself stays as you set it.</>}
-                      </p>
-                    )}
-                  </div>
-                  {product.currentGoldValuePnl != null && (
-                    <PnlCard
-                      label="Today's Gold Value Profit / Loss"
-                      amount={product.currentGoldValuePnl}
-                      pct={product.currentGoldValueMarginPct}
-                      /* The figure is opaque without its own arithmetic: it is
-                         the bill with GST taken back out (that money is the
-                         government's, not the store's) against what the metal
-                         is worth at today's rate. */
-                      detail={<>{money(round2((product.finalAmount || 0) / taxFactor))} bill less GST − {money(todaysGoldValue)} today's gold value</>}
-                    />
-                  )}
-                </Card>
-
-                {/* Editable rate + Gold Profit % + Making/Wastage + Discount */}
-                <Card className="p-5 space-y-4">
-                  <SectionHead step={3} title="Rate & charges" />
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="grid gap-1.5">
-                      <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
-                      <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
-                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Published ${product.purity || ""} rate ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — locked in Online.` : `Editable. Default ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — the published ${product.purity || ""} rate.`}</span>
-                    </label>
-                    <label className="grid gap-1.5">
-                      <span className="text-xs font-bold">Gold Profit %</span>
-                      {/* A discount is absorbed from gold profit, so this
-                          states the margin actually being earned - it falls as
-                          the discount grows and reads 0 when the discount has
-                          consumed it. The percentage that was SET is kept and
-                          shown below; typing here still sets it. */}
-                      <Input type="number" step="0.01" min="0" max="100" placeholder="10"
-                        value={
-                          priceDriver === "PROFIT"
-                            ? goldProfit
-                            : effectiveProfitPct != null && discountNum > 0
-                              ? String(round2(effectiveProfitPct))
-                              : (goldProfitShown != null ? String(round2(goldProfitShown)) : "")
-                        }
-                        onChange={(e) => { setGoldProfit(e.target.value); setPriceDriver("PROFIT"); }} />
-                      <span className="text-[11px] text-muted">{schemeSelected ? "Earned on the un-covered grams only — waived on the scheme-covered slice." : "Margin over gold value — drives the selling price."}</span>
-                      {/* What the margin becomes once the discount is taken off
-                          it. Red at zero: there is nothing left to give. */}
-                      {discountNum > 0 && effectiveProfitPct != null && (
-                        <span className={`text-[11px] font-semibold ${effectiveProfitPct <= 0.005 ? "text-danger" : "text-accent-strong"}`}>
-                          {effectiveProfitPct <= 0.005
-                            ? <>Set {round2(goldProfitShown || 0)}% — the {money(discountNum)} discount wipes it out, so this bill earns 0%</>
-                            : <>Set {round2(goldProfitShown || 0)}% — after the {money(discountNum)} discount this bill earns {money(effectiveProfitAmount)}</>}
-                        </span>
-                      )}
-                      {goldProfitSuggested != null && discountNum <= 0 && (
-                        <span className="text-[11px] font-semibold text-accent-strong">This can be cut to {round2(goldProfitSuggested)}% and the bill still makes money.</span>
-                      )}
-                    </label>
-                    <label className="grid gap-1.5">
-                      <span className="text-xs font-bold">Making Charge {chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}</span>
-                      <Input type="number" step="0.01" min="0" value={makingVal} onChange={(e) => setMakingVal(e.target.value)} />
-                      <span className="text-[11px] text-muted">= {money(product.makingChargeAmount)}</span>
-                    </label>
-                    <label className="grid gap-1.5">
-                      <span className="text-xs font-bold">Wastage {chargePct(product.wastageType, wastageVal || product.wastageValue)}</span>
-                      <Input type="number" step="0.01" min="0" value={wastageVal} onChange={(e) => setWastageVal(e.target.value)} />
-                      <span className="text-[11px] text-muted">= {money(product.wastageAmount)}</span>
-                    </label>
-                    <label className="grid gap-1.5 sm:col-span-2">
-                      {/* The unit matters now: a discount comes off the taxable
-                          value, so the bill falls by the discount plus the GST
-                          that is no longer due on it. */}
-                      <span className="text-xs font-bold">Discount (₹) <span className="font-normal text-muted">— off the taxable value</span></span>
-                      <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={schemeSelected && priceDriver === "PRICE"} className={schemeSelected && priceDriver === "PRICE" ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" />
-                      {discountNum > 0 && product.gstApplied && (product.taxRatePercent || 0) > 0 && (
-                        <span className="text-[11px] text-muted">Bill falls by {money(round2(discountNum * taxFactor))} — the discount plus the {product.taxRatePercent}% GST no longer due on it.</span>
-                      )}
-                      {schemeSelected && priceDriver === "PRICE" ? (
-                        <span className="text-[11px] text-muted">A scheme bill takes one or the other — clear the Customer Price above to give a rupee discount instead.</span>
-                      ) : discountCeiling != null ? (
-                        <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
-                          {discountExceedsProfit
-                            ? `Max discount ${money(discountCeiling)} — ${ceilingReason}.`
-                            : schemeSelected
-                              ? `Up to ${money(discountCeiling)} can be given — the Gold Profit on the grams the scheme has not covered.`
-                              : `Up to ${money(discountCeiling)} can be given — whichever runs out first, Gold Profit or the cost floor.`}
-                        </span>
-                      ) : <span className="text-[11px] text-muted">A discount may only reduce Gold Profit.</span>}
-                    </label>
-                  </div>
-                </Card>
-
             {/* Customer */}
             <Card className="p-5 space-y-4">
-              <SectionHead step={4} title="Customer" />
+              <SectionHead step={2} title="Customer" />
               <div className="flex gap-2">
                 {[["existing", "Existing customer"], ["walkin", "Walk-in"]].map(([m, label]) => (
                   <button key={m} type="button" onClick={() => setCustomerMode(m)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-colors ${customerMode === m ? "border-accent bg-accent-soft text-accent-strong" : "border-line text-ink-soft hover:bg-canvas"}`}>{label}</button>
@@ -882,6 +745,152 @@ export default function NewSale() {
                 </div>
               )}
             </Card>
+
+            {/* Purchase Cost and Purchase-Cost P/L are intentionally omitted from
+                this screen — the counter sees selling figures only. */}
+                <Card className="p-5 space-y-4">
+                  <SectionHead step={3} title="Pricing" meta={requoting ? "Updating…" : undefined} />
+                  {/* Reference figures stay small: the field below is the one
+                      the admin acts on, so it gets the visual weight. */}
+                  {/* Two equal columns with their own padding. SpecCell's
+                      edge-flush rule is for the spec strip that sits directly on
+                      the card; inside this bordered box it pulled the first
+                      label onto the border. */}
+                  <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1">
+                    <SpecCell label="Today's gold value" value={money(todaysGoldValue)} mono />
+                    {/* A scheme changes the selling price, so until the quote
+                        carrying it comes back there is no honest figure to
+                        print. Showing the un-carved one is how this strip came
+                        to display a price the server had already refused. */}
+                    <SpecCell
+                      label="Selling price"
+                      value={schemeSelected && !quoteHasScheme ? "—" : money(sellingPrice)}
+                      sub={schemeSelected && !quoteHasScheme ? "once the scheme is applied" : undefined}
+                      mono
+                    />
+                  </div>
+                  <div className="rounded-2xl border border-accent-line bg-accent-soft p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-[0.08em] text-accent-strong">Customer Price</span>
+                      {requoting && <span className="text-[10px] font-semibold text-muted">Updating…</span>}
+                    </div>
+                    <MoneyInput
+                      allowDecimal
+                      placeholder="0"
+                      className="mt-2 h-14 bg-surface pl-10 text-center text-2xl font-extrabold tracking-tight"
+                      symbolClassName="text-lg font-extrabold text-ink"
+                      value={priceDriver === "PRICE" ? customerPrice : (product.finalAmount != null ? String(round2(product.finalAmount)) : "")}
+                      onValueChange={(v) => { setCustomerPrice(v); setPriceDriver("PRICE"); }}
+                      aria-label="Customer price in rupees" />
+                    {quoteError ? (
+                      <p className="mt-1.5 rounded-lg border border-danger-line bg-danger-soft px-2.5 py-1.5 text-[11px] font-semibold leading-snug text-danger">
+                        {/* The server's own floor is authoritative and is already
+                            in its message, so the safe-price hint is appended
+                            ONLY when the message names no floor of its own -
+                            two different "lowest price" figures side by side
+                            read as a contradiction. Bare amounts in the message
+                            are given Indian grouping so they match every other
+                            figure on the screen. */}
+                        {formatAmountsInText(quoteError)}
+                        {minSafe != null && !/floor|lowest/i.test(quoteError) && <> The lowest price this bill can take is {money(minSafe)}.</>}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-muted">
+                        {schemeSelected
+                          ? <>Bill total for the piece. It is converted into the Gold Profit % it implies, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
+                          /* It becomes a discount line, not a new profit %. Saying
+                             "Gold Profit % updates to match" was untrue on a
+                             normal bill and is what made the field look broken. */
+                          : <>Type the quoted price. The gap to {money(sellingPrice)} is recorded as a discount and comes out of Gold Profit — the percentage itself stays as you set it.</>}
+                      </p>
+                    )}
+                  </div>
+                  {product.currentGoldValuePnl != null && (
+                    <PnlCard
+                      label="Today's Gold Value Profit / Loss"
+                      amount={product.currentGoldValuePnl}
+                      pct={product.currentGoldValueMarginPct}
+                      /* The figure is opaque without its own arithmetic: it is
+                         the bill with GST taken back out (that money is the
+                         government's, not the store's) against what the metal
+                         is worth at today's rate. */
+                      detail={<>{money(round2((product.finalAmount || 0) / taxFactor))} bill less GST − {money(todaysGoldValue)} today's gold value</>}
+                    />
+                  )}
+                </Card>
+
+                {/* Editable rate + Gold Profit % + Making/Wastage + Discount */}
+                <Card className="p-5 space-y-4">
+                  <SectionHead step={4} title="Rate & charges" />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
+                      <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
+                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Published ${product.purity || ""} rate ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — locked in Online.` : `Editable. Default ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — the published ${product.purity || ""} rate.`}</span>
+                    </label>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-bold">Gold Profit %</span>
+                      {/* A discount is absorbed from gold profit, so this
+                          states the margin actually being earned - it falls as
+                          the discount grows and reads 0 when the discount has
+                          consumed it. The percentage that was SET is kept and
+                          shown below; typing here still sets it. */}
+                      <Input type="number" step="0.01" min="0" max="100" placeholder="10"
+                        value={
+                          priceDriver === "PROFIT"
+                            ? goldProfit
+                            : effectiveProfitPct != null && discountNum > 0
+                              ? String(round2(effectiveProfitPct))
+                              : (goldProfitShown != null ? String(round2(goldProfitShown)) : "")
+                        }
+                        onChange={(e) => { setGoldProfit(e.target.value); setPriceDriver("PROFIT"); }} />
+                      <span className="text-[11px] text-muted">{schemeSelected ? "Earned on the un-covered grams only — waived on the scheme-covered slice." : "Margin over gold value — drives the selling price."}</span>
+                      {/* What the margin becomes once the discount is taken off
+                          it. Red at zero: there is nothing left to give. */}
+                      {discountNum > 0 && effectiveProfitPct != null && (
+                        <span className={`text-[11px] font-semibold ${effectiveProfitPct <= 0.005 ? "text-danger" : "text-accent-strong"}`}>
+                          {effectiveProfitPct <= 0.005
+                            ? <>Set {round2(goldProfitShown || 0)}% — the {money(discountNum)} discount wipes it out, so this bill earns 0%</>
+                            : <>Set {round2(goldProfitShown || 0)}% — after the {money(discountNum)} discount this bill earns {money(effectiveProfitAmount)}</>}
+                        </span>
+                      )}
+                      {goldProfitSuggested != null && discountNum <= 0 && (
+                        <span className="text-[11px] font-semibold text-accent-strong">This can be cut to {round2(goldProfitSuggested)}% and the bill still makes money.</span>
+                      )}
+                    </label>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-bold">Making Charge {chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}</span>
+                      <Input type="number" step="0.01" min="0" value={makingVal} onChange={(e) => setMakingVal(e.target.value)} />
+                      <span className="text-[11px] text-muted">= {money(product.makingChargeAmount)}</span>
+                    </label>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-bold">Wastage {chargePct(product.wastageType, wastageVal || product.wastageValue)}</span>
+                      <Input type="number" step="0.01" min="0" value={wastageVal} onChange={(e) => setWastageVal(e.target.value)} />
+                      <span className="text-[11px] text-muted">= {money(product.wastageAmount)}</span>
+                    </label>
+                    <label className="grid gap-1.5 sm:col-span-2">
+                      {/* The unit matters now: a discount comes off the taxable
+                          value, so the bill falls by the discount plus the GST
+                          that is no longer due on it. */}
+                      <span className="text-xs font-bold">Discount (₹) <span className="font-normal text-muted">— off the taxable value</span></span>
+                      <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={schemeSelected && priceDriver === "PRICE"} className={schemeSelected && priceDriver === "PRICE" ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" />
+                      {discountNum > 0 && product.gstApplied && (product.taxRatePercent || 0) > 0 && (
+                        <span className="text-[11px] text-muted">Bill falls by {money(round2(discountNum * taxFactor))} — the discount plus the {product.taxRatePercent}% GST no longer due on it.</span>
+                      )}
+                      {schemeSelected && priceDriver === "PRICE" ? (
+                        <span className="text-[11px] text-muted">A scheme bill takes one or the other — clear the Customer Price above to give a rupee discount instead.</span>
+                      ) : discountCeiling != null ? (
+                        <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
+                          {discountExceedsProfit
+                            ? `Max discount ${money(discountCeiling)} — ${ceilingReason}.`
+                            : schemeSelected
+                              ? `Up to ${money(discountCeiling)} can be given — the Gold Profit on the grams the scheme has not covered.`
+                              : `Up to ${money(discountCeiling)} can be given — whichever runs out first, Gold Profit or the cost floor.`}
+                        </span>
+                      ) : <span className="text-[11px] text-muted">A discount may only reduce Gold Profit.</span>}
+                    </label>
+                  </div>
+                </Card>
 
             {/* Payment */}
             <Card className="p-5 space-y-4">
@@ -989,108 +998,82 @@ export default function NewSale() {
                   const waivedTotal = round2(waivedMaking + waivedWastage + waivedGst);
                   const makingLabel = chargePct(product.makingChargeType, makingVal || product.makingChargeValue);
                   const wastageLabel = chargePct(product.wastageType, wastageVal || product.wastageValue);
+                  const chargeableLabel = pureRate > 0 ? `${normalG.toFixed(3)} g of ${product.purity}` : null;
+                  const taxLabel = product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : "";
+                  const disc = product.discountAmount || 0;
+                  const totalPayable = round2(billTotal - schemeGold);
                   return (
                     <>
-                      <div className="mt-1 rounded-xl border border-emerald-200 border-l-[3px] border-l-emerald-500 bg-emerald-50/60 p-3">
-                        <div className="flex items-baseline justify-between">
-                          <span className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-emerald-800">Scheme portion · paid</span>
-                          <span className="text-[10px] font-bold text-emerald-800">{pureRate > 0 ? `${schemeG.toFixed(3)} g of ${product.purity}` : "—"}</span>
-                        </div>
+                      {/* One column. The scheme is taken off the gold value
+                          where it was actually applied - the covered gold is
+                          billed at pure gold value - instead of being deducted
+                          from the total at the bottom. Same arithmetic, read
+                          the way the customer reads it. */}
+                      <Row label={`Gold Value${netG > 0 && pureRate > 0 ? ` (${netG.toFixed(3)} g × ${money(pureRate)})` : ""}`} value={money(goldValueLine)} />
 
-                        {/* One line per scheme: which passbook, how many rupees,
-                            how much 24K gold that is. With several schemes on one
-                            bill this is the only place the split is visible. */}
-                        <div className="mt-2 overflow-hidden rounded-lg border border-emerald-200 bg-white/70">
-                          <div className="flex items-center gap-2 border-b border-emerald-100 px-2.5 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.08em] text-emerald-700">
-                            <span className="flex-1">Scheme</span>
-                            <span className="w-24 text-right">Amount</span>
-                            <span className="w-20 text-right">Gold 24K</span>
-                          </div>
+                      {/* Which passbook paid what. With one scheme this is the
+                          same figure as the line below, so it is shown only
+                          when there is actually a split to see. */}
+                      {schemeRows.length > 1 && (
+                        <div className="my-1 overflow-hidden rounded-lg border border-emerald-200 bg-emerald-50/40">
                           {schemeRows.map((r) => (
-                            <div key={r.key} className="flex items-center gap-2 border-b border-emerald-50 px-2.5 py-1.5 text-[11px] last:border-b-0">
-                              <span className="min-w-0 flex-1 truncate font-semibold text-ink" title={r.name}>{r.name}</span>
-                              <span className="num w-24 text-right font-semibold text-ink">{money(r.amount)}</span>
-                              <span className="num w-20 text-right font-semibold text-emerald-800">{rate24 > 0 ? `${r.g24.toFixed(3)} g` : "—"}</span>
+                            <div key={r.key} className="flex items-center gap-2 border-b border-emerald-100 px-2.5 py-1 text-[11px] last:border-b-0">
+                              <span className="min-w-0 flex-1 truncate font-semibold text-emerald-900" title={r.name}>{r.name}</span>
+                              <span className="num w-24 text-right font-semibold text-emerald-900">{money(r.amount)}</span>
+                              <span className="num w-20 text-right text-emerald-700">{rate24 > 0 ? `${r.g24.toFixed(3)} g` : "—"}</span>
                             </div>
                           ))}
-                          {schemeRows.length > 1 && (
-                            <div className="flex items-center gap-2 border-t border-emerald-200 bg-emerald-50/70 px-2.5 py-1.5 text-[11px]">
-                              <span className="flex-1 font-extrabold text-emerald-900">{schemeRows.length} schemes · total</span>
-                              <span className="num w-24 text-right font-extrabold text-emerald-900">{money(schemeGold)}</span>
-                              <span className="num w-20 text-right font-extrabold text-emerald-900">{rate24 > 0 ? `${schemeG24.toFixed(3)} g` : "—"}</span>
-                            </div>
-                          )}
                         </div>
+                      )}
 
-                        {/* The conversion the senior's model turns on: 24K scheme
-                            gold restated in the piece's purity, then taken off its
-                            weight. Stated as arithmetic so it can be checked. */}
-                        {rate24 > 0 && pureRate > 0 && (
-                          <p className="num mt-1.5 text-[10px] font-semibold leading-snug text-emerald-800">
-                            {schemeG24.toFixed(3)} g of 24K = {schemeG.toFixed(3)} g of {product.purity} · {netG.toFixed(3)} g − {schemeG.toFixed(3)} g = {normalG.toFixed(3)} g billed normally
-                          </p>
-                        )}
+                      <Row
+                        label={`Less: scheme credit${pureRate > 0 ? ` (${schemeG.toFixed(3)} g of ${product.purity})` : ""}`}
+                        value={`− ${money(schemeGold)}`}
+                        tone="text-emerald-700"
+                      />
+                      <Row label={`Chargeable gold value${chargeableLabel ? ` (${chargeableLabel})` : ""}`} value={money(normalGold)} divider />
 
-                        {/* The waived charges are shown as the negatives they
-                            are, so the customer can see what the scheme bought
-                            him. They are NOT deducted from anything: the
-                            subtotal is the pure gold value, exactly as billed. */}
-                        <div className="mt-2 space-y-0.5">
-                          <Row label="Gold Value (pure gold value)" value={money(schemeGold)} />
-                          <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""} · waived`} value={waivedMaking > 0 ? `− ${money(waivedMaking)}` : "₹0.00"} tone="text-emerald-700" />
-                          {(product.wastageAmount > 0 || waivedWastage > 0) && (
-                            <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""} · waived`} value={waivedWastage > 0 ? `− ${money(waivedWastage)}` : "₹0.00"} tone="text-emerald-700" />
-                          )}
-                          <Row label={`GST${waivedTaxRate ? ` ${waivedTaxRate}%` : ""} · waived`} value={waivedGst > 0 ? `− ${money(waivedGst)}` : "₹0.00"} tone="text-emerald-700" />
-                          <Row label="Subtotal" value={money(schemeGold)} divider strong />
-                          {waivedTotal > 0 && (
-                            <div className="mt-1.5 flex items-baseline justify-between gap-2 rounded-lg bg-emerald-100/70 px-2.5 py-1.5">
-                              <span className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-emerald-900">Not charged on this gold</span>
-                              <span className="num text-[12px] font-extrabold text-emerald-900">{money(waivedTotal)}</span>
-                            </div>
-                          )}
+                      <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
+                      <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
+                      {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
+                      {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
+                      <Row label="Subtotal" value={money(normalSubtotal)} divider />
+
+                      {disc > 0 && (
+                        <>
+                          <Row label="Discount" value={`− ${money(disc)}`} tone="text-emerald-700" />
+                          <Row label="Taxable value" value={money(round2(normalSubtotal - disc))} />
+                        </>
+                      )}
+                      <Row label={`GST${taxLabel}`} value={money(product.taxAmount)} />
+                      <Row label="Total Payable" value={money(totalPayable)} strong divider />
+
+                      {/* What the scheme gold did NOT carry. Not deducted from
+                          anything - it was never charged - but it is the whole
+                          point of the scheme for the customer, so it is said. */}
+                      {waivedTotal > 0 && (
+                        <div className="mt-1.5 flex items-baseline justify-between gap-2 rounded-lg bg-emerald-100/70 px-2.5 py-1.5">
+                          <span className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-emerald-900">Not charged on the scheme gold</span>
+                          <span className="num text-[12px] font-extrabold text-emerald-900">{money(waivedTotal)}</span>
                         </div>
-                      </div>
+                      )}
+                      <p className="mt-1 text-[10px] leading-snug text-emerald-800/80">
+                        The scheme&rsquo;s{pureRate > 0 ? ` ${schemeG.toFixed(3)} g ` : " "}gold is bought at pure gold value — no making charge, no wastage and no GST on it. Making and GST above are charged only on the
+                        {pureRate > 0 ? ` ${normalG.toFixed(3)} g ` : " gold "}
+                        it did not cover.
+                      </p>
 
-                      <div className="mt-2 rounded-xl border border-line-soft border-l-[3px] border-l-accent bg-canvas/60 p-3">
-                        <div className="flex items-baseline justify-between">
-                          <span className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-muted">Normal portion · payable</span>
-                          <span className="text-[10px] font-bold text-muted">{pureRate > 0 ? `${normalG.toFixed(3)} g of ${product.purity}` : "—"}</span>
-                        </div>
-                        <div className="mt-1.5 space-y-0.5">
-                          {/* Margin folded in, exactly as the printed
-                              invoice does it. */}
-                          <Row label="Gold Value" value={money(normalGold)} />
-                          <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
-                          <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
-                          {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
-                          {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
-                          <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
-                          <Row label="Subtotal" value={money(round2(normalSubtotal + product.taxAmount))} divider strong />
-                        </div>
-                      </div>
-
-                      <div className="mt-2 space-y-0.5">
-                        <Row label="Total" value={money(billTotal)} strong />
-                        <Row label="Scheme Savings" value={`− ${money(redeemTotal)}`} tone="text-emerald-700" />
-                        <Row label="Balance to Pay" value={money(remaining)} strong divider />
-                        <p className="mt-1 text-[10px] leading-snug text-emerald-800/80">
-                          The scheme's{pureRate > 0 ? ` ${schemeG.toFixed(3)} g ` : " "}gold is bought at pure gold value — {waivedTotal > 0 ? <>the {money(waivedTotal)} of making charge, wastage and GST it would have carried is not charged</> : <>no making charge, wastage or GST on it</>}. The remaining
-                          {pureRate > 0 ? ` ${normalG.toFixed(3)} g ` : " gold "}
-                          carries them in full, so the Making &amp; GST above are already only on that share.
-                        </p>
-                        {/* Mirrors the Payment card. Until a status is picked
-                            there is no paid/outstanding figure to state — printing
-                            one asserts money that was never collected. */}
-                        {paymentChosen ? (
-                          <>
-                            <Row label={payStatus === "PARTIAL" ? "Paid now" : payStatus === "PENDING" ? "Paid" : "Amount Paid"} value={money(paidNow)} />
-                            <Row label="Outstanding" value={money(outstanding)} tone={outstanding > 0 ? "text-accent" : "text-emerald-700"} strong={outstanding > 0} />
-                          </>
-                        ) : (
-                          <Row label="Payment" value="Not selected" tone="text-muted" />
-                        )}
-                      </div>
+                      {/* Mirrors the Payment card. Until a status is picked
+                          there is no paid/outstanding figure to state — printing
+                          one asserts money that was never collected. */}
+                      {paymentChosen ? (
+                        <>
+                          <Row label={payStatus === "PARTIAL" ? "Paid now" : payStatus === "PENDING" ? "Paid" : "Amount Paid"} value={money(paidNow)} />
+                          <Row label="Outstanding" value={money(outstanding)} tone={outstanding > 0 ? "text-accent" : "text-emerald-700"} strong={outstanding > 0} />
+                        </>
+                      ) : (
+                        <Row label="Payment" value="Not selected" tone="text-muted" />
+                      )}
                     </>
                   );
                 })() : (
@@ -1349,10 +1332,11 @@ const SectionHead = ({ step, title, meta }) => (
 );
 
 /** One cell of the item spec strip: label over value, hairline separated. */
-const SpecCell = ({ label, value, mono, flush = false }) => (
+const SpecCell = ({ label, value, mono, sub, flush = false }) => (
   <div className={`min-w-0 flex-1 px-3.5 py-2.5 ${flush ? "first:pl-0 last:pr-0" : ""}`}>
     <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">{label}</div>
     <div className={`mt-0.5 truncate text-sm font-extrabold text-ink ${mono ? "num" : ""}`}>{value}</div>
+    {sub ? <div className="truncate text-[10px] font-semibold text-muted">{sub}</div> : null}
   </div>
 );
 
