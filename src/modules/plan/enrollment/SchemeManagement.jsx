@@ -303,9 +303,12 @@ export default function SchemeManagement() {
                   <td className="px-4 py-3.5 font-mono text-xs font-semibold whitespace-nowrap">{r.enrollment}</td>
                   <td className="px-4 py-3.5 text-muted whitespace-nowrap">{fmtDate(r.joined)}</td>
                   <td className="px-4 py-3.5 text-muted whitespace-nowrap">{fmtDate(r.maturity)}</td>
-                  <td className="num px-4 py-3.5 text-right font-semibold whitespace-nowrap">{money(r.installment)}</td>
+                  {/* Same rule as the Manage Scheme panel: a wallet has no
+                      instalment and nothing outstanding. Dash stays on the
+                      column's own right-aligned rule. */}
+                  <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${isWalletScheme(r.schemeType) ? "font-semibold text-muted" : "font-semibold"}`}>{isWalletScheme(r.schemeType) ? NOT_APPLICABLE : money(r.installment)}</td>
                   <td className="num px-4 py-3.5 text-right whitespace-nowrap"><span className="font-bold">{r.paid}/{r.total}</span></td>
-                  <td className="num px-4 py-3.5 text-right font-bold whitespace-nowrap">{money(outstanding(r))}</td>
+                  <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${isWalletScheme(r.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(r.schemeType) ? NOT_APPLICABLE : money(outstanding(r))}</td>
                   <td className="px-4 py-3.5"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></td>
                   <td className="px-4 py-3.5 pr-6 text-right">
                     <Button size="sm" variant="outline" onClick={() => openManage(r)}>Manage</Button>

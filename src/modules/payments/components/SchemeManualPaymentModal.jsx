@@ -8,6 +8,7 @@ import { formatINR } from "@/_shared/utils";
 import { customerService } from "@/modules/customers/customerService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { paymentService } from "@/modules/payments/paymentService";
+import { isWalletScheme } from "@/modules/plan/scheme/schemeCapabilities";
 import { dueSchedule, fmtDueDate, fmtMissedDates } from "@/modules/plan/scheme/schemeDue";
 
 // Scheme manual-payment method enum (backend PaymentMethod for /payments/manual).
@@ -301,8 +302,11 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
                       >
                         <span>
                           <span className="block text-sm font-bold">{e.scheme}</span>
+                          {/* A wallet has no per-month figure to quote - the
+                              customer deposits what he likes. The count of
+                              contributions still means something, so it stays. */}
                           <span className="block text-xs text-muted">
-                            {formatINR(e.installment)}/mo · {e.paid}/{e.total} paid
+                            {isWalletScheme(e.schemeType) ? `${e.paid}/${e.total} paid` : `${formatINR(e.installment)}/mo · ${e.paid}/${e.total} paid`}
                           </span>
                           <span className="block font-mono text-[11px] text-muted">{e.enrollment}</span>
                         </span>
