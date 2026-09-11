@@ -507,8 +507,11 @@ export default function NewSale() {
   // The bill prints gold value and store margin as SEPARATE rows: folding the
   // margin into a single "Gold Value" line made the bill impossible to check by
   // hand (weight x rate did not equal the printed figure, and Making 3% was 3%
-  // of the pure gold value, not of the printed one). goldValueLine stays as the
-  // combined figure because the scheme split is computed against it.
+  // of the pure gold value, not of the printed one). The store's margin is not
+  // a line the customer may see, though - no jeweller prints it, and the
+  // invoice and quotation never did - so the summary now folds it into Gold
+  // Value the way those documents do, and the percentages above are read
+  // against the pure gold value they are actually charged on.
   const goldValuePure = product ? (product.goldValueAmount || 0) : 0;
   const goldProfitLine = product ? (product.goldProfitAmount || 0) : 0;
   const goldValueLine = goldValuePure + goldProfitLine;
@@ -1050,8 +1053,9 @@ export default function NewSale() {
                           <span className="text-[10px] font-bold text-muted">{pureRate > 0 ? `${normalG.toFixed(3)} g of ${product.purity}` : "—"}</span>
                         </div>
                         <div className="mt-1.5 space-y-0.5">
-                          <Row label="Gold Value" value={money(Math.max(0, goldValuePure - schemeGold))} />
-                          {goldProfitLine > 0 && <Row label={`Gold Profit ${round2(product.goldProfitPercent || 0)}%`} value={money(goldProfitLine)} />}
+                          {/* Margin folded in, exactly as the printed
+                              invoice does it. */}
+                          <Row label="Gold Value" value={money(normalGold)} />
                           <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
                           <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
                           {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
@@ -1070,11 +1074,6 @@ export default function NewSale() {
                           {pureRate > 0 ? ` ${normalG.toFixed(3)} g ` : " gold "}
                           carries them in full, so the Making &amp; GST above are already only on that share.
                         </p>
-                        {(product.goldProfitAmount || 0) > 0 && (
-                          <p className="text-[10px] leading-snug text-muted">
-                            Gold profit sits entirely in the normal portion.
-                          </p>
-                        )}
                         {/* Mirrors the Payment card. Until a status is picked
                             there is no paid/outstanding figure to state — printing
                             one asserts money that was never collected. */}
@@ -1091,8 +1090,7 @@ export default function NewSale() {
                   );
                 })() : (
                   <>
-                    <Row label={`Gold Value${product.netGoldWeightGrams && product.goldRateApplied ? ` (${Number(product.netGoldWeightGrams).toFixed(3)} g x ${money(product.goldRateApplied)})` : ""}`} value={money(goldValuePure)} />
-                    {goldProfitLine > 0 && <Row label={`Gold Profit ${round2(product.goldProfitPercent || 0)}%`} value={money(goldProfitLine)} />}
+                    <Row label="Gold Value" value={money(round2(goldValueLine))} />
                     <Row label={`Making Charge${chargePct(product.makingChargeType, makingVal || product.makingChargeValue) ? ` ${chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}` : ""}`} value={money(product.makingChargeAmount)} />
                     <Row label={`Wastage${chargePct(product.wastageType, wastageVal || product.wastageValue) ? ` ${chargePct(product.wastageType, wastageVal || product.wastageValue)}` : ""}`} value={money(product.wastageAmount)} />
                     {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
