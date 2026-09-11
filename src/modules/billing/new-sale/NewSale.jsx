@@ -152,16 +152,20 @@ export default function NewSale() {
       : discountCeiling === costFloorCeiling && (goldProfitCeiling == null || costFloorCeiling <= goldProfitCeiling)
         ? "beyond that the bill sells below what the piece cost"
         : "beyond that it is giving away more than this bill's Gold Profit";
-  const discountExceedsProfit = !schemeSelected && discountCeiling != null && discountNum > discountCeiling + 1e-6;
+  const discountExceedsProfit = discountCeiling != null && discountNum > discountCeiling + 1e-6;
   // A discount is absorbed from gold profit and nothing else, so the margin the
   // bill is really earning is the set profit less the discount. Stating it here
   // is what makes "the discount ate the profit" visible instead of implied: at
   // a discount equal to the profit the effective figure reads 0%.
   const effectiveProfitAmount =
     goldProfitCeiling != null ? Math.max(0, goldProfitCeiling - discountNum) : null;
+  const profitBaseGoldValue = Math.max(
+    0,
+    (product?.goldValueAmount || 0) - (Number(product?.schemeApplied) || 0)
+  );
   const effectiveProfitPct =
-    effectiveProfitAmount != null && (product?.goldValueAmount || 0) > 0
-      ? (effectiveProfitAmount / product.goldValueAmount) * 100
+    effectiveProfitAmount != null && profitBaseGoldValue > 0
+      ? (effectiveProfitAmount / profitBaseGoldValue) * 100
       : null;
 
   // First HUID lookup — confirm a real sellable item and seed edit fields.
@@ -201,11 +205,12 @@ export default function NewSale() {
       setRequoting(true);
       try {
         const q = await billingService.getSaleQuote(productCode, {
-          // A scheme bill uses pure engine pricing on the covered slice: no manual
-          // discount and no negotiated customer price stack on it (backend rejects
-          // both). Otherwise, when a customer price drives the bill the backend
-          // derives the discount itself — sending ours too would double-count it.
-          discountAmount: schemeSelected ? 0 : (priceDriver === "PRICE" ? undefined : discountNum),
+          // A discount is allowed on a scheme bill: it comes off the profit on
+          // the grams the scheme has NOT covered, and the OTP redemption replays
+          // it. Omitted only when a negotiated customer price is driving the
+          // bill — there the backend derives the discount itself, so sending
+          // ours as well would double-count it.
+          discountAmount: priceDriver === "PRICE" ? undefined : discountNum,
           gstApplied: gst,
           appliedRatePerGram: offline && rate !== "" ? num(rate) : undefined,
           makingChargeValue: makingVal !== "" ? num(makingVal) : undefined,
@@ -338,11 +343,9 @@ export default function NewSale() {
       customerId: customerMode === "existing" ? selectedCustomer?.id : undefined,
       customerName: customerMode === "walkin" ? walkinName.trim() : undefined,
       customerPhone: customerMode === "walkin" ? (walkinPhone.trim() || undefined) : undefined,
-      // A scheme (savings) bill carries no manual discount and no negotiated
-      // customer price — the covered gold slice is already billed at pure gold
-      // value. Sending either would make the OTP redemption's recompute reject the
-      // sale ("a discount cannot be applied to a scheme bill").
-      discountAmount: schemeSelected ? 0 : discountNum,
+      // Carried through on a scheme bill as well — the redemption's recompute
+      // replays the sale's own discount, so it survives the carve-out.
+      discountAmount: priceDriver === "PRICE" ? 0 : discountNum,
       gstApplied: gst,
       appliedRatePerGram: offline && rate !== "" ? num(rate) : undefined,
       makingChargeValue: makingVal !== "" ? num(makingVal) : undefined,
@@ -722,7 +725,7 @@ export default function NewSale() {
                       <span className="text-[11px] text-muted">{schemeSelected ? "Earned on the un-covered grams only — waived on the scheme-covered slice." : "Margin over gold value — drives the selling price."}</span>
                       {/* What the margin becomes once the discount is taken off
                           it. Red at zero: there is nothing left to give. */}
-                      {!schemeSelected && discountNum > 0 && effectiveProfitPct != null && (
+                      {discountNum > 0 && effectiveProfitPct != null && (
                         <span className={`text-[11px] font-semibold ${effectiveProfitPct <= 0.005 ? "text-danger" : "text-accent-strong"}`}>
                           {effectiveProfitPct <= 0.005
                             ? <>Set {round2(goldProfitShown || 0)}% — the {money(discountNum)} discount wipes it out, so this bill earns 0%</>
@@ -748,17 +751,19 @@ export default function NewSale() {
                           value, so the bill falls by the discount plus the GST
                           that is no longer due on it. */}
                       <span className="text-xs font-bold">Discount (₹) <span className="font-normal text-muted">— off the taxable value</span></span>
-                      <Input type="number" step="0.01" min="0" value={schemeSelected ? "" : discount} onChange={(e) => setDiscount(e.target.value)} disabled={schemeSelected} className={schemeSelected ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" />
-                      {discountNum > 0 && !schemeSelected && product.gstApplied && (product.taxRatePercent || 0) > 0 && (
+                      <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={schemeSelected && priceDriver === "PRICE"} className={schemeSelected && priceDriver === "PRICE" ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" />
+                      {discountNum > 0 && product.gstApplied && (product.taxRatePercent || 0) > 0 && (
                         <span className="text-[11px] text-muted">Bill falls by {money(round2(discountNum * taxFactor))} — the discount plus the {product.taxRatePercent}% GST no longer due on it.</span>
                       )}
-                      {schemeSelected ? (
-                        <span className="text-[11px] text-muted">Not available on a scheme bill — the covered gold slice is already billed at pure gold value.</span>
+                      {schemeSelected && priceDriver === "PRICE" ? (
+                        <span className="text-[11px] text-muted">A scheme bill takes one or the other — clear the Customer Price above to give a rupee discount instead.</span>
                       ) : discountCeiling != null ? (
                         <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
                           {discountExceedsProfit
                             ? `Max discount ${money(discountCeiling)} — ${ceilingReason}.`
-                            : `Up to ${money(discountCeiling)} can be given — whichever runs out first, Gold Profit or the cost floor.`}
+                            : schemeSelected
+                              ? `Up to ${money(discountCeiling)} can be given — the Gold Profit on the grams the scheme has not covered.`
+                              : `Up to ${money(discountCeiling)} can be given — whichever runs out first, Gold Profit or the cost floor.`}
                         </span>
                       ) : <span className="text-[11px] text-muted">A discount may only reduce Gold Profit.</span>}
                     </label>
