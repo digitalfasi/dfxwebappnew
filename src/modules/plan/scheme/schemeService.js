@@ -40,6 +40,8 @@ function mapCard(raw) {
     description: raw.description || "",
     monthlyAmount: raw.monthly_amount,
     durationMonths: raw.duration_months,
+    // Purity a gold scheme buys in. Null for MONTHLY, which saves money.
+    goldPurity: raw.gold_purity || "",
     bonusDescription: raw.bonus_description || "",
     // Full tier grid (active + inactive) so the Edit form can prefill the tiers
     // the admin already selected. Backend-authoritative; never faked.
@@ -65,13 +67,14 @@ export const schemeService = {
    * monthly_amount/duration_months plus a tiers[] array, each tier carrying its
    * own monthly_amount/duration_months (+ bonus_percentage, is_active).
    */
-  async createScheme({ name, description, schemeType, monthlyAmount, durationMonths, bonusDescription, tiers }) {
+  async createScheme({ name, description, schemeType, monthlyAmount, durationMonths, goldPurity, bonusDescription, tiers }) {
     const body = {
       name,
       ...(description ? { description } : {}),
       ...(schemeType ? { scheme_type: schemeType } : {}),
       monthly_amount: monthlyAmount,
       duration_months: durationMonths,
+      ...(goldPurity ? { gold_purity: goldPurity } : {}),
       ...(bonusDescription ? { bonus_description: bonusDescription } : {}),
       ...(tiers && tiers.length
         ? {
@@ -96,6 +99,7 @@ export const schemeService = {
       ...(data.schemeType !== undefined ? { scheme_type: data.schemeType } : {}),
       ...(data.monthlyAmount !== undefined ? { monthly_amount: data.monthlyAmount } : {}),
       ...(data.durationMonths !== undefined ? { duration_months: data.durationMonths } : {}),
+      ...(data.goldPurity ? { gold_purity: data.goldPurity } : {}),
       ...(data.bonusDescription !== undefined ? { bonus_description: data.bonusDescription } : {}),
       ...(data.isActive !== undefined ? { is_active: data.isActive } : {}),
       // Tier set reconciled server-side: matching tiers kept, new added, missing

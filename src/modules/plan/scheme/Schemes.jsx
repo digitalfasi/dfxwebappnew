@@ -8,15 +8,21 @@ import { Select } from "@/_shared/ui/select";
 import { formatINR, money } from "@/_shared/utils";
 import { schemeService, SCHEME_TYPES } from "@/modules/plan/scheme/schemeService";
 
-// Business limits, mirrored from app/modules/plan/scheme/schema.py. An
-// instalment plan (MONTHLY / FIXED_GOLD_RATE) runs at most 11 months at
-// Rs 1,000-15,000; a Flexible Digi Gold wallet takes Rs 500-1,00,000 per
-// deposit with no month coverage.
-const MAX_DURATION_MONTHS = 11;
+// Business limits, mirrored from app/modules/plan/scheme/schema.py. Every
+// scheme runs 12 months. Monthly Gold Saving is sold at the five instalments
+// below and nothing else; Fixed Gold Rate takes Rs 1,000-15,000; a Flexible
+// Digi Gold wallet takes Rs 500-1,00,000 per deposit.
+const MAX_DURATION_MONTHS = 12;
 const MONTHLY_MIN = 1000;
 const MONTHLY_MAX = 15000;
+const MONTHLY_TIER_AMOUNTS = [1000, 2000, 5000, 10000, 15000];
 const DIGI_MIN = 500;
 const DIGI_MAX = 100000;
+// The two schemes that buy gold rather than save money pick a purity at
+// enrollment. Mirrors PURITY_CHOICES in app/_shared/core/constants.py.
+const PURITY_CHOICES = ["9K", "14K", "18K", "20K", "22K", "24K"];
+const GOLD_SCHEME_TYPES = ["FIXED_GOLD_RATE", "FLEXIBLE_DIGI_GOLD"];
+const needsPurity = (type) => GOLD_SCHEME_TYPES.includes(type);
 
 // bonus_description stays a string in the contract; the UI captures the
 // percentage and composes the sentence, so the stored value is predictable
@@ -50,13 +56,13 @@ export default function Schemes() {
   // the moment anything references it.
   const [deleting, setDeleting] = useState(null);
   const [busyId, setBusyId] = useState(null); // scheme id mid deactivate/reactivate
-  const [form, setForm] = useState({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonusPct: "" });
+  const [form, setForm] = useState({ title: "", description: "", type: "MONTHLY", duration: "12", amount: "1000", purity: "24K", bonusPct: "" });
   const [tiers, setTiers] = useState([]);
   const [errors, setErrors] = useState({});
 
   // Multi-tier support — matches the old DFX scheme form (each tier has its own
   // monthly amount + duration; bonus_percentage defaults to 0 per contract).
-  const addTier = () => setTiers((t) => [...t, { monthlyAmount: "1000", durationMonths: "11" }]);
+  const addTier = () => setTiers((t) => [...t, { monthlyAmount: "1000", durationMonths: String(MAX_DURATION_MONTHS) }]);
   const removeTier = (i) => setTiers((t) => t.filter((_, x) => x !== i));
   const updateTier = (i, patch) => setTiers((t) => t.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
 
@@ -78,7 +84,7 @@ export default function Schemes() {
 
   function openCreate() {
     setEditingId(null);
-    setForm({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonusPct: "" });
+    setForm({ title: "", description: "", type: "MONTHLY", duration: "12", amount: "1000", purity: "24K", bonusPct: "" });
     setTiers([]);
     setErrors({});
     setShow(true);
@@ -93,6 +99,7 @@ export default function Schemes() {
       type: s.schemeType || "MONTHLY",
       duration: String(s.durationMonths ?? ""),
       amount: String(s.monthlyAmount ?? ""),
+      purity: s.goldPurity || "24K",
       bonusPct: bonusTextToPct(s.bonusDescription),
     });
     // Prefill the tiers the admin already selected (active tiers), so editing a
@@ -121,7 +128,10 @@ export default function Schemes() {
     const walletAmount = amt >= DIGI_MIN && amt <= DIGI_MAX ? amt : DIGI_MIN;
     const amountToSave = isWallet ? walletAmount : amt;
     if (!isWallet && (!form.amount || amt <= 0)) e.amount = "Enter valid amount";
-    else if (!isWallet && (amt < MONTHLY_MIN || amt > MONTHLY_MAX)) e.amount = `Monthly amount must be ${money(MONTHLY_MIN)}–${money(MONTHLY_MAX)}`;
+    else if (form.type === "MONTHLY" && !MONTHLY_TIER_AMOUNTS.includes(amt)) e.amount = `Monthly Gold Saving is sold at ${MONTHLY_TIER_AMOUNTS.map((a) => money(a)).join(", ")} only`;
+    else if (!isWallet && form.type !== "MONTHLY" && (amt < MONTHLY_MIN || amt > MONTHLY_MAX)) e.amount = `Amount must be ${money(MONTHLY_MIN)}–${money(MONTHLY_MAX)}`;
+    // A gold scheme is bought IN a purity; a money scheme has none.
+    if (needsPurity(form.type) && !PURITY_CHOICES.includes(form.purity)) e.purity = "Choose the purity this scheme buys in";
     if (form.bonusPct !== "" && (Number(form.bonusPct) < 0 || Number(form.bonusPct) > 99)) e.bonusPct = "Bonus must be 0–99%";
     // Tiers apply to MONTHLY schemes on both create and edit.
     const cleanTiers = [];
@@ -133,6 +143,8 @@ export default function Schemes() {
         const ma = Number(t.monthlyAmount);
         const dm = Number(t.durationMonths);
         if (!ma || ma <= 0 || !dm || dm <= 0) { e.tiers = "Each tier needs a valid amount and duration"; break; }
+        if (!MONTHLY_TIER_AMOUNTS.includes(ma)) { e.tiers = `Tiers are offered at ${MONTHLY_TIER_AMOUNTS.map((a) => money(a)).join(", ")} only`; break; }
+        if (dm > MAX_DURATION_MONTHS) { e.tiers = `A tier cannot run longer than ${MAX_DURATION_MONTHS} months`; break; }
         const key = `${ma}-${dm}`;
         if (seen.has(key)) { e.tiers = "Tier duplicates the base plan or another tier (same amount and duration)"; break; }
         seen.add(key);
@@ -150,6 +162,7 @@ export default function Schemes() {
           schemeType: form.type,
           monthlyAmount: amountToSave,
           durationMonths: Number(form.duration),
+          goldPurity: needsPurity(form.type) ? form.purity : undefined,
           bonusDescription: bonusPctToText(form.bonusPct),
           // Always send the tier set. Omitting it leaves tiers untouched, so a
           // scheme switched away from MONTHLY would keep stale selectable tiers;
@@ -168,11 +181,12 @@ export default function Schemes() {
           schemeType: form.type,
           monthlyAmount: amountToSave,
           durationMonths: Number(form.duration),
+          goldPurity: needsPurity(form.type) ? form.purity : undefined,
           bonusDescription: bonusPctToText(form.bonusPct) || undefined,
           tiers: cleanTiers,
         });
         setShow(false);
-        setForm({ title: "", description: "", type: "MONTHLY", duration: "11", amount: "1000", bonusPct: "" });
+        setForm({ title: "", description: "", type: "MONTHLY", duration: "12", amount: "1000", purity: "24K", bonusPct: "" });
         setTiers([]);
         setErrors({});
         await loadSchemes();
@@ -329,8 +343,15 @@ export default function Schemes() {
               <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Title<span className="text-danger">*</span> — e.g. Festival Special Plan</span><input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Festival Special Plan" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.title ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.title && <span className="text-xs font-semibold text-danger">{errors.title}</span>}</label>
               <label className="grid gap-1.5"><span className="text-xs font-bold">Description — Short description shown to customers</span><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short description..." rows={2} className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
               <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Type<span className="text-danger">*</span> — how contributions convert to gold</span><Select value={form.type} onValueChange={(t) => setForm(f => ({ ...f, type: t }))} options={SCHEME_TYPES.map(t => ({ value: t.value, label: t.label }))} /><span className="text-[11px] text-muted">{form.type === "FIXED_GOLD_RATE" ? "Gold rate is locked at enrollment; contributions convert at that locked rate." : form.type === "FLEXIBLE_DIGI_GOLD" ? "Contributions convert to gold at the rate on the contribution date." : "Standard monthly savings plan."}</span></label>
+              {/* Fixed Gold Rate and Digi Gold are bought IN a purity: it
+                  decides what each contribution buys and what those grams are
+                  worth against the piece at the counter. A Monthly plan saves
+                  money, so it is never asked. */}
+              {needsPurity(form.type) && (
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Gold Purity<span className="text-danger">*</span> <span className="font-normal text-muted">— what this scheme buys</span></span><Select value={form.purity} onValueChange={(p) => setForm({ ...form, purity: p })} options={PURITY_CHOICES.map((p) => ({ value: p, label: p }))} />{errors.purity ? <span className="text-xs font-semibold text-danger">{errors.purity}</span> : <span className="text-[11px] text-muted">Contributions buy grams of this purity; at the counter they convert to the piece&rsquo;s own purity.</span>}</label>
+              )}
               <label className="grid gap-1.5"><span className="text-xs font-bold">Duration (Months)<span className="text-danger">*</span> <span className="font-normal text-muted">— max {MAX_DURATION_MONTHS}</span></span><input type="number" min={1} max={MAX_DURATION_MONTHS} step={1} value={form.duration} onChange={e => setForm({ ...form, duration: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.duration ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.duration && <span className="text-xs font-semibold text-danger">{errors.duration}</span>}</label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Monthly Amount (₹)<span className="text-danger">*</span> <span className="font-normal text-muted">— {form.type === "FLEXIBLE_DIGI_GOLD" ? `${money(DIGI_MIN)} to ${money(DIGI_MAX)}` : `${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}`}</span></span>{/* FDG-004. A Digi Gold wallet has no monthly amount to set: the
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Monthly Amount (₹)<span className="text-danger">*</span> <span className="font-normal text-muted">— {form.type === "FLEXIBLE_DIGI_GOLD" ? `${money(DIGI_MIN)} to ${money(DIGI_MAX)}` : form.type === "MONTHLY" ? "fixed tiers" : `${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}`}</span></span>{/* FDG-004. A Digi Gold wallet has no monthly amount to set: the
                     customer deposits what he likes, whenever he likes, within a
                     fixed range. The control states that range and is read-only
                     (not disabled - it stays reachable by keyboard and readable
@@ -338,6 +359,10 @@ export default function Schemes() {
                     restores the normal editable field. */}
                 {form.type === "FLEXIBLE_DIGI_GOLD" ? (
                   <input type="text" readOnly aria-readonly="true" value={`${money(DIGI_MIN)} to ${money(DIGI_MAX)}`} className="h-10 cursor-default rounded-xl border border-line bg-canvas/60 px-3.5 text-sm font-semibold text-muted outline-none" />
+                ) : form.type === "MONTHLY" ? (
+                  /* Sold at five instalments and nothing else, so it is chosen,
+                     not typed. */
+                  <Select value={String(form.amount)} onValueChange={(v) => setForm({ ...form, amount: v })} options={MONTHLY_TIER_AMOUNTS.map((a) => ({ value: String(a), label: money(a) }))} />
                 ) : (
                   <input type="number" step={1} value={form.amount} min={MONTHLY_MIN} max={MONTHLY_MAX} onChange={e => setForm({ ...form, amount: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.amount ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
                 )}{!errors.amount && <span className="text-[11px] text-muted">{form.type === "FLEXIBLE_DIGI_GOLD" ? `A wallet deposit may be ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, any number of times.` : `An instalment must be ${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}.`}</span>}{errors.amount && <span className="text-xs font-semibold text-danger">{errors.amount}</span>}</label>
@@ -376,7 +401,7 @@ export default function Schemes() {
                 {errors.tiers && <span className="text-xs font-semibold text-danger">{errors.tiers}</span>}
                 {tiers.map((t, i) => (
                   <div key={i} className="flex items-end gap-2">
-                    <label className="grid flex-1 gap-1.5"><span className="text-[11px] font-bold text-muted">Monthly (₹)</span><input type="number" value={t.monthlyAmount} onChange={e => updateTier(i, { monthlyAmount: e.target.value })} className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none transition focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
+                    <label className="grid flex-1 gap-1.5"><span className="text-[11px] font-bold text-muted">Monthly (₹)</span><Select value={String(t.monthlyAmount)} onValueChange={(v) => updateTier(i, { monthlyAmount: v })} options={MONTHLY_TIER_AMOUNTS.map((a) => ({ value: String(a), label: money(a) }))} /></label>
                     <label className="grid flex-1 gap-1.5"><span className="text-[11px] font-bold text-muted">Duration (months)</span><input type="number" value={t.durationMonths} onChange={e => updateTier(i, { durationMonths: e.target.value })} className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none transition focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
                     <button type="button" onClick={() => removeTier(i)} aria-label="Remove tier" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-line text-muted hover:border-danger hover:text-danger">✕</button>
                   </div>
