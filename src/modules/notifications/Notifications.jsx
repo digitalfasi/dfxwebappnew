@@ -11,12 +11,16 @@ const TABS = ["All", "Drafts", "Sent", "Failed", "Cancelled"];
 const CHANNELS = ["In-App", "Email", "WhatsApp", "SMS", "Push"];
 const AUDIENCES = ["All customers", "Specific customers", "Customers enrolled in a scheme"];
 
+// Recipient counts are deliberately absent. This screen does not yet call the
+// notification-campaign backend, so there is no real number to show - and a
+// plausible-looking invented one is worse than a blank, because a jeweller
+// would believe it. The column renders an em dash until the wiring lands.
 const INITIAL = [
-  { id: 1, title: "Diwali Gold Offer", channel: "WhatsApp", audience: "All customers", recipients: "1,240", status: "Sent" },
-  { id: 2, title: "Diwali Gold Offer", channel: "Push", audience: "Specific customers", recipients: "Priya, Ramesh +2", status: "Draft" },
-  { id: 3, title: "Payment Reminder", channel: "SMS", audience: "Customers enrolled in a scheme", recipients: "Gold Flexi Saver (42)", status: "Failed" },
-  { id: 4, title: "New Branch Launch", channel: "Email", audience: "All customers", recipients: "3,100", status: "Cancelled" },
-  { id: 5, title: "Diwali Gold Offer", channel: "In-App", audience: "All customers", recipients: "—", status: "Draft" },
+  { id: 1, title: "Diwali Gold Offer", channel: "WhatsApp", audience: "All customers", status: "Sent" },
+  { id: 2, title: "Diwali Gold Offer", channel: "Push", audience: "Specific customers", status: "Draft" },
+  { id: 3, title: "Payment Reminder", channel: "SMS", audience: "Customers enrolled in a scheme", status: "Failed" },
+  { id: 4, title: "New Branch Launch", channel: "Email", audience: "All customers", status: "Cancelled" },
+  { id: 5, title: "Diwali Gold Offer", channel: "In-App", audience: "All customers", status: "Draft" },
 ];
 
 const STATUS_TONE = { Draft: "neutral", Sent: "success", Failed: "danger", Cancelled: "warning" };
@@ -49,7 +53,7 @@ export default function Notifications() {
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length) { toast("Fix highlighted fields"); return; }
-    setList(prev => [{ id: Date.now(), title: form.title.trim(), channel: form.channel, audience: form.audience, recipients: form.audience === "All customers" ? "—" : form.audience === "Specific customers" ? "Priya, ... (draft)" : "Scheme audience (draft)", status: "Draft" }, ...prev]);
+    setList(prev => [{ id: Date.now(), title: form.title.trim(), channel: form.channel, audience: form.audience, status: "Draft" }, ...prev]);
     setShowForm(false);
     setForm({ title: "", message: "", channel: "In-App", audience: "All customers" });
     toast("Draft saved");
@@ -59,7 +63,7 @@ export default function Notifications() {
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length) { toast("Fix highlighted fields"); return; }
-    setList(prev => [{ id: Date.now(), title: form.title.trim(), channel: form.channel, audience: form.audience, recipients: form.audience === "All customers" ? `${(1200 + Math.floor(Math.random()*800)).toLocaleString()}` : form.audience === "Specific customers" ? "Selected customers" : "Enrolled customers", status: "Sent" }, ...prev]);
+    setList(prev => [{ id: Date.now(), title: form.title.trim(), channel: form.channel, audience: form.audience, status: "Sent" }, ...prev]);
     setShowForm(false);
     setForm({ title: "", message: "", channel: "In-App", audience: "All customers" });
     toast("Notification sent");
@@ -108,7 +112,7 @@ export default function Notifications() {
                   <td className="px-6 py-3.5 font-bold">{n.title}</td>
                   <td className="py-3.5"><Badge tone="neutral">{n.channel}</Badge></td>
                   <td className="py-3.5 text-muted text-xs font-medium max-w-[180px]">{n.audience}</td>
-                  <td className="py-3.5 font-mono text-xs">{n.recipients}</td>
+                  <td className="py-3.5 font-mono text-xs text-muted">{n.recipients || "—"}</td>
                   <td className="py-3.5"><Badge tone={STATUS_TONE[n.status] ?? "neutral"} dot>{n.status}</Badge></td>
                   <td className="py-3.5 pr-6 text-right">
                     <div className="flex justify-end gap-1.5">
@@ -123,6 +127,10 @@ export default function Notifications() {
           </table>
         </CardContent>
       </Card>
+
+      <p className="mt-3 text-xs text-muted">
+        Recipient counts are shown once notification delivery is connected to the customer list. Until then this column stays blank rather than showing an estimate.
+      </p>
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

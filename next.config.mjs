@@ -45,9 +45,13 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   // data: for inlined icons, blob: for anything the app renders client-side,
   // and the API origin because product and catalogue images are served from it.
-  `img-src 'self' data: blob: ${API_ORIGIN}`.trim(),
+  // OpenStreetMap tiles for the branch location picker (BR-001). Without this
+  // the map renders as empty grey squares and nothing says why.
+  `img-src 'self' data: blob: https://*.tile.openstreetmap.org ${API_ORIGIN}`.trim(),
   "font-src 'self' data:",
-  `connect-src 'self' ${API_ORIGIN}`.trim(),
+  // Nominatim answers the address search. Same reason: blocked here, the search
+  // fails with a console error the user never sees.
+  `connect-src 'self' https://nominatim.openstreetmap.org ${API_ORIGIN}`.trim(),
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",

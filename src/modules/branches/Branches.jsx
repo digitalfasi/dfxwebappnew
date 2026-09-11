@@ -6,6 +6,14 @@ import { Badge } from "@/_shared/ui/badge";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { branchService } from "@/modules/branches/branchService";
+import dynamic from "next/dynamic";
+
+// Leaflet touches `window` at module scope, so the picker is loaded in the
+// browser only.
+const BranchLocationPicker = dynamic(
+  () => import("@/modules/branches/BranchLocationPicker"),
+  { ssr: false, loading: () => <div className="h-64 rounded-xl border border-line bg-canvas" /> }
+);
 
 export default function Branches() {
   const scope = useRef(null);
@@ -64,8 +72,14 @@ export default function Branches() {
     if (!form.name.trim()) e.name = "Branch Name is required";
     if (!form.address.trim()) e.address = "Address is required";
     if (!/^\d{10}$/.test(form.phone.trim())) e.phone = "Phone must be 10 digits";
-    if (!form.latitude.trim() || isNaN(Number(form.latitude)) || Number(form.latitude) < -90 || Number(form.latitude) > 90) e.latitude = "Latitude is required (e.g. 12.9716)";
-    if (!form.longitude.trim() || isNaN(Number(form.longitude)) || Number(form.longitude) < -180 || Number(form.longitude) > 180) e.longitude = "Longitude is required (e.g. 77.5946)";
+    // The coordinates still have to be right - the customer-facing branch
+    // locator navigates people to them - but they come from the map now, so the
+    // error talks about the map rather than about a number.
+    const lat = Number(form.latitude), lon = Number(form.longitude);
+    if (!form.latitude || !form.longitude || isNaN(lat) || isNaN(lon)
+        || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      e.location = "Pick the branch location on the map";
+    }
     return e;
   };
 
@@ -212,17 +226,15 @@ export default function Branches() {
                 {errors.phone ? <span className="text-xs font-semibold text-danger">{errors.phone}</span> : <span className="text-xs text-muted">10-digit store phone</span>}
               </label>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-1.5">
-                  <span className="text-xs font-bold">Latitude *</span>
-                  <Input value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} placeholder="12.9716" className={errors.latitude ? "border-danger" : ""} />
-                  {errors.latitude ? <span className="text-xs font-semibold text-danger">{errors.latitude}</span> : <span className="text-xs text-muted">e.g. 12.9716</span>}
-                </label>
-                <label className="grid gap-1.5">
-                  <span className="text-xs font-bold">Longitude *</span>
-                  <Input value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} placeholder="77.5946" className={errors.longitude ? "border-danger" : ""} />
-                  {errors.longitude ? <span className="text-xs font-semibold text-danger">{errors.longitude}</span> : <span className="text-xs text-muted">e.g. 77.5946</span>}
-                </label>
+              <div className="grid gap-1.5">
+                <span className="text-xs font-bold">Location *</span>
+                <BranchLocationPicker
+                  latitude={form.latitude}
+                  longitude={form.longitude}
+                  addressQuery={form.address}
+                  onChange={({ latitude, longitude }) => setForm(f => ({ ...f, latitude, longitude }))}
+                />
+                {errors.location && <span className="text-xs font-semibold text-danger">{errors.location}</span>}
               </div>
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
