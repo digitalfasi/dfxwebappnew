@@ -1108,7 +1108,16 @@ export default function NewSale() {
                       <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
                       {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
                       {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
-                      <Row label="Subtotal" value={money(normalSubtotal)} divider />
+                      {/* This is the GST base, and on a scheme bill it is the
+                          CARVED base (1,63,186.95 on the S003 case) while the
+                          invoice's "Subtotal" is the full one (2,03,186.95).
+                          Both are right; one word carrying two numbers on one
+                          sale is not. So the word Subtotal is left to the
+                          invoice and the screen names this row for what it is.
+                          With a discount present the post-discount row below is
+                          the taxable value instead, so this one is named for
+                          the base it actually is. */}
+                      <Row label={disc > 0 ? "Chargeable value" : "Taxable value"} value={money(normalSubtotal)} divider />
 
                       {disc > 0 && (
                         <>
