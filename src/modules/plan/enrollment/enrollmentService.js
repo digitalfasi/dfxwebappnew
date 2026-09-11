@@ -56,6 +56,9 @@ function mapRow(raw) {
     // Customer code is not on the enrollment payload; left blank, not faked.
     code: "",
     scheme: raw.scheme_name,
+    // Canonical scheme type (MONTHLY / FIXED_GOLD_RATE / FLEXIBLE_DIGI_GOLD).
+    // Screens switch presentation on this, never on the scheme's name.
+    schemeType: raw.scheme_type || null,
     joined: raw.joined_date,
     maturity: raw.maturity_date,
     status: labelStatus(raw.status),

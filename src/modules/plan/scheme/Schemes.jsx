@@ -115,10 +115,12 @@ export default function Schemes() {
     const amt = Number(form.amount);
     if (!form.duration || dur <= 0) e.duration = "Enter valid months";
     else if (!isWallet && dur > MAX_DURATION_MONTHS) e.duration = `Duration cannot exceed ${MAX_DURATION_MONTHS} months`;
-    if (!form.amount || amt <= 0) e.amount = "Enter valid amount";
-    // Flexible Digi Gold monthly amount is bounded ₹500–₹1,00,000 (mirrors the
-    // backend rule). Other scheme types keep the open range.
-    else if (isWallet && (amt < DIGI_MIN || amt > DIGI_MAX)) e.amount = `Flexible Digi Gold amount must be ${money(DIGI_MIN)}–${money(DIGI_MAX)}`;
+    // A wallet's amount is never typed (the field is read-only), so it cannot
+    // be wrong. The contract still needs a figure: keep whatever the scheme
+    // already has when editing, else the minimum deposit.
+    const walletAmount = amt >= DIGI_MIN && amt <= DIGI_MAX ? amt : DIGI_MIN;
+    const amountToSave = isWallet ? walletAmount : amt;
+    if (!isWallet && (!form.amount || amt <= 0)) e.amount = "Enter valid amount";
     else if (!isWallet && (amt < MONTHLY_MIN || amt > MONTHLY_MAX)) e.amount = `Monthly amount must be ${money(MONTHLY_MIN)}–${money(MONTHLY_MAX)}`;
     if (form.bonusPct !== "" && (Number(form.bonusPct) < 0 || Number(form.bonusPct) > 99)) e.bonusPct = "Bonus must be 0–99%";
     // Tiers apply to MONTHLY schemes on both create and edit.
@@ -146,7 +148,7 @@ export default function Schemes() {
           name: form.title.trim(),
           description: form.description.trim(),
           schemeType: form.type,
-          monthlyAmount: Number(form.amount),
+          monthlyAmount: amountToSave,
           durationMonths: Number(form.duration),
           bonusDescription: bonusPctToText(form.bonusPct),
           // Always send the tier set. Omitting it leaves tiers untouched, so a
@@ -164,7 +166,7 @@ export default function Schemes() {
           name: form.title.trim(),
           description: form.description.trim() || undefined,
           schemeType: form.type,
-          monthlyAmount: Number(form.amount),
+          monthlyAmount: amountToSave,
           durationMonths: Number(form.duration),
           bonusDescription: bonusPctToText(form.bonusPct) || undefined,
           tiers: cleanTiers,
@@ -326,9 +328,19 @@ export default function Schemes() {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Title<span className="text-danger">*</span> — e.g. Festival Special Plan</span><input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Festival Special Plan" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.title ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.title && <span className="text-xs font-semibold text-danger">{errors.title}</span>}</label>
               <label className="grid gap-1.5"><span className="text-xs font-bold">Description — Short description shown to customers</span><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short description..." rows={2} className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Type<span className="text-danger">*</span> — how contributions convert to gold</span><Select value={form.type} onValueChange={(t) => setForm(f => ({ ...f, type: t, amount: t === "FLEXIBLE_DIGI_GOLD" ? "" : f.amount }))} options={SCHEME_TYPES.map(t => ({ value: t.value, label: t.label }))} /><span className="text-[11px] text-muted">{form.type === "FIXED_GOLD_RATE" ? "Gold rate is locked at enrollment; contributions convert at that locked rate." : form.type === "FLEXIBLE_DIGI_GOLD" ? "Contributions convert to gold at the rate on the contribution date." : "Standard monthly savings plan."}</span></label>
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Type<span className="text-danger">*</span> — how contributions convert to gold</span><Select value={form.type} onValueChange={(t) => setForm(f => ({ ...f, type: t }))} options={SCHEME_TYPES.map(t => ({ value: t.value, label: t.label }))} /><span className="text-[11px] text-muted">{form.type === "FIXED_GOLD_RATE" ? "Gold rate is locked at enrollment; contributions convert at that locked rate." : form.type === "FLEXIBLE_DIGI_GOLD" ? "Contributions convert to gold at the rate on the contribution date." : "Standard monthly savings plan."}</span></label>
               <label className="grid gap-1.5"><span className="text-xs font-bold">Duration (Months)<span className="text-danger">*</span> <span className="font-normal text-muted">— max {MAX_DURATION_MONTHS}</span></span><input type="number" min={1} max={MAX_DURATION_MONTHS} step={1} value={form.duration} onChange={e => setForm({ ...form, duration: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.duration ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.duration && <span className="text-xs font-semibold text-danger">{errors.duration}</span>}</label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Monthly Amount (₹)<span className="text-danger">*</span> <span className="font-normal text-muted">— {form.type === "FLEXIBLE_DIGI_GOLD" ? `${money(DIGI_MIN)} to ${money(DIGI_MAX)}` : `${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}`}</span></span><input type="number" step={1} value={form.amount} min={form.type === "FLEXIBLE_DIGI_GOLD" ? DIGI_MIN : MONTHLY_MIN} max={form.type === "FLEXIBLE_DIGI_GOLD" ? DIGI_MAX : MONTHLY_MAX} placeholder={form.type === "FLEXIBLE_DIGI_GOLD" ? "Enter ₹500 – ₹1,00,000" : undefined} onChange={e => setForm({ ...form, amount: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.amount ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{!errors.amount && <span className="text-[11px] text-muted">{form.type === "FLEXIBLE_DIGI_GOLD" ? `A wallet deposit may be ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, any number of times.` : `An instalment must be ${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}.`}</span>}{errors.amount && <span className="text-xs font-semibold text-danger">{errors.amount}</span>}</label>
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Monthly Amount (₹)<span className="text-danger">*</span> <span className="font-normal text-muted">— {form.type === "FLEXIBLE_DIGI_GOLD" ? `${money(DIGI_MIN)} to ${money(DIGI_MAX)}` : `${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}`}</span></span>{/* FDG-004. A Digi Gold wallet has no monthly amount to set: the
+                    customer deposits what he likes, whenever he likes, within a
+                    fixed range. The control states that range and is read-only
+                    (not disabled - it stays reachable by keyboard and readable
+                    by a screen reader). Switching to any other scheme type
+                    restores the normal editable field. */}
+                {form.type === "FLEXIBLE_DIGI_GOLD" ? (
+                  <input type="text" readOnly aria-readonly="true" value={`${money(DIGI_MIN)} to ${money(DIGI_MAX)}`} className="h-10 cursor-default rounded-xl border border-line bg-canvas/60 px-3.5 text-sm font-semibold text-muted outline-none" />
+                ) : (
+                  <input type="number" step={1} value={form.amount} min={MONTHLY_MIN} max={MONTHLY_MAX} onChange={e => setForm({ ...form, amount: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.amount ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
+                )}{!errors.amount && <span className="text-[11px] text-muted">{form.type === "FLEXIBLE_DIGI_GOLD" ? `A wallet deposit may be ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, any number of times.` : `An instalment must be ${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}.`}</span>}{errors.amount && <span className="text-xs font-semibold text-danger">{errors.amount}</span>}</label>
               {/* The bonus is a PERCENTAGE, so it is captured as a bounded number
                   (0-99) rather than free text that accepted any digits at all.
                   The stored description is composed from it, keeping the existing

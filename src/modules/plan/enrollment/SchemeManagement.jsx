@@ -10,6 +10,7 @@ import { fmtDate, grams as fmtGrams, money as fmtMoney } from "@/_shared/utils";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { passbookService } from "@/_shared/passbookService";
 import { paymentService } from "@/modules/payments/paymentService";
+import { isWalletScheme, NOT_APPLICABLE } from "@/modules/plan/scheme/schemeCapabilities";
 
 // Scheme Management — operational customer/enrollment module. Consolidates the
 // former Enrollments + Collections screens. All figures (paid, outstanding,
@@ -370,14 +371,17 @@ export default function SchemeManagement() {
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Scheme</td><td className="px-4 py-2.5 font-medium">{manage.scheme}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Enrollment No.</td><td className="px-4 py-2.5 font-mono text-xs font-semibold">{manage.enrollment}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Status</td><td className="px-4 py-2.5"><Badge tone={statusTone(manage.status)} dot>{manage.status}</Badge></td></tr>
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Installment</td><td className="px-4 py-2.5 font-bold">{money(manage.installment)}</td></tr>
+                      {/* FDG-002. A Digi Gold wallet takes deposits of any size
+                          whenever the customer likes, so there is no instalment
+                          to state. The stored figure is left untouched. */}
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Installment</td><td className={`px-4 py-2.5 ${isWalletScheme(manage.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(manage.schemeType) ? NOT_APPLICABLE : money(manage.installment)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Planned Duration</td><td className="px-4 py-2.5 font-medium">{manage.total} months</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Successful Payments</td><td className="px-4 py-2.5 font-bold">{manage.paid} / {manage.total}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Total Paid</td><td className="px-4 py-2.5 font-bold">{money(totalPaid)}</td></tr>
                       {/* Overdue and Next Due only mean something while the
                           enrollment is still running. On a closed/completed
                           record they read Nil rather than a stale figure. */}
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Outstanding</td><td className="px-4 py-2.5 font-bold">{isClosed ? "Nil" : money(outstanding(manage))}</td></tr>
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Outstanding</td><td className={`px-4 py-2.5 ${isWalletScheme(manage.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(manage.schemeType) ? NOT_APPLICABLE : (isClosed ? "Nil" : money(outstanding(manage)))}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Current Gold Balance</td><td className="px-4 py-2.5 font-bold text-accent-strong">{grams(goldBalance)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.joined)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.maturity)}</td></tr>

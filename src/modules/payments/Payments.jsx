@@ -9,6 +9,7 @@ import { paymentService } from "@/modules/payments/paymentService";
 import { billingService } from "@/modules/billing/billingService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { dueSchedule, fmtDueDate, fmtMissedDates } from "@/modules/plan/scheme/schemeDue";
+import { isWalletScheme, NOT_APPLICABLE } from "@/modules/plan/scheme/schemeCapabilities";
 import BusinessManualPaymentModal from "@/modules/payments/components/BusinessManualPaymentModal";
 import SchemeManualPaymentModal from "@/modules/payments/components/SchemeManualPaymentModal";
 
@@ -47,6 +48,7 @@ function mapSchemeRow(e) {
     monthsTotal: e.total || 0,
     installment: e.installment || 0,
     nextDue: e.nextDue || null,
+    schemeType: e.schemeType || null,
     status: e.status,
     method: "",
     date: fmtSaleDate(e.joined),
@@ -515,12 +517,22 @@ export default function Payments() {
             /* Scheme Enrollments (overdue/collection view) — spec column order:
                Enrollment Number, Customer, Date, Scheme, Method, Total Amount,
                Paid, Overdue Days, Overdue Amount, Status, Clear Overdue, View. */
-            <table className="w-full min-w-[1240px] border-collapse text-sm">
+            /* table-fixed with a width per column. Without it, w-full spread
+                every spare pixel across the columns by content, which is what
+                pushed the right-hand columns out of reach and left gaps in the
+                middle. Headers wrap to two lines rather than forcing a column
+                wider than its data needs, and the widths total the same 1240px
+                the table already asked for - this is a distribution fix, not a
+                wider table. Alignment follows one rule per column: identifiers
+                and text left, money and counts right, Status / Clear Overdue /
+                View centred, so every placeholder dash sits where its column
+                says it should. */
+            <table className="w-full min-w-[1240px] table-fixed border-collapse text-sm">
               <thead>
-                <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted [&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-3">
-                  <th className="!pl-6">Enrollment Number</th><th>Customer Name</th><th>Joined</th><th>Scheme</th><th>Method</th>
-                  <th className="text-right">Total Amount</th><th className="text-right">Paid</th><th className="text-right">Overdue Days</th><th className="text-right">Overdue Amount</th>
-                  <th>Status</th><th className="text-center">Clear Overdue</th><th className="!pr-6 text-right">View</th>
+                <tr className="border-b border-line bg-canvas/60 text-left align-bottom text-[11px] font-bold uppercase tracking-[0.06em] text-muted [&>th]:px-3 [&>th]:py-3 [&>th]:leading-tight">
+                  <th className="!pl-6 w-[164px]">Enrollment<br />Number</th><th className="w-[116px]">Customer Name</th><th className="w-[116px]">Joined</th><th className="w-[108px]">Scheme</th><th className="w-[84px]">Method</th>
+                  <th className="w-[104px] text-right">Total Amount</th><th className="w-[96px] text-right">Paid</th><th className="w-[92px] text-right">Overdue Days</th><th className="w-[108px] text-right">Overdue Amount</th>
+                  <th className="w-[92px] text-center">Status</th><th className="w-[96px] text-center">Clear Overdue</th><th className="!pr-6 w-[64px] text-center">View</th>
                 </tr>
               </thead>
               <tbody>
@@ -533,19 +545,22 @@ export default function Payments() {
                       <div className="text-xs text-muted">{r.time}</div>
                     </td>
                     <td className="text-xs font-semibold text-ink-soft">{r.scheme}</td>
-                    <td className="text-muted">{r.method ? <MethodBadge method={r.method} /> : "—"}</td>
-                    <td className="num whitespace-nowrap text-right font-bold">₹{r.amount.toLocaleString("en-IN")}</td>
+                    <td className="text-muted">{r.method ? <MethodBadge method={r.method} /> : NOT_APPLICABLE}</td>
+                    {/* FDG-001. A wallet has no maturity, so there is no total
+                        amount to reach. The stored figure is untouched — it is
+                        simply not a fact about this kind of scheme. */}
+                    <td className="num whitespace-nowrap text-right font-bold">{isWalletScheme(r.schemeType) ? <span className="font-semibold text-muted">{NOT_APPLICABLE}</span> : `₹${r.amount.toLocaleString("en-IN")}`}</td>
                     <td className="num whitespace-nowrap text-right">₹{r.paid.toLocaleString("en-IN")}</td>
-                    <td className={`num whitespace-nowrap text-right font-semibold ${r.overdueDays > 0 ? "text-danger" : "text-muted"}`}>{r.overdueDays > 0 ? `${r.overdueDays} d` : "—"}</td>
+                    <td className={`num whitespace-nowrap text-right font-semibold ${r.overdueDays > 0 ? "text-danger" : "text-muted"}`}>{r.overdueDays > 0 ? `${r.overdueDays} d` : NOT_APPLICABLE}</td>
                     <td className={`num whitespace-nowrap text-right font-semibold ${r.overdueAmount > 0 ? "text-danger" : "text-muted"}`}>₹{(r.overdueAmount || 0).toLocaleString("en-IN")}</td>
-                    <td><Badge tone={TONE[r.status] || "success"}>{r.status}</Badge></td>
+                    <td className="text-center"><Badge tone={TONE[r.status] || "success"}>{r.status}</Badge></td>
                     <td className="text-center">
                       {r.overdueAmount > 0 ? (
                         <button onClick={() => setSchemeClear({ enrollmentId: r.id, enrollment: r.enrollment, scheme: r.scheme, customerName: r.customer })} className="rounded-lg border border-danger-line bg-danger-soft/40 px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:bg-danger-soft">Clear</button>
-                      ) : <span className="text-xs font-semibold text-muted">—</span>}
+                      ) : <span className="text-xs font-semibold text-muted">{NOT_APPLICABLE}</span>}
                     </td>
-                    <td className="!pr-6 text-right">
-                      <button onClick={() => setSelected(r)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent-line hover:bg-accent-soft hover:text-accent ml-auto" aria-label={`View ${r.id}`}>
+                    <td className="!pr-6 text-center">
+                      <button onClick={() => setSelected(r)} className="mx-auto grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent-line hover:bg-accent-soft hover:text-accent" aria-label={`View ${r.id}`}>
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" /><circle cx="12" cy="12" r="3" /></svg>
                       </button>
                     </td>
@@ -643,11 +658,19 @@ export default function Payments() {
                     <Badge tone={TONE[selected.status] || "neutral"}>{selected.status}</Badge>
                   </div>
                   <div className="text-xs font-semibold text-muted">{selected.scheme} · joined {selected.date}</div>
+                  {/* FDG-003. A wallet has no maturity to reach and no balance
+                      left to it, and its instalment amount is a fiction — the
+                      customer pays what he likes. Those cards are not shown for
+                      it; the count stays, without a per-month figure. */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Maturity amount</div><div className="num font-bold">₹{selected.amount.toLocaleString("en-IN")}</div></div>
+                    {!isWalletScheme(selected.schemeType) && (
+                      <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Maturity amount</div><div className="num font-bold">₹{selected.amount.toLocaleString("en-IN")}</div></div>
+                    )}
                     <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Total paid</div><div className="num font-bold">₹{selected.paid.toLocaleString("en-IN")}</div></div>
-                    <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Balance to maturity</div><div className="num font-bold">₹{(selected.outstanding || 0).toLocaleString("en-IN")}</div></div>
-                    <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Installments</div><div className="num font-bold">{selected.monthsPaid}/{selected.monthsTotal} · ₹{selected.installment.toLocaleString("en-IN")}/mo</div></div>
+                    {!isWalletScheme(selected.schemeType) && (
+                      <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Balance to maturity</div><div className="num font-bold">₹{(selected.outstanding || 0).toLocaleString("en-IN")}</div></div>
+                    )}
+                    <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Installments</div><div className="num font-bold">{selected.monthsPaid}/{selected.monthsTotal}{isWalletScheme(selected.schemeType) ? "" : ` · ₹${selected.installment.toLocaleString("en-IN")}/mo`}</div></div>
                   </div>
                   {(() => {
                     // next_due_date from the backend is the OLDEST UNPAID installment,
@@ -691,12 +714,19 @@ export default function Payments() {
                     );
                   })()}
                 </div>
-                <div className="flex items-center justify-between border-t border-line p-4">
-                  {selected.overdueAmount > 0 ? (
-                    <Button size="sm" onClick={() => { setSchemeClear({ enrollmentId: selected.id, enrollment: selected.enrollment, scheme: selected.scheme, customerName: selected.customer }); setSelected(null); }}>Clear overdue</Button>
-                  ) : <span />}
-                  <Button size="sm" variant="outline" onClick={() => setSelected(null)}>Close</Button>
-                </div>
+                {/* FDG-003. The bottom Close goes for a wallet — the top-right
+                    X is the way out. The bar itself is dropped when it would be
+                    left empty, rather than leaving a bare strip under the card. */}
+                {(!isWalletScheme(selected.schemeType) || selected.overdueAmount > 0) && (
+                  <div className="flex items-center justify-between border-t border-line p-4">
+                    {selected.overdueAmount > 0 ? (
+                      <Button size="sm" onClick={() => { setSchemeClear({ enrollmentId: selected.id, enrollment: selected.enrollment, scheme: selected.scheme, customerName: selected.customer }); setSelected(null); }}>Clear overdue</Button>
+                    ) : <span />}
+                    {!isWalletScheme(selected.schemeType) && (
+                      <Button size="sm" variant="outline" onClick={() => setSelected(null)}>Close</Button>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               /* Business sale payment. */
