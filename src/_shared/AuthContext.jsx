@@ -69,6 +69,15 @@ export function AuthProvider({ children }) {
     // background (preserves the existing backend logout behavior).
     authService.logout(); // best-effort backend revoke (reads refresh token synchronously)
     tokenStore.clear();
+    // Signing out ends the session, so the next sign-in starts at the
+    // beginning. The URL hash is what survives a refresh and restores the tab
+    // you were on - which is right for a refresh and wrong for a logout: the
+    // next person to sign in on this machine should not land in Inventory
+    // because the last one was there. Refresh behaviour is untouched; this
+    // only runs when someone deliberately signs out.
+    if (typeof window !== "undefined") {
+      window.location.hash = "/dashboard";
+    }
     setUser(null);
     setTenantName(null);
   }, []);

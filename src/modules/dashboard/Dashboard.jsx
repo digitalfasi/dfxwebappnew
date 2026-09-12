@@ -316,13 +316,35 @@ function Donut({ items, centerValue, centerLabel }) {
 }
 
 /* ── data helpers ── */
+/** One dashboard fetch, retried once.
+ *
+ * These used to swallow a failure into null with nothing to retry it, so a
+ * single hiccup on a hard refresh - a token refresh still in flight, a backend
+ * still warming - left a KPI blank for as long as the page stayed open.
+ * Changing the period re-fired the effect and it worked, which is exactly the
+ * shape of a transient first-load failure rather than a wrong query.
+ *
+ * A second attempt costs one request on a bad load and nothing on a good one.
+ * A failure after that still returns null, which the cards render as "—"
+ * rather than as a zero pretending to be real.
+ */
+async function fetchDashboard(path, pick) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return pick(await apiClient.get(path, { auth: true }));
+    } catch {
+      if (attempt === 1) return null;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  }
+  return null;
+}
+
 async function getSummary(path, wrap = "summary") {
-  const res = await apiClient.get(path, { auth: true }).catch(() => ({ data: null }));
-  return res.data?.[wrap] ?? null;
+  return fetchDashboard(path, (res) => res.data?.[wrap] ?? null);
 }
 async function getReport(path) {
-  const res = await apiClient.get(path, { auth: true }).catch(() => ({ data: null }));
-  return res.data?.report ?? null;
+  return fetchDashboard(path, (res) => res.data?.report ?? null);
 }
 
 export default function Dashboard({ onNavigate, search = "" }) {

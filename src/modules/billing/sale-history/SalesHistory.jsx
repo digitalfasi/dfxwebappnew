@@ -78,6 +78,10 @@ export default function SalesHistory() {
   const [bills, setBills] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalOutstanding, setTotalOutstanding] = useState(0);
+  // Net gold for the whole period, from the backend. The page holds at most
+  // 100 bills, so summing what is loaded understates the moment a period has
+  // more than that - which it already does.
+  const [periodGoldWeight, setPeriodGoldWeight] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -98,10 +102,12 @@ export default function SalesHistory() {
       } else if (period !== "all") {
         args.period = period;
       }
-      const { sales, total: count, totalOutstanding: out } = await billingService.listSales(args);
+      const { sales, total: count, totalOutstanding: out, totalGoldWeightGrams: goldG } =
+        await billingService.listSales(args);
       setBills(sales);
       setTotal(count);
       setTotalOutstanding(out || 0);
+      setPeriodGoldWeight(goldG || 0);
     } catch (err) {
       setLoadError(err?.message || "Could not load sales history");
       setBills([]);
@@ -136,7 +142,17 @@ export default function SalesHistory() {
     return [...PURITY_CANONICAL, ...extras];
   }, [bills]);
 
-  const totalGoldSold = useMemo(() => rows.reduce((s, b) => s + (b.netGoldWeightGrams || 0), 0), [rows]);
+  // Category / sub-category / purity are applied in the browser, so with any of
+  // them set the only honest figure is the sum of what is on screen. With none
+  // set the question is "how much gold did this period sell", and the answer is
+  // the backend's total for the period - not the first 100 rows of it.
+  const filtersActive =
+    fCat !== "All Categories" || fSub !== "All Sub-categories" || fPurity !== "All Purity";
+  const filteredGoldSold = useMemo(
+    () => rows.reduce((s, b) => s + (b.netGoldWeightGrams || 0), 0),
+    [rows],
+  );
+  const totalGoldSold = filtersActive ? filteredGoldSold : periodGoldWeight;
 
   // Purity-wise sold-gold composition of the current view (respects the
   // category / sub-category / purity filters, since `rows` is already filtered).
@@ -172,7 +188,6 @@ export default function SalesHistory() {
   const clearFilters = () => {
     setFCat("All Categories"); setFSub("All Sub-categories"); setFPurity("All Purity");
   };
-  const filtersActive = fCat !== "All Categories" || fSub !== "All Sub-categories" || fPurity !== "All Purity";
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
 
@@ -211,12 +226,14 @@ export default function SalesHistory() {
           <Card data-motion="stat" className="p-4">
             <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Gold Sold</div>
             <div className="num mt-1 text-2xl font-extrabold">{totalGoldSold.toFixed(2)} g</div>
-            <div className="text-xs text-muted">Net gold · current view</div>
+            <div className="text-xs text-muted">
+              {filtersActive ? "Net gold · filtered view" : "Net gold · whole period"}
+            </div>
           </Card>
           <Card data-motion="stat" className="p-4">
             <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Outstanding</div>
             <div className={`num mt-1 text-2xl font-extrabold ${totalOutstanding > 0 ? "text-danger" : ""}`}>{formatINR(totalOutstanding)}</div>
-            <div className="text-xs text-muted">Across filtered bills</div>
+            <div className="text-xs text-muted">Whole period, not just this page</div>
           </Card>
         </div>
         <Card data-motion="stat" className="p-4">

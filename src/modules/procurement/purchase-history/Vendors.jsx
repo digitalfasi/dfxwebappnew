@@ -318,6 +318,7 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
   const [error, setError] = useState("");
   const [ledger, setLedger] = useState(null); // combined payments (lazy)
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerIncomplete, setLedgerIncomplete] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -339,12 +340,25 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
     if (!rows.length) { setLedger([]); return; }
     let alive = true;
     setLedgerLoading(true);
-    Promise.all(rows.map((r) => billingService.getVendorPurchasePayments(r.id).catch(() => ({ payments: [] }))))
+    // A failed fetch used to become an empty payments list, so a vendor's
+    // ledger could quietly show fewer payments than they were actually paid -
+    // and a short ledger reads as "we still owe them", which is a conversation
+    // with a vendor nobody wants to have from the wrong number. Failures are
+    // counted and stated instead.
+    Promise.all(
+      rows.map((r) =>
+        billingService
+          .getVendorPurchasePayments(r.id)
+          .then((res) => ({ ok: true, payments: res.payments || [] }))
+          .catch(() => ({ ok: false, payments: [] })),
+      ),
+    )
       .then((res) => {
         if (!alive) return;
-        const flat = res.flatMap((r, i) => (r.payments || []).map((pm) => ({ ...pm, invoiceRef: rows[i].invoiceRef, purchaseDate: rows[i].purchaseDate })));
+        const flat = res.flatMap((r, i) => r.payments.map((pm) => ({ ...pm, invoiceRef: rows[i].invoiceRef, purchaseDate: rows[i].purchaseDate })));
         flat.sort((a, b) => String(b.paymentDate || "").localeCompare(String(a.paymentDate || "")));
         setLedger(flat);
+        setLedgerIncomplete(res.filter((r) => !r.ok).length);
       })
       .finally(() => { if (alive) setLedgerLoading(false); });
     return () => { alive = false; };
@@ -423,7 +437,14 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
                       <td className="py-2.5 text-right num font-semibold pr-4">{money(p.amount)}</td>
                     </tr>
                   ))}
-                  {!ledgerLoading && ledger && ledger.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-muted">No payments recorded yet.</td></tr>}
+                  {!ledgerLoading && ledger && ledger.length === 0 && ledgerIncomplete === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-muted">No payments recorded yet.</td></tr>}
+                  {!ledgerLoading && ledgerIncomplete > 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-3 text-center text-xs font-bold text-danger">
+                        {ledgerIncomplete} purchase{ledgerIncomplete === 1 ? "'s" : "s'"} payments could not be loaded — this ledger is incomplete. Reopen the vendor to try again.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
