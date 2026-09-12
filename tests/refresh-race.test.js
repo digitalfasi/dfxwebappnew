@@ -55,6 +55,13 @@ function makeServer({ latencyMs = 30 } = {}) {
   return state;
 }
 
+/** Same djb2 the client uses, so a test marker addresses the same token. */
+function fingerprintOf(token) {
+  let h = 5381;
+  for (let i = 0; i < token.length; i += 1) h = ((h << 5) + h + token.charCodeAt(i)) | 0;
+  return String(h >>> 0);
+}
+
 async function loadPage() {
   vi.resetModules();                       // a new document = a new module instance
   return await import("../src/_shared/apiClient.js");
@@ -109,7 +116,33 @@ describe("refresh token is never sent twice", () => {
     expect(out.every(Boolean)).toBe(true);
   });
 
-  it("a stale marker from a crashed tab cannot hang the app", async () => {
+  it("a LOST RESPONSE is never retried - the F5 case, failed soft", async () => {
+    // What a real F5 does: Chrome aborts the in-flight fetch on navigation. The
+    // server still received it and still rotated, so R1 is spent and R2 died
+    // with the response. Verified against the deployment - aborting the read
+    // after send leaves the token dead.
+    const fp = fingerprintOf("R1");
+    localStorage.setItem("jros_refresh_inflight", JSON.stringify({ fp, ts: Date.now() - 60000 }));
+    const page = await loadPage();
+    const token = await page.refreshAccessToken();
+    expect(token).toBeNull();          // give up safely...
+    expect(server.calls).toBe(0);      // ...WITHOUT sending the spent token
+    expect(server.revokedAll).toBe(0); // so nobody is logged out anywhere else
+  });
+
+  it("waiting that times out gives up rather than sending", async () => {
+    // A marker is fresh, but the page that wrote it never rotates - it died
+    // between sending and storing. The wait must expire into a safe give-up.
+    const fp = fingerprintOf("R1");
+    localStorage.setItem("jros_refresh_inflight", JSON.stringify({ fp, ts: Date.now() }));
+    const page = await loadPage();
+    const token = await page.refreshAccessToken();
+    expect(token).toBeNull();
+    expect(server.calls).toBe(0);
+    expect(server.revokedAll).toBe(0);
+  }, 15000);
+
+  it("a stale marker for a DIFFERENT token does not block us", async () => {
     // A page died mid-refresh and left its marker behind, older than fresh.
     localStorage.setItem(
       "jros_refresh_inflight",

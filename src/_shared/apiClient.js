@@ -207,8 +207,9 @@ function clearMarker() {
 /**
  * Another page is already refreshing with the exact token we hold. Sending ours
  * is what triggers the revoke-all, so wait for that page to swap the token
- * instead. Returns the fresh access token, or null to mean "go ahead yourself".
- * Always terminates: a crashed page must never leave this one on a blank screen.
+ * instead. Returns the fresh access token, or null meaning "give up safely" -
+ * the caller must NOT then send the token itself. Always terminates, so a
+ * crashed page can never leave this one staring at a blank screen.
  */
 async function waitForRotation(ourRefreshToken) {
   const deadline = Date.now() + MARKER_WAIT_MS;
@@ -229,11 +230,33 @@ async function performRefresh() {
 
   const fingerprint = tokenFingerprint(refreshToken);
   const marker = readMarker();
-  if (marker && marker.fp === fingerprint && Date.now() - marker.ts < MARKER_FRESH_MS) {
-    const rotated = await waitForRotation(refreshToken);
-    if (rotated) return rotated;
-    // The other page never finished. Fall through and do it ourselves - a
-    // stale marker must not be able to lock the app out.
+  if (marker && marker.fp === fingerprint) {
+    if (Date.now() - marker.ts < MARKER_FRESH_MS) {
+      const rotated = await waitForRotation(refreshToken);
+      if (rotated) return rotated;
+    }
+    // We got here two ways, and both mean the same thing: some page already
+    // SENT this exact token and the answer never came back.
+    //
+    // The server rotates on RECEIPT, not on delivery - verified against the
+    // deployment by aborting the read after the request was sent, which still
+    // killed the token. That is precisely what a real F5 does: Chrome aborts
+    // the in-flight fetch on navigation, the server rotates anyway, and the
+    // replacement is lost with the response nobody received.
+    //
+    // So sending it now is never right. Either it is already rotated, and
+    // reuse detection revokes every session on every device including the
+    // owner's, or it is merely expired and sending achieves nothing. Give up
+    // safely instead: returning null makes the caller clear THIS tab and drop
+    // to login. One person signs in again on one tab; the account is untouched
+    // everywhere else.
+    //
+    // No client can do better than this. Once the response is lost the
+    // replacement is unrecoverable, and only the server can fix it - by
+    // returning the already-issued pair when the immediately-previous token is
+    // replayed inside a short window. That is a separate deploy with its own
+    // migration, and this is the safe behaviour until it lands.
+    return null;
   }
 
   writeMarker(fingerprint);
