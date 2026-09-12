@@ -187,6 +187,24 @@ function tokenFingerprint(token) {
   return String(h >>> 0);
 }
 
+// The caller's own id for one logical refresh. The server records it at
+// rotation, so presenting the spent token again WITH THE SAME id is provably
+// the same request arriving twice rather than a stolen token being replayed.
+// Crypto-random and unguessable on purpose: a thief who lifts the refresh token
+// out of storage does not get this, so the reuse safeguard still fires on them.
+// Never derived from the token, never logged.
+function newRequestId() {
+  try {
+    const buf = new Uint8Array(16);
+    crypto.getRandomValues(buf);
+    return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    // No WebCrypto: skip the id entirely rather than send a guessable one.
+    // Omitting it simply means no replay is possible and we fail soft as before.
+    return null;
+  }
+}
+
 function readMarker() {
   try {
     const raw = localStorage.getItem(REFRESH_MARKER_KEY);
@@ -195,9 +213,9 @@ function readMarker() {
     return null; // private mode / blocked storage: fall through to a normal refresh
   }
 }
-function writeMarker(fp) {
+function writeMarker(fp, rid) {
   try {
-    localStorage.setItem(REFRESH_MARKER_KEY, JSON.stringify({ fp, ts: Date.now() }));
+    localStorage.setItem(REFRESH_MARKER_KEY, JSON.stringify({ fp, rid, ts: Date.now() }));
   } catch { /* not fatal - we simply lose cross-page coordination */ }
 }
 function clearMarker() {
@@ -244,26 +262,54 @@ async function performRefresh() {
     // the in-flight fetch on navigation, the server rotates anyway, and the
     // replacement is lost with the response nobody received.
     //
-    // So sending it now is never right. Either it is already rotated, and
-    // reuse detection revokes every session on every device including the
-    // owner's, or it is merely expired and sending achieves nothing. Give up
-    // safely instead: returning null makes the caller clear THIS tab and drop
-    // to login. One person signs in again on one tab; the account is untouched
-    // everywhere else.
+    // Sending the token bare here is never right: it is either already rotated,
+    // and reuse detection revokes every session on every device, or merely
+    // expired and sending achieves nothing.
     //
-    // No client can do better than this. Once the response is lost the
-    // replacement is unrecoverable, and only the server can fix it - by
-    // returning the already-issued pair when the immediately-previous token is
-    // replayed inside a short window. That is a separate deploy with its own
-    // migration, and this is the safe behaviour until it lands.
+    // But if the page that sent it recorded a request id, we can present the
+    // spent token WITH THAT ID. The server recorded the same id at rotation, so
+    // a match inside its grace window proves this is the same request arriving
+    // twice and it returns the pair it already issued. A stolen token carries
+    // no matching id and still trips the safeguard in full.
+    //
+    // Exactly once. If the replay does not produce a pair - wrong id, window
+    // elapsed, successor already used, or the id was never recorded because the
+    // sending page predates this build - we fall back to giving up safely:
+    // returning null makes the caller clear THIS tab and drop to login. One
+    // person signs in again on one tab; the account is untouched everywhere
+    // else.
+    if (marker.rid) {
+      try {
+        const res = await rawRequest("/auth/refresh", {
+          method: "POST",
+          body: { refresh_token: refreshToken, request_id: marker.rid },
+        });
+        const data = res.data;
+        if (data?.access_token && data?.refresh_token) {
+          tokenStore.setTokens(data.access_token, data.refresh_token);
+          return data.access_token;
+        }
+      } catch {
+        // Fall through to the safe give-up below. No second attempt: a replay
+        // that failed will fail again, and each try that is NOT a recognised
+        // retry is what revokes every session.
+      } finally {
+        clearMarker();
+      }
+    }
     return null;
   }
 
-  writeMarker(fingerprint);
+  // Minted BEFORE the request and stored with the marker, so a page that
+  // reloads mid-flight can find the id its predecessor used and replay with it.
+  const requestId = newRequestId();
+  writeMarker(fingerprint, requestId);
   try {
     const res = await rawRequest("/auth/refresh", {
       method: "POST",
-      body: { refresh_token: refreshToken },
+      body: requestId
+        ? { refresh_token: refreshToken, request_id: requestId }
+        : { refresh_token: refreshToken },
     });
     const data = res.data;
     if (!data?.access_token || !data?.refresh_token) return null;
