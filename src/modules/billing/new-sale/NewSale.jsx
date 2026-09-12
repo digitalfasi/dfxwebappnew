@@ -104,6 +104,10 @@ export default function NewSale() {
   // Schemes
   const [schemeOptions, setSchemeOptions] = useState([]); // {enrollmentId,schemeName,available}
   const [schemeLoading, setSchemeLoading] = useState(false);
+  // How many of this customer's schemes could not be read. A balance call that
+  // failed used to be dropped from the list in silence, so the counter billed
+  // without a credit the customer had already paid for.
+  const [schemeLoadFailures, setSchemeLoadFailures] = useState(0);
   const [schemeAmounts, setSchemeAmounts] = useState({}); // {enrollmentId: string}
 
   // Payment
@@ -299,19 +303,27 @@ export default function NewSale() {
 
   // Load the selected customer's redeemable schemes (real backend balances).
   const loadSchemes = useCallback(async (customerId) => {
-    setSchemeOptions([]); setSchemeAmounts({});
+    setSchemeOptions([]); setSchemeAmounts({}); setSchemeLoadFailures(0);
     if (!customerId) return;
     setSchemeLoading(true);
     try {
       const enrolls = await enrollmentService.getEnrollments(customerId);
       const active = enrolls.filter((e) => String(e.status || "").toUpperCase() !== "CANCELLED");
       const balances = await Promise.all(active.map((e) => enrollmentService.getBalance(e.id).catch(() => null)));
+      // A null here is a balance that could not be READ, not a scheme with
+      // nothing in it. Both used to vanish into the same filter, so a transient
+      // failure silently shortened a list of money and the bill went out without
+      // a credit the customer had already paid for. Count them and say so.
+      setSchemeLoadFailures(balances.filter((b) => b == null).length);
       const opts = balances
         .filter((b) => b && b.can_redeem && (b.available_balance || 0) > 0)
         .map((b) => ({ enrollmentId: b.enrollment_id, schemeName: b.scheme_name, available: b.available_balance }));
       setSchemeOptions(opts);
     } catch {
       setSchemeOptions([]);
+      // The enrollment list itself failed, so nothing is known about this
+      // customer's schemes at all - which must not read as "has none".
+      setSchemeLoadFailures(-1);
     } finally {
       setSchemeLoading(false);
     }
@@ -848,7 +860,14 @@ export default function NewSale() {
                         {product && <span className="text-[10px] font-semibold text-muted">Covers the pure gold value, up to {money(goldValue)} — making &amp; GST waived on it</span>}
                       </div>
                       {schemeLoading && <div className="rounded-xl border border-line px-4 py-3 text-xs text-muted">Loading schemes…</div>}
-                      {!schemeLoading && schemeOptions.length === 0 && <div className="rounded-xl border border-line px-4 py-3 text-xs text-muted">No redeemable schemes for this customer.</div>}
+                      {!schemeLoading && schemeLoadFailures !== 0 && (
+                        <div className="rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-xs font-semibold text-danger">
+                          {schemeLoadFailures < 0
+                            ? "This customer's schemes could not be loaded. Refresh before billing — any scheme credit is missing from this bill."
+                            : `${schemeLoadFailures} scheme${schemeLoadFailures === 1 ? "" : "s"} could not be loaded. Refresh before billing — the list below may be missing a credit.`}
+                        </div>
+                      )}
+                      {!schemeLoading && schemeOptions.length === 0 && schemeLoadFailures === 0 && <div className="rounded-xl border border-line px-4 py-3 text-xs text-muted">No redeemable schemes for this customer.</div>}
                       {!schemeLoading && schemeOptions.map((s) => {
                         const amt = num(schemeAmounts[s.enrollmentId]);
                         const over = amt > s.available + 0.005;
