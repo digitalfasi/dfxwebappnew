@@ -926,6 +926,14 @@ function mapSaleRow(raw) {
     goldRateSource: raw.gold_rate_source ?? "",
     goldRateEffectiveDate: raw.gold_rate_effective_date ?? null,
     goldValueAmount: raw.gold_value_amount ?? 0,
+    // What the customer was charged for the metal, and the rate behind it.
+    // Sent for every role. goldValueAmount is the metal at the PUBLISHED rate
+    // and is short of the Subtotal by exactly the margin, so the breakdown has
+    // to print these instead or it does not add up to its own total.
+    // selling rate is null when no single rate reproduces the amount - the row
+    // then prints bare rather than claiming arithmetic that does not hold.
+    goldValueCharged: raw.gold_value_charged ?? null,
+    sellingRateApplied: raw.selling_rate_applied ?? null,
     makingChargeType: raw.making_charge_type ?? "",
     makingChargeValue: raw.making_charge_value ?? 0,
     makingChargeAmount: raw.making_charge_amount ?? 0,

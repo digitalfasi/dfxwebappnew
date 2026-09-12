@@ -570,20 +570,21 @@ function SaleDetail({ sale, onClose, onChanged }) {
           <div>
             <div className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-muted">Price breakdown</div>
             <div className="rounded-xl border border-line px-4 py-3 text-sm">
-              <BreakdownRow label={`Gold Value${sale.goldRateApplied ? ` (₹${Number(sale.goldRateApplied).toFixed(2)}/g)` : ""}`} value={formatINR(sale.goldValueAmount)} />
-              {/* What the customer's scheme paid for. The covered gold is billed
-                  at pure gold value - no making, no wastage, no GST - so it is
-                  shown coming off the gold value, which is where it was
-                  actually applied, rather than as a deduction from the total. */}
-              {sale.schemeApplied > 0 && (
-                <>
-                  <BreakdownRow
-                    label={`Less: scheme credit${sale.schemeGrams ? ` (${Number(sale.schemeGrams).toFixed(3)} g${sale.schemePurity ? ` of ${sale.schemePurity}` : ""})` : ""}`}
-                    value={`− ${formatINR(sale.schemeApplied)}`}
-                  />
-                  <BreakdownRow label="Chargeable gold value" value={formatINR((sale.goldValueAmount || 0) - sale.schemeApplied)} />
-                </>
-              )}
+              {/* The metal at the SELLING rate, which is what the customer was
+                  charged and what the invoice prints. It used to print
+                  gold_value_amount - the metal at the PUBLISHED rate - while every
+                  other row printed in full, so the column was short by exactly the
+                  margin and never reached its own Subtotal. 41 of 129 sales showed
+                  a breakdown that did not add up, Rs.17,00,977 unaccounted.
+                  The rate is stated only when it reproduces the amount beside it;
+                  otherwise the row prints bare rather than claiming arithmetic that
+                  does not hold. Same rule as the invoice, same helper. */}
+              <BreakdownRow
+                label={`Gold Value${sale.sellingRateApplied
+                  ? ` (₹${Number(sale.sellingRateApplied).toFixed(2)}/g)`
+                  : ""}`}
+                value={formatINR(sale.goldValueCharged ?? sale.goldValueAmount)}
+              />
               <BreakdownRow label={`Making ${chargeLabel(sale.makingChargeType, sale.makingChargeValue)}`} value={formatINR(sale.makingChargeAmount)} />
               <BreakdownRow label={`Wastage ${chargeLabel(sale.wastageType, sale.wastageValue)}`} value={formatINR(sale.wastageAmount)} />
               {sale.stoneChargeAmount > 0 && <BreakdownRow label="Stone" value={formatINR(sale.stoneChargeAmount)} />}
@@ -600,27 +601,41 @@ function SaleDetail({ sale, onClose, onChanged }) {
                 const sub = sale.subtotalBeforeTax || 0;
                 const tax = sale.taxAmount || 0;
                 const disc = sale.discountAmount || 0;
+                // The scheme credit does NOT come off the gold value, which is
+                // where this column used to show it. Proved against the data: for
+                // all 8 scheme sales the stored GST equals rate x (subtotal −
+                // scheme − discount), and none equals rate x subtotal; and
+                // final = subtotal + tax − discount for all 8, so the credit never
+                // touches Bill Total either - it is settled as a PAYMENT.
+                // It belongs here, in the taxable base, beside the discount.
+                const scheme = sale.schemeApplied || 0;
+                const rate = sale.gstApplied ? (sale.taxRatePercent || 0) : 0;
                 // Which era this bill belongs to is NOT answerable from the
                 // total: subtotal - discount + tax and subtotal + tax -
                 // discount are the same sum. What separates them is the tax
                 // BASE, so that is what is tested - the stored tax against the
                 // rate applied to the discounted subtotal.
-                const rate = sale.gstApplied ? (sale.taxRatePercent || 0) : 0;
                 const preTaxDiscount =
-                  disc > 0 && (rate === 0 || Math.abs(tax - (sub - disc) * rate / 100) <= 1);
-                if (!preTaxDiscount) {
-                  return (
-                    <>
-                      {sale.gstApplied && <BreakdownRow label={`GST (${sale.taxRatePercent}%)`} value={formatINR(tax)} />}
-                      {disc > 0 && <BreakdownRow label="Discount" value={`− ${formatINR(disc)}`} />}
-                    </>
-                  );
-                }
+                  disc > 0 && (rate === 0 || Math.abs(tax - (sub - disc - scheme) * rate / 100) <= 1);
+                const schemeRow = scheme > 0 && (
+                  <BreakdownRow
+                    label={`Less: scheme credit${sale.schemeGrams ? ` (${Number(sale.schemeGrams).toFixed(3)} g${sale.schemePurity ? ` of ${sale.schemePurity}` : ""})` : ""}`}
+                    value={`− ${formatINR(scheme)}`}
+                  />
+                );
+                // A taxable-value line is only honest when something actually
+                // reduced the base; with neither a scheme nor a pre-tax discount
+                // it would just restate the Subtotal.
+                const taxable = sub - scheme - (preTaxDiscount ? disc : 0);
                 return (
                   <>
-                    <BreakdownRow label="Discount" value={`− ${formatINR(disc)}`} />
-                    <BreakdownRow label="Taxable value" value={formatINR(sub - disc)} />
+                    {preTaxDiscount && <BreakdownRow label="Discount" value={`− ${formatINR(disc)}`} />}
+                    {schemeRow}
+                    {(scheme > 0 || preTaxDiscount) && (
+                      <BreakdownRow label="Taxable value" value={formatINR(taxable)} />
+                    )}
                     {sale.gstApplied && <BreakdownRow label={`GST (${sale.taxRatePercent}%)`} value={formatINR(tax)} />}
+                    {!preTaxDiscount && disc > 0 && <BreakdownRow label="Discount" value={`− ${formatINR(disc)}`} />}
                   </>
                 );
               })()}
