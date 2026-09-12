@@ -124,3 +124,35 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* Print — "Generate Report" and any other print-a-panel action.
+   window.print() prints the whole document, so a modal drawn over a fixed
+   overlay came out as the dashboard behind it, clipped at one page. Marking a
+   panel .print-only-root prints that panel alone.
+   visibility (not display) is used so the printed panel keeps its own layout
+   instead of collapsing. */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .print-only-root,
+  .print-only-root * {
+    visibility: visible !important;
+  }
+  .print-overlay {
+    position: static !important;
+    padding: 0 !important;
+    background: none !important;
+  }
+  .print-only-root {
+    position: absolute !important;
+    inset: 0 auto auto 0;
+    width: 100% !important;
+    max-width: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  .print-hide {
+    display: none !important;
+  }
+}

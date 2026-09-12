@@ -301,7 +301,6 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const [bizPeriod, setBizPeriod] = useState("today");
   const [bizCustom, setBizCustom] = useState({ from: "", to: "" });
   const [bizMetric, setBizMetric] = useState("sales");
-  const [bizSummary, setBizSummary] = useState(null);     // dashboard-summary (revenue+growth)
   const [salesTrend, setSalesTrend] = useState(null);     // sales-trend points
 
   // Scheme period (KPIs + Collections Trend chart share it)
@@ -354,12 +353,10 @@ export default function Dashboard({ onNavigate, search = "" }) {
     bizReq.current = key;
     const q = rangeQuery(bizPeriod, bizCustom);
     if (!q) return; // custom awaiting Apply
-    Promise.all([getSummary(`/reports/dashboard-summary${q}`), getReport(`/reports/sales-trend${q}`)])
-      .then(([s, t]) => {
-        if (bizReq.current !== key) return;
-        setBizSummary(s);
-        setSalesTrend(t?.trend ?? []);
-      });
+    getReport(`/reports/sales-trend${q}`).then((t) => {
+      if (bizReq.current !== key) return;
+      setSalesTrend(t?.trend ?? []);
+    });
   }, [bizPeriod, bizCustom]);
 
   // Scheme KPIs + Collections Trend follow schemePeriod
@@ -404,6 +401,13 @@ export default function Dashboard({ onNavigate, search = "" }) {
 
   /* derived — all backend-authoritative, summed only (no invented values) */
   const bizPfx = periodPrefix(bizPeriod);
+  // Store Business revenue is PRODUCT SALES. It used to read
+  // /reports/dashboard-summary.total_revenue, which is the scheme payment
+  // total - the same figure the Schemes card shows - so both cards displayed
+  // the identical number and the identical growth. Sales, Gold Sold and Profit
+  // now all come off the one sales-trend series, which is scoped to COMPLETED
+  // sales and therefore already net of reversals.
+  const bizSales = salesTrend ? salesTrend.reduce((s, p) => s + (Number(p.total_amount) || 0), 0) : null;
   const goldSold = salesTrend ? salesTrend.reduce((s, p) => s + (Number(p.gold_weight_grams) || 0), 0) : null;
   const profit = salesTrend ? salesTrend.reduce((s, p) => s + (Number(p.profit) || 0), 0) : null;
   const bizSeries = (salesTrend ?? []).map((p) => ({
@@ -465,7 +469,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">
-            <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSummary?.total_revenue)} growth={bizSummary?.total_revenue_growth_percent} onClick={() => nav("sales-history")} />
+            <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSales)} onClick={() => nav("sales-history")} />
             <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} onClick={() => nav("sales-history")} />
             <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
             <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} danger onClick={() => nav("sales-history")} />
@@ -628,15 +632,15 @@ export default function Dashboard({ onNavigate, search = "" }) {
       {/* GENERATE REPORT — a snapshot of the dashboard's own live figures for the
           currently-selected periods. No navigation; Print/Save PDF via the browser. */}
       {showReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={() => setShowReport(false)}>
-          <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="print-overlay fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={() => setShowReport(false)}>
+          <div className="print-only-root w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-extrabold text-ink">Dashboard Report</h3>
-              <button onClick={() => setShowReport(false)} className="grid h-7 w-7 place-items-center rounded-full text-muted hover:bg-canvas hover:text-ink" aria-label="Close">✕</button>
+              <button onClick={() => setShowReport(false)} className="print-hide grid h-7 w-7 place-items-center rounded-full text-muted hover:bg-canvas hover:text-ink" aria-label="Close">✕</button>
             </div>
             <div className="text-xs">
               <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-faint">Store Business</div>
-              <ReportRow label={`${bizPfx} Sales`} value={fmtCurrency(bizSummary?.total_revenue)} />
+              <ReportRow label={`${bizPfx} Sales`} value={fmtCurrency(bizSales)} />
               <ReportRow label={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} />
               <ReportRow label={`${bizPfx} Profit`} value={fmtProfit(profit)} />
               <ReportRow label="Outstanding Amount" value={fmtCurrency(outstanding)} />
@@ -647,7 +651,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
               <ReportRow label={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} />
               <ReportRow label="Overdue Amount" value={fmtCurrency(overdue)} />
             </div>
-            <button onClick={() => window.print()} className="mt-4 w-full rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-accent-strong">Print / Save PDF</button>
+            <button onClick={() => window.print()} className="print-hide mt-4 w-full rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-accent-strong">Print / Save PDF</button>
           </div>
         </div>
       )}

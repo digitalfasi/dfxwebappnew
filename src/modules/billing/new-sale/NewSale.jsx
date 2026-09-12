@@ -561,20 +561,26 @@ export default function NewSale() {
     handleFind(); // refresh the product from the backend's true state
   };
 
-  // Gold value and the store's margin are SEPARATE rows. Folding the margin in
-  // was tried, to match the invoice and quotation, and it produced a line that
-  // reads "13.000 g x 14,155.00" beside 2,02,416.50 - a multiplication printed
-  // next to a number that multiplication does not produce. A bill the customer
-  // cannot check by hand is worse than a bill that shows the margin, so the
-  // rows are split and every percentage is read against the pure gold value it
-  // is actually charged on.
-  const goldValuePure = product ? (product.goldValueAmount || 0) : 0;
+  // The customer is shown this panel, so the store's margin is never a row of
+  // its own. It goes where a jeweller already puts it: in the RATE. The panel
+  // states the selling rate per gram and the gold value it produces, the two
+  // multiply, and no margin is visible. Splitting it into a "Gold Profit" row
+  // was tried and is wrong for the same reason the invoice never did it.
   const goldProfitLine = product ? (product.goldProfitAmount || 0) : 0;
+  const goldValuePure = product ? (product.goldValueAmount || 0) : 0;
+  const goldValueShown = round2(goldValuePure + goldProfitLine);
   const netGrams = product ? (Number(product.netGoldWeightGrams) || 0) : 0;
   const appliedRate = product ? (Number(product.goldRateApplied) || 0) : 0;
-  // "13.000 g x 14,155.00" belongs only next to the figure it produces.
-  const goldValueLabel = `Gold Value${netGrams > 0 && appliedRate > 0 ? ` (${netGrams.toFixed(3)} g \u00d7 ${money(appliedRate)})` : ""}`;
-  const goldProfitLabel = `Gold Profit${product?.goldProfitPercent ? ` ${product.goldProfitPercent}%` : ""}`;
+  // Only when it actually reproduces the amount beside it. The rate is quoted
+  // to paise, so a few paise of rounding is tolerated; beyond a rupee the rate
+  // would not describe the figure and the row prints bare instead.
+  const sellingRate = (() => {
+    if (!(netGrams > 0 && appliedRate > 0)) return null;
+    if (Math.abs(netGrams * appliedRate - goldValuePure) >= 0.01) return null;
+    const eff = round2(goldValueShown / netGrams);
+    return Math.abs(netGrams * eff - goldValueShown) <= 1 ? eff : null;
+  })();
+  const goldValueLabel = `Gold Value${sellingRate ? ` (${netGrams.toFixed(3)} g \u00d7 ${money(sellingRate)})` : ""}`;
 
   return (
     <div ref={scope} className="mx-auto max-w-[1240px] pb-32 lg:pb-14">
@@ -813,10 +819,10 @@ export default function NewSale() {
                 )
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Name *</span><Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Walk-in buyer name" /></label>
+                  <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Name *</span><Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Walk-in buyer name" /></label>
                   {/* Optional, but if it is filled it must be a real mobile
                       number - the bill carries it and the store calls it back. */}
-                  <label className="grid gap-1.5">
+                  <label className="grid min-w-0 gap-1.5">
                     <span className="text-xs font-bold">Phone <span className="font-normal text-muted">— optional, 10 digits</span></span>
                     <PhoneInput value={walkinPhone} onValueChange={setWalkinPhone} error={walkinPhoneInvalid} />
                     {walkinPhoneInvalid && <span className="text-[11px] font-semibold text-danger">Enter all 10 digits, or leave it empty</span>}
@@ -908,7 +914,7 @@ export default function NewSale() {
                 <Card className="p-5 space-y-4">
                   <SectionHead step={4} title="Rate & charges" />
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="grid gap-1.5">
+                    <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
                       <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
                       <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Published ${product.purity || ""} rate ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — locked in Online.` : `Editable. Default ${publishedRate != null ? money(publishedRate) : "—"} — the published ${product.purity || ""} rate.`}</span>
@@ -924,7 +930,7 @@ export default function NewSale() {
                         </span>
                       )}
                     </label>
-                    <label className="grid gap-1.5">
+                    <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">Gold Profit %</span>
                       {/* A discount is absorbed from gold profit, so this
                           states the margin actually being earned - it falls as
@@ -954,12 +960,12 @@ export default function NewSale() {
                         <span className="text-[11px] font-semibold text-accent-strong">This can be cut to {round2(goldProfitSuggested)}% and the bill still makes money.</span>
                       )}
                     </label>
-                    <label className="grid gap-1.5">
+                    <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">Making Charge {chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}</span>
                       <Input type="number" step="0.01" min="0" value={makingVal} onChange={(e) => setMakingVal(e.target.value)} />
                       <span className="text-[11px] text-muted">= {money(product.makingChargeAmount)}</span>
                     </label>
-                    <label className="grid gap-1.5">
+                    <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">Wastage {chargePct(product.wastageType, wastageVal || product.wastageValue)}</span>
                       <Input type="number" step="0.01" min="0" value={wastageVal} onChange={(e) => setWastageVal(e.target.value)} />
                       <span className="text-[11px] text-muted">= {money(product.wastageAmount)}</span>
@@ -992,19 +998,19 @@ export default function NewSale() {
             <Card className="p-5 space-y-4">
               <SectionHead step={5} title="Payment" meta={paymentChosen ? undefined : "Required"} />
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Method *</span>
+                <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Method *</span>
                   <Select value={payMethod} onValueChange={setPayMethod} placeholder="Select method" options={PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABEL[m] }))} />
                 </label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Status *</span>
+                <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Status *</span>
                   <Select value={payStatus} onValueChange={setPayStatus} placeholder="Select status" options={PAYMENT_STATUSES.map((s) => ({ value: s, label: PAYMENT_STATUS_LABEL[s] }))} />
                 </label>
                 {payStatus === "PARTIAL" && (
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Paid now (₹) *</span>
+                  <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Paid now (₹) *</span>
                     <Input type="number" step="0.01" value={partialAmount} onChange={(e) => setPartialAmount(e.target.value)} error={partialInvalid ? "Must be > 0 and < remaining" : undefined} />
                     {partialInvalid && <span className="text-[11px] font-semibold text-danger">Between {money(0)} and {money(remaining)}</span>}
                   </label>
                 )}
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Reference No.</span><Input value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="Optional" /></label>
+                <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Reference No.</span><Input value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="Optional" /></label>
               </div>
               {!paymentChosen && <p className="text-[11px] font-semibold text-accent-strong">Choose a method and a status — nothing is treated as collected until you do.</p>}
               {schemeApplied && <p className="text-[11px] text-muted">Payment applies to the amount remaining after scheme redemption ({money(remaining)}).</p>}
@@ -1100,7 +1106,6 @@ export default function NewSale() {
                   const waivedTotal = round2(waivedProfit + waivedMaking + waivedWastage + waivedGst);
                   const makingLabel = chargePct(product.makingChargeType, makingVal || product.makingChargeValue);
                   const wastageLabel = chargePct(product.wastageType, wastageVal || product.wastageValue);
-                  const chargeableLabel = pureRate > 0 ? `${normalG.toFixed(3)} g of ${product.purity}` : null;
                   const schemeGLabel = pureRate > 0 ? `${(product.schemeGramsEquivalent || schemeG).toFixed(3)} g of ${product.purity}` : null;
                   const taxLabel = product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : "";
                   const disc = product.discountAmount || 0;
@@ -1112,7 +1117,7 @@ export default function NewSale() {
                           billed at pure gold value - instead of being deducted
                           from the total at the bottom. Same arithmetic, read
                           the way the customer reads it. */}
-                      <Row label={goldValueLabel} value={money(round2(goldValuePure))} />
+                      <Row label={goldValueLabel} value={money(goldValueShown)} />
 
                       {/* Which passbook paid what. With one scheme this is the
                           same figure as the line below, so it is shown only
@@ -1134,14 +1139,13 @@ export default function NewSale() {
                         value={`− ${money(schemeGold)}`}
                         tone="text-emerald-700"
                       />
-                      <Row label={`Chargeable gold value${chargeableLabel ? ` (${chargeableLabel})` : ""}`} value={money(chargeableGold)} divider />
-
-                      {/* Everything below is levied on the CHARGEABLE gold, so
-                          it sits below that line - which is also the only order
-                          in which the column adds up to Total Payable. */}
-                      {(product.goldProfitAmount || 0) > 0 && (
-                        <Row label={goldProfitLabel} value={money(round2(product.goldProfitAmount))} />
-                      )}
+                      {/* The margin rides in the gold value above, so it rides
+                          into the chargeable figure too - otherwise this column
+                          stops adding up. The gram sub-label is dropped here on
+                          purpose: it describes the pure gold, and no longer
+                          divides into this number. A label that does not match
+                          its figure is the defect being avoided. */}
+                      <Row label="Chargeable gold value" value={money(round2(chargeableGold + goldProfitLine))} divider />
 
                       <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
                       <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
@@ -1197,8 +1201,7 @@ export default function NewSale() {
                   );
                 })() : (
                   <>
-                    <Row label={goldValueLabel} value={money(round2(goldValuePure))} />
-                    {goldProfitLine > 0 && <Row label={goldProfitLabel} value={money(round2(goldProfitLine))} />}
+                    <Row label={goldValueLabel} value={money(goldValueShown)} />
                     <Row label={`Making Charge${chargePct(product.makingChargeType, makingVal || product.makingChargeValue) ? ` ${chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}` : ""}`} value={money(product.makingChargeAmount)} />
                     <Row label={`Wastage${chargePct(product.wastageType, wastageVal || product.wastageValue) ? ` ${chargePct(product.wastageType, wastageVal || product.wastageValue)}` : ""}`} value={money(product.wastageAmount)} />
                     {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
@@ -1451,7 +1454,7 @@ function OtpDialog({ otp, onClose, onDone }) {
         </div>
         <div className="px-6 py-5 space-y-4">
           <p className="text-xs text-muted">Invoice {otp.invoiceNumber} is created and pending. Enter the code sent to the customer's app to redeem their scheme balance and settle it. Closing this without verifying voids the invoice and returns the item to stock.</p>
-          <label className="grid gap-1.5"><span className="text-xs font-bold">Verification code *</span>
+          <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Verification code *</span>
             <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter code" onKeyDown={(e) => e.key === "Enter" && verify()} error={error || undefined} />
             {error && <span className="text-[11px] font-semibold text-danger">{error}</span>}
           </label>
