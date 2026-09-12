@@ -108,7 +108,23 @@ export default function Inventory({ onNavigate }) {
   // Bulk receiving — Phase 4. Two types: Jewellery (HUID) / Raw Gold (Serial).
   const [bulkType, setBulkType] = useState("JEWELLERY");
   const [bulkHeader, setBulkHeader] = useState({ vendor: "", date: "", invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
-  const [bulkRows, setBulkRows] = useState([emptyBulkRow()]);
+  // Each type keeps its OWN rows. They used to share one array, so switching
+  // from Jewellery to Raw Gold showed the jewellery rows still sitting there -
+  // and submitting then sent HUIDs, categories and stone charges to the raw-gold
+  // endpoint. Clearing the grid on switch would have fixed the bleed by throwing
+  // away what the user had typed; keeping a set per type fixes it without
+  // losing anything.
+  const [bulkRowsByType, setBulkRowsByType] = useState({
+    JEWELLERY: [emptyBulkRow()],
+    RAW_GOLD: [emptyBulkRow()],
+  });
+  const bulkRows = bulkRowsByType[bulkType];
+  const setBulkRows = useCallback((next) => {
+    setBulkRowsByType((prev) => ({
+      ...prev,
+      [bulkType]: typeof next === "function" ? next(prev[bulkType]) : next,
+    }));
+  }, [bulkType]);
   const [bulkSaving, setBulkSaving] = useState(false);
 
   usePageMotion(scope, [loading]);
@@ -486,26 +502,40 @@ export default function Inventory({ onNavigate }) {
         paidNow: h.paidNow,
         paymentMethod: h.paymentMode === "CREDIT" ? "CASH" : h.paymentMethod,
         paymentDate: h.date,
-        items: rows.map(r => ({
-          huid: r.ident.trim(),
-          serial: r.ident.trim(),
-          name: r.name.trim(),
-          category: r.category || undefined,
-          subCategory: r.subCategory || undefined,
-          purity: r.purity,
-          gross: r.gross,
-          net: r.net,
-          rate: r.rate,
-          tunch: r.tunch,
-          stone: r.stone,
-        })),
+        // Only the fields this kind of stock actually has. Raw gold has no
+        // HUID, no category and no stone: sending them anyway is how jewellery
+        // fields end up recorded against a bar of bullion.
+        items: rows.map(r => (bulkType === "RAW_GOLD"
+          ? {
+            serial: r.ident.trim(),
+            name: r.name.trim(),
+            purity: r.purity,
+            gross: r.gross,
+            net: r.net,
+            rate: r.rate,
+            tunch: r.tunch,
+          }
+          : {
+            huid: r.ident.trim(),
+            name: r.name.trim(),
+            category: r.category || undefined,
+            subCategory: r.subCategory || undefined,
+            purity: r.purity,
+            gross: r.gross,
+            net: r.net,
+            rate: r.rate,
+            tunch: r.tunch,
+            stone: r.stone,
+          })),
       };
       const res = bulkType === "RAW_GOLD"
         ? await billingService.bulkPurchaseRawGold(payload)
         : await billingService.bulkPurchase(payload);
       const final = res?.purchase?.purchaseAmount;
       setShowBulk(false);
-      setBulkRows([newBulkRow()]);
+      // Both grids, not just the one submitted - a stale draft of the other
+      // kind reappearing after a completed receipt is the same confusion.
+      setBulkRowsByType({ JEWELLERY: [newBulkRow()], RAW_GOLD: [newBulkRow()] });
       setBulkHeader({ vendor: "", date: "", invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
       await load();
       // Grouped like every other money figure — this was the one place a raw
