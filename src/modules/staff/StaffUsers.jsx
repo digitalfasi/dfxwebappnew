@@ -19,7 +19,18 @@ import { staffService } from "@/modules/staff/staffService";
 // status, which is what the manage panel does.
 
 export default function StaffUsers() {
-  const scope = useRef(null);
+  // Mirrors app/_shared/core/password_policy.py. Stated BEFORE submission so the
+// rule is visible while typing rather than arriving as a server error after.
+// A whole-string match, not a substring: "password" is refused,
+// "password-for-my-shop-2026" is not.
+const MIN_PASSWORD_LENGTH = 8;
+const COMMON_PASSWORDS = new Set([
+  "123456", "12345678", "123456789", "1234567890", "12345", "1234567",
+  "password", "password1", "password123", "passw0rd", "p@ssword", "p@ssw0rd",
+  "qwerty", "qwerty123", "qwertyuiop", "abc123", "abcd1234", "a1b2c3d4",
+  "111111", "000000", "123123", "654321", "iloveyou", "admin", "admin123",
+]);
+const scope = useRef(null);
   usePressFeedback(scope);
 
   const [users, setUsers] = useState([]);
@@ -87,7 +98,14 @@ export default function StaffUsers() {
   const validate = () => {
     const e = {};
     if (!form.name.trim() || form.name.trim().length < 2) e.name = "Name is required (min 2 characters)";
-    if (!form.password || form.password.length < 6) e.password = "Password must be at least 6 characters";
+    // Mirrors app/_shared/core/password_policy.py. The form allowed 6 while the
+    // backend required 8 plus a common-password check, so the admin filled the
+    // form, submitted, and got a server error for a rule the form never stated.
+    if (!form.password || form.password.length < MIN_PASSWORD_LENGTH) {
+      e.password = `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+    } else if (COMMON_PASSWORDS.has(form.password.trim().toLowerCase())) {
+      e.password = "That password is one of the most commonly used ones. Choose something harder to guess.";
+    }
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Invalid email";
     // Backend accepts a 10-digit Indian mobile only (must start 6-9).
     if (form.phone && !/^[6-9]\d{9}$/.test(form.phone)) e.phone = "Enter a valid 10-digit mobile number";
@@ -282,7 +300,7 @@ export default function StaffUsers() {
                   </label>
 
                   <label className="grid gap-1.5">
-                    <span className="text-xs font-bold">Password * <span className="font-normal text-muted">(min 6 characters)</span></span>
+                    <span className="text-xs font-bold">Password * <span className="font-normal text-muted">(min {MIN_PASSWORD_LENGTH} characters, not a common one)</span></span>
                     <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••" className={errors.password ? "border-danger" : ""} />
                     {errors.password && <span className="text-xs font-semibold text-danger">{errors.password}</span>}
                     {!errors.password && <span className="text-xs text-muted">This is the password the staff member signs in with — note it down, it cannot be viewed or changed later.</span>}
