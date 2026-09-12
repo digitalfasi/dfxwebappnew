@@ -113,7 +113,11 @@ export default function CatalogueStudio() {
     setForm({
       name: p.name || "", category: p.category || "", price: p.price != null ? String(p.price) : "",
       sku: p.sku || "", purity: p.purity || "", weight: p.weight !== "" && p.weight != null ? String(p.weight) : "",
-      offerDiscount: "", offerLabel: "", tags: Array.isArray(p.tags) ? p.tags : [], customTag: "",
+      // Seeded from the product, not blanked. These used to be hardcoded ""
+      // over whatever the product carried.
+      offerDiscount: p.offerDiscount !== "" && p.offerDiscount != null ? String(p.offerDiscount) : "",
+      offerLabel: p.offerLabel || "",
+      tags: Array.isArray(p.tags) ? p.tags : [], customTag: "",
       description: p.description || "", image: p.img || null, imageFile: null,
     });
     setPreview(p.img || null);
@@ -147,16 +151,16 @@ export default function CatalogueStudio() {
         weightGrams: form.weight ? Number(form.weight) : undefined,
         tags: form.tags,
         description: form.description || undefined,
+        // Sent on BOTH paths. This used to ride the create branch only, which
+        // is why an edit silently dropped whatever was typed here.
+        makingChargeDiscountPercent: form.offerDiscount === "" ? "" : Number(form.offerDiscount),
+        makingChargeDiscountLabel: form.offerLabel || "",
       };
       let target;
       if (editId) {
         target = await catalogueService.updateProduct(editId, payload);
       } else {
-        target = await catalogueService.createProduct({
-          ...payload,
-          makingChargeDiscountPercent: form.offerDiscount ? Number(form.offerDiscount) : undefined,
-          makingChargeDiscountLabel: form.offerLabel || undefined,
-        });
+        target = await catalogueService.createProduct(payload);
       }
       if (form.imageFile && target?.id) {
         try { await catalogueService.uploadImage(target.id, form.imageFile); }
