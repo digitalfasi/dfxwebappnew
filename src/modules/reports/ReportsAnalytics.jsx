@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { formatINR } from "@/_shared/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/_shared/ui/card";
 import { Button } from "@/_shared/ui/button";
 import { Badge } from "@/_shared/ui/badge";
@@ -9,7 +10,18 @@ import { customerService } from "@/modules/customers/customerService";
 
 const PERIODS = ["Today", "This Week", "This Month", "This Year", "Custom"];
 
-const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+// Reports are shown to the nearest rupee, which is the established convention
+// for this screen and the dashboard (utils.formatINR). Sales History shows
+// paise, so the same period legitimately reads a few rupees apart between the
+// two - and that difference has to be STATED, or it looks like one of them is
+// wrong. See ROUNDING_NOTE below.
+// This used to be a local copy of formatINR with the same options; one
+// definition now, so the two cannot drift.
+const inr = (n) => formatINR(Number(n || 0));
+
+// Shown wherever a period total is, so nobody reconciles these against Sales
+// History to the paisa and concludes the ledger is broken.
+const ROUNDING_NOTE = "Rounded to the nearest rupee";
 const pct = (n) => (n == null ? null : `${n > 0 ? "+" : ""}${Number(n).toFixed(1)}%`);
 
 /** Compact axis money: ₹1.2Cr / ₹3.4L / ₹90k / ₹450. */
@@ -318,7 +330,7 @@ export default function ReportsAnalytics() {
         {domain === "business" && payment && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-motion="stat">
-              <Kpi label="Total Revenue" value={inr(payment.totalRevenue)} sub={pct(payment.totalRevenueGrowthPercent) && `${pct(payment.totalRevenueGrowthPercent)} vs prev.`} />
+              <Kpi label="Total Revenue" value={inr(payment.totalRevenue)} sub={pct(payment.totalRevenueGrowthPercent) ? `${pct(payment.totalRevenueGrowthPercent)} vs prev. · ${ROUNDING_NOTE}` : ROUNDING_NOTE} />
               <Kpi label="Outstanding Dues" value={inr(payment.outstandingDues)} tone="danger" sub={pct(payment.outstandingDuesGrowthPercent) && `${pct(payment.outstandingDuesGrowthPercent)} vs prev.`} />
               <Kpi label="Avg Installment" value={inr(payment.avgInstallmentAmount)} />
               <Kpi label="Successful Payments" value={payment.successPaymentCount} tone="info" sub={`${payment.pendingPaymentCount} pending`} />
