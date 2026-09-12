@@ -331,6 +331,8 @@ export default function Inventory({ onNavigate }) {
     if (f.paymentMode === "PARTIAL" && !(Number(f.paidNow) > 0)) { toast("Enter the amount paid now"); return; }
 
     setSaving(true);
+    // Set only if the catalogue publish fails; the purchase itself is separate.
+    let publishFailed = "";
     try {
       const imageStoragePath = await billingService.uploadStagingImage(f.photoFile);
       // HUID is the primary identifier. Product Code is no longer collected in the
@@ -385,15 +387,29 @@ export default function Inventory({ onNavigate }) {
           paymentMethod: f.paymentMode === "CREDIT" ? "CASH" : f.paymentMethod,
           paymentDate: f.purchaseDate,
         });
+        // The publish is a SEPARATE call from the purchase. Swallowing its
+        // failure and then reporting "published" told the user something that
+        // had not happened: the item sat in stock, absent from the catalogue,
+        // and nobody found out until a customer could not see it.
         if (f.addToCatalogue) {
-          await billingService.publishToCatalogue(created.id).catch(() => {});
+          try {
+            await billingService.publishToCatalogue(created.id);
+          } catch (e) {
+            publishFailed = e?.message || "the catalogue rejected it";
+          }
         }
       }
 
       setShowAdd(false);
       setAddForm(EMPTY_PURCHASE);
       await load();
-      toast(f.addToCatalogue ? "Purchase recorded and published to catalogue" : "Purchase recorded");
+      // The purchase itself IS recorded, so say so either way - only the
+      // publish is in doubt.
+      if (publishFailed) {
+        toast(`Purchase recorded, but publishing to the catalogue failed — ${publishFailed}`);
+      } else {
+        toast(f.addToCatalogue ? "Purchase recorded and published to catalogue" : "Purchase recorded");
+      }
     } catch (err) {
       toast(err?.message || "Purchase failed");
     } finally {
