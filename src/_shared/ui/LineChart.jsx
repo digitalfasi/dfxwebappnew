@@ -35,7 +35,11 @@ export function LineChart({
 }) {
   const pts = (series ?? []).filter((p) => p && Number.isFinite(Number(p.y)));
   const maxRaw = pts.length ? Math.max(...pts.map((p) => Number(p.y) || 0)) : 0;
-  if (pts.length < 2 || (scale === "zero" && maxRaw <= 0)) {
+  // A single point is data, not the absence of it. "Today" returns exactly one
+  // bucket, so rejecting length < 2 made every Today chart claim "No data in
+  // this period" while the cards above it showed the day's real takings. One
+  // point draws as a flat line at its own value with the marker centred.
+  if (!pts.length || (scale === "zero" && maxRaw <= 0)) {
     return <div className={`flex ${className} items-center justify-center rounded-lg bg-canvas/40 px-4 text-center text-xs font-medium text-muted`}>{empty}</div>;
   }
   let min = 0, max = maxRaw;
@@ -46,10 +50,15 @@ export function LineChart({
     const headroom = (max - min) * 0.12; min -= headroom; max += headroom;
   }
   const span = (max - min) || 1;
-  const px = (i) => x0 + (i / (pts.length - 1)) * (x1 - x0);
+  // Guard the divide: with one point (i / 0) is NaN and the whole svg vanishes.
+  const px = (i) => (pts.length === 1 ? (x0 + x1) / 2 : x0 + (i / (pts.length - 1)) * (x1 - x0));
   const py = (v) => yBot - ((Number(v) - min) / span) * (yBot - yTop);
-  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${px(i).toFixed(1)},${py(p.y).toFixed(1)}`).join(" ");
-  const area = `${line} L${px(pts.length - 1).toFixed(1)},${yBot} L${x0},${yBot} Z`;
+  const line = pts.length === 1
+    ? `M${x0},${py(pts[0].y).toFixed(1)} L${x1},${py(pts[0].y).toFixed(1)}`
+    : pts.map((p, i) => `${i === 0 ? "M" : "L"}${px(i).toFixed(1)},${py(p.y).toFixed(1)}`).join(" ");
+  const area = pts.length === 1
+    ? `${line} L${x1},${yBot} L${x0},${yBot} Z`
+    : `${line} L${px(pts.length - 1).toFixed(1)},${yBot} L${x0},${yBot} Z`;
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ v: min + f * span, y: yBot - f * (yBot - yTop) }));
   const step = Math.max(1, Math.ceil(pts.length / 6));
   const xTicks = pts.map((p, i) => ({ i, x: p.x })).filter((t) => t.i % step === 0 || t.i === pts.length - 1);

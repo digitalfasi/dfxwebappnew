@@ -89,7 +89,23 @@ const nextConfig = {
   outputFileTracingRoot: process.cwd(),
   // Sent for every response this origin serves, pages and assets alike.
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      // The app shell must be revalidated. Next defaults a prerendered page to
+      // "s-maxage=31536000", which let returning browsers keep an app shell
+      // pointing at an older build's chunk names long after a deploy: the
+      // symptom is a machine still hitting a bug that was fixed and shipped,
+      // curable only by a hard refresh.
+      //
+      // /_next/static is excluded rather than overridden. Those filenames carry
+      // their own content hash, so Next's own immutable default is already
+      // right, and setting it explicitly here would also apply in dev, where
+      // it serves stale chunks to whoever is working on the app.
+      {
+        source: "/:path((?!_next/static).*)",
+        headers: [...securityHeaders, { key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      { source: "/_next/static/:path*", headers: securityHeaders },
+    ];
   },
 };
 export default nextConfig;
