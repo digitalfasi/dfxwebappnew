@@ -4,7 +4,7 @@ import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
-import { formatINR } from "@/_shared/utils";
+import { formatINR, istToday } from "@/_shared/utils";
 import { apiClient } from "@/_shared/apiClient";
 import { useAuth } from "@/_shared/AuthContext";
 import { toast } from "@/_shared/toast";
@@ -356,7 +356,10 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // one-time base load (rate, all-time dues, recent tables, alerts)
   useEffect(() => {
     let alive = true;
-    const today = isoDate(new Date());
+    // IST, not the viewer's clock. isoDate(new Date()) read the browser's
+    // timezone, so any machine west of IST asked for a range ending
+    // YESTERDAY during its own daily window and got stale dues back.
+    const today = istToday();
     const allTime = buildQuery({ date_from: "2020-01-01", date_to: today });
     (async () => {
       const [payAll, billing, enr, cds] = await Promise.all([

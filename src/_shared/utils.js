@@ -53,3 +53,28 @@ export function fmtDateShort(iso) {
     return "—";
   }
 }
+
+/**
+ * Today's date in IST, as YYYY-MM-DD.
+ *
+ * The shop's day is an IST day, and the backend resolves every period against
+ * IST (_today_ist). A date derived from the VIEWER's clock therefore disagrees
+ * with the server for anyone west of IST, for a window every single day: a UTC
+ * machine computes yesterday until 05:30 IST, a US machine until about 09:30.
+ * On those machines, during those hours, a range ending "today" silently
+ * excludes today and the figures come back stale - which is exactly the
+ * intermittent dashboard nobody could reproduce, because the owner's machine is
+ * on IST and never sees it.
+ *
+ * Same technique as istNow() in app/api/live-rates/publish: shift the instant by
+ * +5:30 and then read the UTC parts, which makes the result independent of
+ * wherever the browser thinks it is. Never use toISOString().slice(0,10) for
+ * this - that is the UTC date, which is wrong in the other direction.
+ */
+export function istToday() {
+  const ist = new Date(Date.now() + 5.5 * 3600 * 1000);
+  const y = ist.getUTCFullYear();
+  const m = String(ist.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(ist.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
