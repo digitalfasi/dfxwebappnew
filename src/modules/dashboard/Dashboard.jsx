@@ -22,6 +22,9 @@ const DONUT_PALETTE = ["#059669", "#d19a2e", "#2563eb", "#8b5cf6", "#e11d48", "#
 const DONUT_BUSINESS = DONUT_PALETTE;
 const DONUT_SCHEME = ["#d19a2e", "#059669", "#8b5cf6", "#2563eb", "#e11d48", "#0891b2", "#ea580c", "#475569", "#db2777", "#16a34a"];
 
+// Distinguishes "the shop has no pending actions" from "we could not find out".
+const CARDS_FAILED = { __failed: true };
+
 const QUICK_ACTIONS = [
   { title: "New Sale", page: "new-sale", icon: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0" },
   { title: "Add Customer", page: "customers", icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
@@ -327,6 +330,9 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const [pendingDues, setPendingDues] = useState(null);   // scheme dues not yet collected (all-time)
   const [invoices, setInvoices] = useState([]);
   const [enrollList, setEnrollList] = useState([]);
+  // A failed alerts call must not read as "all clear". null and {} are both
+  // falsy on every key, so a 500 rendered exactly like a clean shop - the one
+  // thing an alert panel must never do. This sentinel keeps the two apart.
   const [cards, setCards] = useState({});
 
   // Business period (KPIs + Sales Trend chart share it)
@@ -366,7 +372,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
         getSummary(`/reports/payment-summary${allTime}`),
         billingService.listSales({ limit: 5 }).catch(() => null),
         enrollmentService.getEnrollments().catch(() => []),
-        apiClient.get("/reports/dashboard-cards", { auth: true }).then((r) => r.data).catch(() => null),
+        apiClient.get("/reports/dashboard-cards", { auth: true }).then((r) => r.data).catch(() => CARDS_FAILED),
       ]);
       if (!alive) return;
       // Bullion rate now lives in the global TopBar (fetched once in App), so the
@@ -375,7 +381,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
       setInvoices(billing?.sales ?? []);
       setOutstanding(billing ? billing.totalOutstanding : null);
       setEnrollList((enr ?? []).slice(0, 5));
-      setCards(cds ?? {});
+      setCards(cds ?? CARDS_FAILED);
       setLoading(false);
     })();
     return () => { alive = false; };
@@ -471,7 +477,12 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const shownEnroll = q ? enrollList.filter((e) => [e.customer, e.scheme].join(" ").toLowerCase().includes(q)) : enrollList;
 
   const alerts = [];
-  if (cards.overdue_customers) alerts.push({ id: "overdue", tone: "danger", title: `${cards.overdue_customers} customer(s) with overdue payments`, detail: "Review collections", page: "payments" });
+  // The API emits overdue_enrollments. This read overdue_customers - a key that
+  // has never existed - so the one DANGER alert on the dashboard could never
+  // fire, while the two beside it read correct keys and did. Silence looked
+  // like good news. Worded in enrollment terms because that is what is counted:
+  // one customer may hold several overdue enrollments.
+  if (cards.overdue_enrollments) alerts.push({ id: "overdue", tone: "danger", title: `${cards.overdue_enrollments} enrollment(s) with overdue payments`, detail: "Review collections", page: "payments" });
   if (cards.pending_inspection) alerts.push({ id: "inspect", tone: "warning", title: `${cards.pending_inspection} item(s) pending inspection`, detail: "Inspect returned inventory", page: "inventory" });
   if (cards.pending_kyc) alerts.push({ id: "kyc", tone: "warning", title: `${cards.pending_kyc} pending KYC`, detail: "Verify customers", page: "customers" });
 
@@ -653,7 +664,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
           items to inspect). Each row deep-links to the module that resolves it. */}
       <Card data-motion="reveal" className="p-3.5">
         <CardTitle className="mb-2 text-xs font-bold">Action Center</CardTitle>
-        {alerts.length === 0 ? (
+        {cards.__failed ? (
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-warn-line bg-warn-soft py-6 text-xs font-semibold text-warn">
+            Alerts unavailable — could not load overdue payments, KYC or inspections.
+          </div>
+        ) : alerts.length === 0 ? (
           <div className="flex items-center justify-center py-6 text-xs font-medium text-faint">All clear — no pending actions</div>
         ) : (
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
