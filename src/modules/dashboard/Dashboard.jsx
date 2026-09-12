@@ -688,7 +688,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
               <ReportRow label={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} />
               <ReportRow label={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} />
               <ReportRow label={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} />
-              <ReportRow label="Overdue Amount" value={fmtCurrency(overdue)} />
+              <ReportRow label="Pending Dues" value={fmtCurrency(pendingDues)} />
             </div>
             <button
               disabled={exporting}
