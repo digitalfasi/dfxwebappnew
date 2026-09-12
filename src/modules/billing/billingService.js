@@ -541,8 +541,8 @@ export const billingService = {
    * statuses are backend authoritative. Returns already-mapped rows plus the
    * real total count for the footer.
    */
-  async listSales({ search = "", limit = 100, customerId = "", paymentStatus = "", saleStatus = "", dateFrom = "", dateTo = "", period = "" } = {}) {
-    const params = new URLSearchParams({ page: "1", limit: String(limit) });
+  async listSales({ search = "", limit = 100, page = 1, customerId = "", paymentStatus = "", saleStatus = "", dateFrom = "", dateTo = "", period = "", category = "", subcategory = "", purity = "" } = {}) {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (search) params.set("search", search);
     if (customerId) params.set("customer_id", customerId);
     if (paymentStatus) params.set("payment_status", paymentStatus);
@@ -551,6 +551,16 @@ export const billingService = {
     if (dateFrom) params.set("date_from", dateFrom);
     if (dateTo) params.set("date_to", dateTo);
     if (period) params.set("period", period);
+    // Category, sub-category and purity are SERVER-side filters and always were
+    // (billing/router.py accepts all three). Filtering them in the browser meant
+    // searching only the rows this page happened to load, so a filtered view
+    // silently returned a subset and read as the whole answer. Sending them also
+    // makes total, total_gold_weight_grams and total_outstanding describe the
+    // filtered set, because the backend computes all three from the same
+    // conditions as the page query.
+    if (category) params.set("category", category);
+    if (subcategory) params.set("subcategory", subcategory);
+    if (purity) params.set("purity", purity);
     const res = await apiClient.get(`/billing/sales?${params.toString()}`, { auth: true });
     return {
       sales: (res.data?.sales ?? []).map(mapSaleRow),

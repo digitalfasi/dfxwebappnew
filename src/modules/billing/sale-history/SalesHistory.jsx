@@ -77,6 +77,7 @@ export default function SalesHistory() {
   const [fPurity, setFPurity] = useState("All Purity");
 
   const [bills, setBills] = useState([]);
+  const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   // Staff see no profit anywhere in the product. The backend already sends
   // null, so the column would render a permanent "—"; a column of dashes tells
@@ -101,13 +102,19 @@ export default function SalesHistory() {
     setLoading(true);
     setLoadError("");
     try {
-      const args = { limit: PAGE_LIMIT, search: query.trim() };
+      const args = { limit: PAGE_LIMIT, page, search: query.trim() };
       if (period === "custom") {
         if (dateFrom) args.dateFrom = dateFrom;
         if (dateTo) args.dateTo = dateTo;
       } else if (period !== "all") {
         args.period = period;
       }
+      // Server-side, not in the browser. These were filtered over the loaded
+      // page only, so "22K" searched 100 rows and presented the result as the
+      // whole answer.
+      if (fCat !== "All Categories") args.category = fCat;
+      if (fSub !== "All Sub-categories") args.subcategory = fSub;
+      if (fPurity !== "All Purity") args.purity = fPurity;
       const { sales, total: count, totalOutstanding: out, totalGoldWeightGrams: goldG } =
         await billingService.listSales(args);
       setBills(sales);
@@ -121,20 +128,19 @@ export default function SalesHistory() {
     } finally {
       setLoading(false);
     }
-  }, [query, period, dateFrom, dateTo]);
+  }, [query, period, dateFrom, dateTo, page, fCat, fSub, fPurity]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Category / sub-category / purity are filtered client-side (backend list has
-  // no such params); search + date/period go through the backend.
-  const rows = useMemo(() => {
-    return bills.filter((b) => {
-      const matchesCat = fCat === "All Categories" || b.category === fCat;
-      const matchesSub = fSub === "All Sub-categories" || b.subcategory === fSub;
-      const matchesPurity = fPurity === "All Purity" || b.purity === fPurity;
-      return matchesCat && matchesSub && matchesPurity;
-    });
-  }, [bills, fCat, fSub, fPurity]);
+  // Narrowing the result while standing on page 4 would otherwise leave the
+  // user on an empty page 4 of a shorter list, which reads as "no sales".
+  useEffect(() => { setPage(1); }, [query, period, dateFrom, dateTo, fCat, fSub, fPurity]);
+
+  // Every filter now goes through the backend - search, date/period, category,
+  // sub-category and purity - so what came back IS the filtered set. The old
+  // comment here claimed the backend had no such params; it has accepted all
+  // three the whole time (billing/router.py:826-840).
+  const rows = bills;
 
   const catOptions = useMemo(() => [...new Set(bills.map(b => b.category).filter(Boolean))].sort(), [bills]);
   const subOptions = useMemo(() => [...new Set(bills.map(b => b.subcategory).filter(Boolean))].sort(), [bills]);
@@ -154,11 +160,11 @@ export default function SalesHistory() {
   // the backend's total for the period - not the first 100 rows of it.
   const filtersActive =
     fCat !== "All Categories" || fSub !== "All Sub-categories" || fPurity !== "All Purity";
-  const filteredGoldSold = useMemo(
-    () => rows.reduce((s, b) => s + (b.netGoldWeightGrams || 0), 0),
-    [rows],
-  );
-  const totalGoldSold = filtersActive ? filteredGoldSold : periodGoldWeight;
+  // periodGoldWeight is the backend total for the CURRENT QUERY, and the query
+  // now carries the filters - so it already describes the filtered set and no
+  // longer needs to be replaced by the sum of the loaded page. Both tiles are
+  // therefore whole-result figures, and they agree with each other.
+  const totalGoldSold = periodGoldWeight;
 
   // Purity-wise sold-gold composition of the current view (respects the
   // category / sub-category / purity filters, since `rows` is already filtered).
@@ -239,7 +245,13 @@ export default function SalesHistory() {
           <Card data-motion="stat" className="p-4">
             <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Outstanding</div>
             <div className={`num mt-1 text-2xl font-extrabold ${totalOutstanding > 0 ? "text-danger" : ""}`}>{formatINR(totalOutstanding)}</div>
-            <div className="text-xs text-muted">Whole period, not just this page</div>
+            {/* This said "Whole period, not just this page" under every
+                condition, including a filtered one - an unfiltered total sitting
+                beside filtered rows, which looks reconciled and is not. It now
+                follows the same rule as the gold tile above it. */}
+            <div className="text-xs text-muted">
+              {filtersActive ? "Filtered view · whole result" : "Whole period, not just this page"}
+            </div>
           </Card>
         </div>
         <Card data-motion="stat" className="p-4">
@@ -407,7 +419,16 @@ export default function SalesHistory() {
       </Card>
       <div className="mt-3 flex items-center justify-between text-xs font-semibold text-muted">
         <span>Showing {rows.length} of {total.toLocaleString("en-IN")} bills</span>
-        <span>Page 1 of {totalPages}</span>
+        {/* There was no pager: this was the literal string "Page 1 of N" with no
+            page state anywhere in the file, so everything past the first 100
+            bills was unreachable. */}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</Button>
+          <span className="num px-1">Page {Math.min(page, totalPages)} of {totalPages}</span>
+          <Button variant="outline" size="sm" disabled={page >= totalPages || loading}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Next</Button>
+        </div>
       </div>
 
       {selectedId && (
