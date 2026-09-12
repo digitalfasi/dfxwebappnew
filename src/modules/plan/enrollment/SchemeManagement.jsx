@@ -198,6 +198,12 @@ export default function SchemeManagement() {
   const isClosed = !!manage && manage.status !== "Active";
 
   const totalPaid = balance?.total_paid ?? manage?.totalPaid ?? null;
+  // Contributions actually recorded against this enrollment. Counted from the
+  // payment rows the Passbook tab is already showing, so the two tabs cannot
+  // disagree - which is exactly what SM-ENR-001 reported.
+  const successfulPayments = payments.filter(
+    (p) => p.status === "SUCCESS" || p.status === "COMPLETED"
+  ).length;
   // Authoritative total gold balance from the passbook summary (backend).
   const goldBalance = passbook?.summary?.total_gold_weight ?? null;
   // A MONEY enrollment redeems the rupees paid in, so the gold its
@@ -384,7 +390,20 @@ export default function SchemeManagement() {
                           to state. The stored figure is left untouched. */}
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Installment</td><td className={`px-4 py-2.5 ${isWalletScheme(manage.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(manage.schemeType) ? NOT_APPLICABLE : money(manage.installment)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Planned Duration</td><td className="px-4 py-2.5 font-medium">{manage.total} months</td></tr>
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Successful Payments</td><td className="px-4 py-2.5 font-bold">{manage.paid} / {manage.total}</td></tr>
+                      {/* SM-ENR-001. `manage.paid` is MONTHS paid, and the
+                          denominator beside it is the plan's duration - so this
+                          row was a months counter wearing the word "Payments".
+                          On a wallet scheme that reads 0 / 12 next to four
+                          SUCCESS payments of Rs 1,00,000, because a wallet has
+                          no instalments to complete and months_paid correctly
+                          never leaves 0. The number was right; the label was
+                          not. Each scheme type now states the figure it
+                          actually keeps. */}
+                      {isWalletScheme(manage.schemeType) ? (
+                        <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Successful Payments</td><td className="px-4 py-2.5 font-bold">{successfulPayments}</td></tr>
+                      ) : (
+                        <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Months Paid</td><td className="px-4 py-2.5 font-bold">{manage.paid} / {manage.total}</td></tr>
+                      )}
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Total Paid</td><td className="px-4 py-2.5 font-bold">{money(totalPaid)}</td></tr>
                       {/* Overdue and Next Due only mean something while the
                           enrollment is still running. On a closed/completed

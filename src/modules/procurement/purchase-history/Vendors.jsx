@@ -230,11 +230,19 @@ export default function Vendors() {
       <Card data-motion="reveal" className="overflow-hidden">
         <div className="border-b border-line px-6 py-3"><h3 className="text-sm font-extrabold">Vendor list</h3></div>
         <CardContent className="overflow-x-auto px-0 pb-0">
-          <table className="w-full min-w-[900px] border-collapse text-sm">
+          <table className="w-full min-w-[1180px] border-collapse text-sm">  {/* 1180px is the sum of the column minimums below plus their padding. Leaving it at 900 would have let the browser start squeezing again before the wrapper scrolled. */}
             <thead>
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Vendor</th><th className="py-3">Contact</th><th className="py-3">Status</th><th className="py-3">Tunch</th>
-                <th className="py-3 text-right">Total Purchases</th><th className="py-3 text-right">Paid</th><th className="py-3 text-right">Outstanding</th><th className="py-3 text-right pr-6">Actions</th>
+                {/* PH-UI-001. Every column but the first and last carried
+                    vertical padding only, so adjacent cells sat flush against
+                    each other and whitespace-nowrap then guaranteed a status
+                    badge, a percentage and a currency amount would touch. The
+                    widths below are minimums, not fixed sizes: the table keeps
+                    growing with the viewport, and when it can no longer fit it
+                    scrolls (see overflow-x on the wrapper) rather than crushing
+                    the columns into each other. */}
+                <th className="px-6 py-3 min-w-[13rem]">Vendor</th><th className="px-4 py-3 min-w-[11rem]">Contact</th><th className="px-4 py-3 min-w-[6.5rem]">Status</th><th className="px-4 py-3 min-w-[5.5rem]">Tunch</th>
+                <th className="px-4 py-3 text-right min-w-[9rem]">Total Purchases</th><th className="px-4 py-3 text-right min-w-[8rem]">Paid</th><th className="px-4 py-3 text-right min-w-[9rem]">Outstanding</th><th className="px-4 py-3 text-right pr-6 min-w-[10.5rem]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -245,16 +253,16 @@ export default function Vendors() {
                     <td className="px-6 py-3.5">
                       <button className="font-bold text-ink hover:text-accent hover:underline" onClick={() => { setDetailTab("overview"); setDetailVendor(v); }}>{v.name}</button>
                     </td>
-                    <td className="py-3.5">
+                    <td className="px-4 py-3.5">
                       <div className="num text-xs font-semibold">{v.phone ? `+91 ${v.phone}` : "No phone"}</div>
                       <div className="num text-xs text-muted">{v.gstNumber || "No GST"}</div>
                     </td>
-                    <td className="py-3.5"><Badge tone={v.isActive ? "success" : "neutral"} dot>{v.isActive ? "Active" : "Inactive"}</Badge></td>
-                    <td className="py-3.5 font-mono text-xs whitespace-nowrap">{Number(v.vendorChargePercent).toFixed(2)}%</td>
-                    <td className="py-3.5 text-right num font-semibold whitespace-nowrap">{money(r.purchases)}</td>
-                    <td className="py-3.5 text-right num text-emerald-700 whitespace-nowrap">{money(r.paid)}</td>
-                    <td className="py-3.5 text-right num font-bold text-accent whitespace-nowrap">{money(r.outstanding)}</td>
-                    <td className="py-3.5 pr-6">
+                    <td className="px-4 py-3.5"><Badge tone={v.isActive ? "success" : "neutral"} dot>{v.isActive ? "Active" : "Inactive"}</Badge></td>
+                    <td className="px-4 py-3.5 font-mono text-xs whitespace-nowrap">{Number(v.vendorChargePercent).toFixed(2)}%</td>
+                    <td className="px-4 py-3.5 text-right num font-semibold whitespace-nowrap">{money(r.purchases)}</td>
+                    <td className="px-4 py-3.5 text-right num text-emerald-700 whitespace-nowrap">{money(r.paid)}</td>
+                    <td className="px-4 py-3.5 text-right num font-bold text-accent whitespace-nowrap">{money(r.outstanding)}</td>
+                    <td className="px-4 py-3.5 pr-6">
                       <div className="flex justify-end">
                         {r.outstanding > 0 ? (
                           <Button size="sm" variant="outline" onClick={() => { setDetailTab("purchases"); setDetailVendor(v); }}>Clear Outstanding</Button>

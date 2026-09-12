@@ -303,10 +303,16 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
                         <span>
                           <span className="block text-sm font-bold">{e.scheme}</span>
                           {/* A wallet has no per-month figure to quote - the
-                              customer deposits what he likes. The count of
-                              contributions still means something, so it stays. */}
+                              customer deposits what he likes. `e.paid` is
+                              MONTHS paid, not a count of contributions, and on
+                              a wallet it never leaves 0 - so quoting "0/12
+                              paid" beside a funded wallet was simply false
+                              (SM-ENR-001). State what the wallet holds instead,
+                              and say nothing when that is not loaded. */}
                           <span className="block text-xs text-muted">
-                            {isWalletScheme(e.schemeType) ? `${e.paid}/${e.total} paid` : `${formatINR(e.installment)}/mo · ${e.paid}/${e.total} paid`}
+                            {isWalletScheme(e.schemeType)
+                              ? (e.totalPaid != null ? `${formatINR(e.totalPaid)} paid in` : "Wallet")
+                              : `${formatINR(e.installment)}/mo · ${e.paid}/${e.total} months paid`}
                           </span>
                           <span className="block font-mono text-[11px] text-muted">{e.enrollment}</span>
                         </span>
