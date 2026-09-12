@@ -45,10 +45,11 @@ function mapRow(raw) {
     // How many installments this one payment cleared, so the ledger can show
     // "₹30,000 · 3 mo" — the admin sees at a glance what the payment covered.
     monthsCovered: raw.months_covered || 1,
-    // Enrollment overdue tracking (backend-authoritative when present on the
-    // payload; 0 when the payments endpoint doesn't carry it).
-    overdueDays: raw.overdue_days ?? 0,
-    overdueAmount: raw.overdue_amount ?? 0,
+    // No overdue fields here on purpose. /payments describes a PAYMENT that was
+    // made; overdue is a fact about an ENROLLMENT, and it arrives on that
+    // payload. This used to map overdue_days / overdue_amount off a payment row
+    // that has never carried either - 330 of 330 live rows lack both - so it
+    // rendered 0 forever and read as "nothing overdue".
   };
 }
 
