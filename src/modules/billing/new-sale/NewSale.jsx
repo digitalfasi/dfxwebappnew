@@ -751,7 +751,7 @@ export default function NewSale() {
           <div className="text-sm font-extrabold text-faint">Bill summary</div>
           <p className="mt-1 text-xs text-muted">Appears here once an item is loaded, and stays pinned while you work down the form.</p>
           <div className="mt-4 space-y-2.5" aria-hidden="true">
-            {["Gold value", "Gold profit", "Making charge", "GST", "Bill total"].map((label, i) => (
+            {["Gold value", "Making charge", "Wastage", "GST", "Bill total"].map((label, i) => (
               <div key={label} className="flex items-center justify-between gap-4">
                 <span className={`text-xs ${i === 4 ? "font-extrabold text-faint" : "text-faint"}`}>{label}</span>
                 <span className={`h-2 rounded-full bg-line-soft ${i === 4 ? "w-24" : "w-16"}`} />
@@ -938,7 +938,23 @@ export default function NewSale() {
                       the card; inside this bordered box it pulled the first
                       label onto the border. */}
                   <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1">
-                    <SpecCell label="Today's gold value" value={money(todaysGoldValue)} mono />
+                    {/* Named for what it IS, not for when it was taken. This tile
+                        and the bill summary's Gold Value row are different money -
+                        the metal at the published rate versus the metal at the
+                        SELLING rate, differing by exactly the Gold Profit - and
+                        while both read "gold value" the screen looked broken every
+                        time the profit % was changed. The rate is stated beneath so
+                        the figure can be checked by hand, the same rule the invoice
+                        follows. Staff-only: this rate is the store's cost basis and
+                        never appears on a customer document. */}
+                    <SpecCell
+                      label="Metal at published rate"
+                      value={money(todaysGoldValue)}
+                      sub={netGrams > 0 && appliedRate > 0
+                        ? `${netGrams.toFixed(3)} g × ${money(appliedRate)}`
+                        : undefined}
+                      mono
+                    />
                     {/* A scheme changes the selling price, so until the quote
                         carrying it comes back there is no honest figure to
                         print. Showing the un-carved one is how this strip came
@@ -1001,7 +1017,7 @@ export default function NewSale() {
                          the bill with GST taken back out (that money is the
                          government's, not the store's) against what the metal
                          is worth at today's rate. */
-                      detail={<>{money(round2((product.finalAmount || 0) / taxFactor))} bill less GST − {money(todaysGoldValue)} today's gold value</>}
+                      detail={<>{money(round2((product.finalAmount || 0) / taxFactor))} bill less GST − {money(todaysGoldValue)} metal at published rate</>}
                     />
                   )}
                 </Card>
@@ -1042,7 +1058,7 @@ export default function NewSale() {
                               : (goldProfitShown != null ? String(round2(goldProfitShown)) : "")
                         }
                         onChange={(e) => { setGoldProfit(e.target.value); setPriceDriver("PROFIT"); }} />
-                      <span className="text-[11px] text-muted">{schemeSelected ? "Earned on the un-covered grams only — waived on the scheme-covered slice." : "Margin over gold value — drives the selling price."}</span>
+                      <span className="text-[11px] text-muted">{schemeSelected ? "Earned on the un-covered grams only — waived on the scheme-covered slice." : "Margin over the published metal rate — drives the selling price."}</span>
                       {/* What the margin becomes once the discount is taken off
                           it. Red at zero: there is nothing left to give. */}
                       {discountNum > 0 && effectiveProfitPct != null && (
