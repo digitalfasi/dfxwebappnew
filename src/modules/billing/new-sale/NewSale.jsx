@@ -1441,6 +1441,43 @@ export default function NewSale() {
       {quote && <QuoteDialog quote={quote} onClose={() => setQuote(null)} />}
 
       {invoice && <InvoiceDialog invoice={invoice} onClose={() => { setInvoice(null); resetAll(); }} />}
+
+      {/* Unfinished bills. A draft holds no stock, carries no invoice number
+          and is in no revenue figure - it is only what somebody typed. */}
+      {draftsOpen && (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-ink/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="w-full max-w-[560px] overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-5 py-4">
+              <div>
+                <h3 className="text-base font-extrabold">Unfinished bills</h3>
+                <p className="mt-0.5 text-xs text-muted">Saved before billing. Nothing here is a sale yet.</p>
+              </div>
+              <button onClick={() => setDraftsOpen(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
+            </div>
+            <div className="max-h-[55vh] overflow-y-auto px-5 py-4">
+              {drafts === null && <p className="py-8 text-center text-sm font-bold text-muted">Loading…</p>}
+              {drafts !== null && drafts.length === 0 && (
+                <p className="py-8 text-center text-sm text-muted">No unfinished bills.</p>
+              )}
+              {(drafts || []).map((d) => (
+                <div key={d.id} className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5 last:border-0">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold">{d.product_code}</p>
+                    <p className="truncate text-xs text-muted">
+                      {d.customer_name || "No buyer yet"}
+                      {d.customer_phone ? ` · ${d.customer_phone}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => resumeDraft(d.id)}>Resume</Button>
+                    <Button size="sm" variant="outline" className="text-danger" onClick={() => discardDraft(d.id)}>Discard</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1574,43 +1611,6 @@ const PnlCard = ({ label, amount, pct, sub, detail }) => {
       <div className={`num mt-0.5 text-base font-extrabold ${pos ? "text-emerald-700" : "text-red-700"}`}>{amount < 0 ? "-" : ""}{money(Math.abs(amount || 0))}</div>
       <div className={`text-[10px] font-semibold ${pos ? "text-emerald-600" : "text-red-600"}`}>{pos ? "Profit" : "Loss"}{pct != null ? ` · ${Math.abs(pct).toFixed(2)}%` : ""}{sub ? <span className="ml-1 text-[9px] font-medium text-muted">{sub}</span> : null}</div>
       {detail ? <div className="num mt-1 text-[9px] font-medium leading-snug text-muted">{detail}</div> : null}
-
-      {/* Unfinished bills. A draft holds no stock, carries no invoice number
-          and is in no revenue figure - it is only what somebody typed. */}
-      {draftsOpen && (
-        <div className="fixed inset-0 z-[100] grid place-items-center bg-ink/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="w-full max-w-[560px] overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
-            <div className="flex items-center justify-between border-b border-line px-5 py-4">
-              <div>
-                <h3 className="text-base font-extrabold">Unfinished bills</h3>
-                <p className="mt-0.5 text-xs text-muted">Saved before billing. Nothing here is a sale yet.</p>
-              </div>
-              <button onClick={() => setDraftsOpen(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
-            </div>
-            <div className="max-h-[55vh] overflow-y-auto px-5 py-4">
-              {drafts === null && <p className="py-8 text-center text-sm font-bold text-muted">Loading…</p>}
-              {drafts !== null && drafts.length === 0 && (
-                <p className="py-8 text-center text-sm text-muted">No unfinished bills.</p>
-              )}
-              {(drafts || []).map((d) => (
-                <div key={d.id} className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5 last:border-0">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold">{d.product_code}</p>
-                    <p className="truncate text-xs text-muted">
-                      {d.customer_name || "No buyer yet"}
-                      {d.customer_phone ? ` · ${d.customer_phone}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => resumeDraft(d.id)}>Resume</Button>
-                    <Button size="sm" variant="outline" className="text-danger" onClick={() => discardDraft(d.id)}>Discard</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
