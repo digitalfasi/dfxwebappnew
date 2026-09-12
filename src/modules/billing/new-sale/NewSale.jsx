@@ -372,7 +372,11 @@ export default function NewSale() {
   // Empty is valid (a walk-in need not give a number); anything typed has to be
   // all ten digits. PhoneInput already refuses letters, symbols and an 11th
   // digit, so this only guards the half-typed case.
-  const walkinPhoneInvalid = customerMode === "walkin" && walkinPhone.length > 0 && walkinPhone.length !== 10;
+  // A walk-in bill used to be raisable with no number at all. The shop cannot
+  // call that customer back about a repair, an order or a return, and the bill
+  // carries the number, so it is required now - and required in full: nine
+  // digits is not a phone number.
+  const walkinPhoneInvalid = customerMode === "walkin" && walkinPhone.length !== 10;
 
   const customerIdentified =
     (customerMode === "existing" ? !!selectedCustomer?.id : walkinName.trim().length >= 2) && !walkinPhoneInvalid;
@@ -809,7 +813,7 @@ export default function NewSale() {
               </div>
               {/* One strip, hairline separated: the three facts that decide the
                   price sit on a single line instead of three stacked boxes. */}
-              <div className="mt-3.5 flex divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60">
+              <div className="mt-3.5 grid grid-cols-3 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 [&>*]:min-w-0">
                 <SpecCell flush label="Purity" value={product.purity || "Not provided"} />
                 <SpecCell flush label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
                 <SpecCell flush label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
@@ -938,9 +942,9 @@ export default function NewSale() {
                   {/* Optional, but if it is filled it must be a real mobile
                       number - the bill carries it and the store calls it back. */}
                   <label className="grid min-w-0 gap-1.5">
-                    <span className="text-xs font-bold">Phone <span className="font-normal text-muted">— optional, 10 digits</span></span>
+                    <span className="text-xs font-bold">Phone * <span className="font-normal text-muted">— 10 digits</span></span>
                     <PhoneInput value={walkinPhone} onValueChange={setWalkinPhone} error={walkinPhoneInvalid} />
-                    {walkinPhoneInvalid && <span className="text-[11px] font-semibold text-danger">Enter all 10 digits, or leave it empty</span>}
+                    {walkinPhoneInvalid && <span className="text-[11px] font-semibold text-danger">Enter all 10 digits</span>}
                   </label>
                 </div>
               )}
