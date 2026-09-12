@@ -603,6 +603,36 @@ export const billingService = {
    * OTP was never completed: the item returns to stock and the invoice is
    * cancelled. Called when the admin closes the OTP step without verifying.
    */
+  /* ── Bill drafts — an unfinished bill held server-side ──────────────────
+   * The counter saves what it has typed and comes back to it. A draft is not
+   * a sale: it reserves no stock, takes no invoice number and appears in no
+   * revenue figure until it is finalized. Admin sees every draft in the
+   * tenant; Staff sees only their own (enforced by the backend).
+   */
+
+  /** POST /api/v1/billing/drafts */
+  async saveDraft(payload) {
+    const res = await apiClient.post("/billing/drafts", payload, { auth: true });
+    return res.data?.draft ?? null;
+  },
+
+  /** GET /api/v1/billing/drafts — open drafts, newest first. */
+  async listDrafts(status = "OPEN") {
+    const res = await apiClient.get(`/billing/drafts?status=${encodeURIComponent(status)}`, { auth: true });
+    return res.data?.drafts ?? [];
+  },
+
+  /** GET /api/v1/billing/drafts/{id} — the full draft, to resume it. */
+  async getDraft(draftId) {
+    const res = await apiClient.get(`/billing/drafts/${draftId}`, { auth: true });
+    return res.data?.draft ?? null;
+  },
+
+  /** DELETE /api/v1/billing/drafts/{id} — discard, or clear after billing. */
+  async deleteDraft(draftId) {
+    await apiClient.delete(`/billing/drafts/${draftId}`, { auth: true });
+  },
+
   async voidSale(saleId) {
     const res = await apiClient.post(`/billing/sales/${saleId}/void`, {}, { auth: true });
     return res.data?.void ?? null;

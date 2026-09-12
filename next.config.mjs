@@ -42,13 +42,18 @@ const API_ORIGIN = (() => {
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
+  // Google Fonts serves the stylesheet that loads Manrope and JetBrains Mono,
+  // which layout.tsx links. Without it here the stylesheet is BLOCKED and the
+  // whole product silently falls back to system fonts - the typography looks
+  // wrong on every screen and the only clue is a console error nobody reads.
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   // data: for inlined icons, blob: for anything the app renders client-side,
   // and the API origin because product and catalogue images are served from it.
   // OpenStreetMap tiles for the branch location picker (BR-001). Without this
   // the map renders as empty grey squares and nothing says why.
   `img-src 'self' data: blob: https://*.tile.openstreetmap.org ${API_ORIGIN}`.trim(),
-  "font-src 'self' data:",
+  // ...and the font FILES that stylesheet then requests come from gstatic.
+  "font-src 'self' data: https://fonts.gstatic.com",
   // Nominatim answers the address search. Same reason: blocked here, the search
   // fails with a console error the user never sees.
   `connect-src 'self' https://nominatim.openstreetmap.org ${API_ORIGIN}`.trim(),

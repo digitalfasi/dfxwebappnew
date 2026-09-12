@@ -133,6 +133,16 @@ export const reportService = {
     downloadBase64(res.data?.export);
   },
 
+  /** GET /reports/export/dashboard-summary — the Dashboard's KPI table as a
+   * file. This is what the dashboard's Generate Report uses: printing the page
+   * in the browser crashed the tab, and the backend already builds this table.
+   */
+  async exportDashboardSummary(format = "excel") {
+    const params = new URLSearchParams({ format });
+    const res = await apiClient.get(`/reports/export/dashboard-summary${qs(params)}`, { auth: true });
+    downloadBase64(res.data?.export);
+  },
+
   /** GET /reports/export/analytics-summary — KPI export (csv/excel/markdown). */
   async exportAnalyticsSummary(format = "excel") {
     const params = new URLSearchParams({ format });

@@ -7,6 +7,8 @@ import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { formatINR } from "@/_shared/utils";
 import { apiClient } from "@/_shared/apiClient";
 import { useAuth } from "@/_shared/AuthContext";
+import { toast } from "@/_shared/toast";
+import { reportService } from "@/modules/reports/reportService";
 import { billingService } from "@/modules/billing/billingService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { LineChart } from "@/_shared/ui/LineChart";
@@ -208,46 +210,6 @@ function CustomRange({ value, onApply, accent }) {
   );
 }
 
-/** Print just the dashboard report.
- *
- * window.print() prints the whole document, and this page carries two chart
- * canvases - printing them crashed the renderer outright ("This page couldn't
- * load"), which is a worse failure than the wrong thing printing. The report is
- * a dozen label/value pairs, so it is rendered into a hidden same-origin iframe
- * and that is printed instead: no canvases, no overlay, and nothing for the
- * print engine to rasterise. An iframe rather than window.open, because a popup
- * blocker must not be able to silently swallow a print.
- */
-function printReport(sections, title) {
-  const esc = (v) => String(v ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const body = sections.map((sec) => `
-      <h2>${esc(sec.title)}</h2>
-      <table>${sec.rows.map(([l, v]) => `<tr><td>${esc(l)}</td><td class="n">${esc(v)}</td></tr>`).join("")}</table>`).join("");
-  const frame = document.createElement("iframe");
-  frame.setAttribute("aria-hidden", "true");
-  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
-  document.body.appendChild(frame);
-  const doc = frame.contentDocument;
-  doc.open();
-  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
-    <style>
-      body{font:13px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;margin:24px;}
-      h1{font-size:18px;margin:0 0 2px;}
-      .date{color:#666;font-size:12px;margin:0 0 18px;}
-      h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#888;margin:18px 0 6px;}
-      table{width:100%;border-collapse:collapse;}
-      td{padding:5px 0;border-bottom:1px solid #eee;}
-      td.n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;}
-    </style></head><body>
-    <h1>${esc(title)}</h1><p class="date">${esc(new Date().toLocaleString("en-IN"))}</p>${body}
-    </body></html>`);
-  doc.close();
-  const done = () => setTimeout(() => frame.remove(), 500);
-  frame.contentWindow.focus();
-  frame.contentWindow.print();
-  done();
-}
-
 function ReportRow({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-3 py-0.5">
@@ -360,6 +322,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
 
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);    // Generate Report popup
+  const [exporting, setExporting] = useState(false);
   const [outstanding, setOutstanding] = useState(null);   // business product dues (all-time)
   const [pendingDues, setPendingDues] = useState(null);   // scheme dues not yet collected (all-time)
   const [invoices, setInvoices] = useState([]);
@@ -728,22 +691,26 @@ export default function Dashboard({ onNavigate, search = "" }) {
               <ReportRow label="Overdue Amount" value={fmtCurrency(overdue)} />
             </div>
             <button
-              onClick={() => printReport([
-                { title: "Store Business", rows: [
-                  [`${bizPfx} Sales`, fmtCurrency(bizSales)],
-                  [`${bizPfx} Gold Sold`, fmtGrams(goldSold)],
-                  ...(seesProfit ? [[`${bizPfx} Profit`, fmtProfit(profit)]] : []),
-                  ["Outstanding Amount", fmtCurrency(outstanding)],
-                ] },
-                { title: "Schemes", rows: [
-                  [`${schemePfx} Collection`, fmtCurrency(paySummary?.total_revenue)],
-                  [`${schemePfx} New Enrollments`, fmtCount(newEnroll)],
-                  [`${schemePfx} Estimated Maturity`, fmtCurrency(newMaturity)],
-                  ["Overdue Amount", fmtCurrency(overdue)],
-                ] },
-              ], "Dashboard Report")}
-              className="mt-4 w-full rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-accent-strong"
-            >Print / Save PDF</button>
+              disabled={exporting}
+              onClick={async () => {
+                // NOT window.print(). Printing this page crashed the browser
+                // tab outright - the dark "This page couldn't load" screen -
+                // and it did so whether the whole document or an iframe was
+                // printed, because the fault is in the print call itself. The
+                // backend already builds this exact KPI table as a file, so
+                // the report is downloaded instead of rendered by the printer.
+                setExporting(true);
+                try {
+                  await reportService.exportDashboardSummary("excel");
+                  toast("Report downloaded");
+                } catch (err) {
+                  toast(err?.message || "Could not generate the report");
+                } finally {
+                  setExporting(false);
+                }
+              }}
+              className="mt-4 w-full rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-accent-strong disabled:opacity-60"
+            >{exporting ? "Preparing…" : "Download report (Excel)"}</button>
           </div>
         </div>
       )}

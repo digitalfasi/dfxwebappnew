@@ -111,6 +111,14 @@ export default function NewSale() {
   // full" silently asserts money was collected: one distracted click on
   // Create Bill and the invoice is settled in the ledger against cash nobody
   // counted. The admin states both, every time.
+  // A draft is an unfinished bill, not a sale: it holds no stock, takes no
+  // invoice number and appears in no revenue figure. resumedDraftId is the
+  // draft this screen came from, so billing it removes it rather than leaving
+  // the same unfinished bill sitting in the list beside a real invoice.
+  const [resumedDraftId, setResumedDraftId] = useState(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [drafts, setDrafts] = useState(null);
   const [payMethod, setPayMethod] = useState("");
   const [payStatus, setPayStatus] = useState("");
   const [partialAmount, setPartialAmount] = useState("");
@@ -488,6 +496,10 @@ export default function NewSale() {
         await enrollmentService.requestRedemptionOtp(sale.id);
         setOtp({ saleId: sale.id, invoiceNumber: sale.invoiceNumber, items: redeemLines.map((l) => ({ enrollmentId: l.enrollmentId, amount: l.amount })) });
         toast("Verification code sent to the customer's app");
+        if (resumedDraftId) {
+          billingService.deleteDraft(resumedDraftId).catch(() => {});
+          setResumedDraftId(null);
+        }
       } else {
         const sale = await billingService.createSale({
           ...baseInputs(),
@@ -499,6 +511,13 @@ export default function NewSale() {
         // Open the invoice summary dialog (Download PDF / Print). The form is
         // reset only when the dialog is closed, so the admin keeps the PDF handle.
         setInvoice({ id: sale.id, invoiceNumber: sale.invoiceNumber, finalAmount: sale.finalAmount });
+        // The draft became a real bill, so it stops being an unfinished one.
+        // Failing to clear it would leave the same bill in the list beside the
+        // invoice it turned into, and somebody would bill it twice.
+        if (resumedDraftId) {
+          billingService.deleteDraft(resumedDraftId).catch(() => {});
+          setResumedDraftId(null);
+        }
       }
     } catch (err) {
       toast(err?.message || "Could not create bill");
@@ -561,6 +580,82 @@ export default function NewSale() {
     handleFind(); // refresh the product from the backend's true state
   };
 
+  /** Save what has been typed so far, to come back to. */
+  const handleSaveDraft = async () => {
+    if (!product) { toast("Find a product first"); return; }
+    setSavingDraft(true);
+    try {
+      const payload = {
+        product_code: productCode,
+        customer_id: customerMode === "existing" ? selectedCustomer?.id || undefined : undefined,
+        customer_name: customerMode === "existing" ? selectedCustomer?.name || undefined : (walkinName.trim() || undefined),
+        customer_phone: customerMode === "existing" ? undefined : (walkinPhone.trim() || undefined),
+        gst_applied: gst,
+        making_charge_value: makingVal !== "" ? num(makingVal) : undefined,
+        wastage_value: wastageVal !== "" ? num(wastageVal) : undefined,
+        gold_profit_percent: priceDriver === "PROFIT" && goldProfit !== "" ? num(goldProfit) : undefined,
+        customer_price: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
+        discount_amount: discountNum || 0,
+        payment_method: payMethod || "CASH",
+        payment_status: payStatus || "PAID",
+      };
+      if (resumedDraftId) await billingService.deleteDraft(resumedDraftId);
+      await billingService.saveDraft(payload);
+      setResumedDraftId(null);
+      toast("Saved to drafts");
+      resetAll();
+    } catch (err) {
+      toast(err?.message || "Could not save the draft");
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const openDrafts = async () => {
+    setDraftsOpen(true);
+    setDrafts(null);
+    try {
+      setDrafts(await billingService.listDrafts("OPEN"));
+    } catch (err) {
+      setDrafts([]);
+      toast(err?.message || "Could not load drafts");
+    }
+  };
+
+  /** Load a draft back into the screen. The draft is NOT deleted here - only
+   * once it becomes a real bill, or when it is discarded on purpose. */
+  const resumeDraft = async (id) => {
+    try {
+      const d = await billingService.getDraft(id);
+      if (!d) return;
+      setDraftsOpen(false);
+      setCode(d.product_code || "");
+      setResumedDraftId(d.id);
+      setGst(d.gst_applied !== false);
+      setMakingVal(d.making_charge_value != null ? String(d.making_charge_value) : "");
+      setWastageVal(d.wastage_value != null ? String(d.wastage_value) : "");
+      if (d.gold_profit_percent != null) { setGoldProfit(String(d.gold_profit_percent)); setPriceDriver("PROFIT"); }
+      if (d.customer_price != null) { setCustomerPrice(String(d.customer_price)); setPriceDriver("PRICE"); }
+      setDiscount(d.discount_amount ? String(d.discount_amount) : "");
+      setPayMethod(d.payment_method || "");
+      setPayStatus(d.payment_status || "");
+      toast(`Resumed draft — ${d.product_code}. Find the product to reprice it.`);
+    } catch (err) {
+      toast(err?.message || "Could not open that draft");
+    }
+  };
+
+  const discardDraft = async (id) => {
+    try {
+      await billingService.deleteDraft(id);
+      setDrafts((list) => (list || []).filter((d) => d.id !== id));
+      if (resumedDraftId === id) setResumedDraftId(null);
+      toast("Draft discarded");
+    } catch (err) {
+      toast(err?.message || "Could not discard the draft");
+    }
+  };
+
   // The customer is shown this panel, so the store's margin is never a row of
   // its own. It goes where a jeweller already puts it: in the RATE. The panel
   // states the selling rate per gram and the gold value it produces, the two
@@ -601,6 +696,7 @@ export default function NewSale() {
             <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter HUID" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
           </label>
           <Button size="sm" className="bg-accent hover:bg-accent-strong h-10 px-6" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
+          <Button size="sm" variant="outline" className="h-10 px-5" onClick={openDrafts}>Unfinished bills</Button>
         </div>
         {/* Not a toast. A toast fades and this must not: until someone cancels
           that invoice there is a sale on the books for a piece the customer
@@ -1292,6 +1388,7 @@ export default function NewSale() {
                 <Button size="sm" className="bg-accent hover:bg-accent-strong w-full" disabled={!canCreate} onClick={handleCreateBill}>{creating ? "Working…" : schemeApplied ? "Create Bill & Redeem" : "Create Bill"}</Button>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={handleQuotation} disabled={creating || requoting}>Quotation</Button>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={handleSaveDraft} disabled={creating || savingDraft}>{savingDraft ? "Saving…" : "Save draft"}</Button>
                   <Button size="sm" variant="outline" className="flex-1" onClick={resetAll} disabled={creating}>Cancel</Button>
                 </div>
               </div>
@@ -1477,6 +1574,43 @@ const PnlCard = ({ label, amount, pct, sub, detail }) => {
       <div className={`num mt-0.5 text-base font-extrabold ${pos ? "text-emerald-700" : "text-red-700"}`}>{amount < 0 ? "-" : ""}{money(Math.abs(amount || 0))}</div>
       <div className={`text-[10px] font-semibold ${pos ? "text-emerald-600" : "text-red-600"}`}>{pos ? "Profit" : "Loss"}{pct != null ? ` · ${Math.abs(pct).toFixed(2)}%` : ""}{sub ? <span className="ml-1 text-[9px] font-medium text-muted">{sub}</span> : null}</div>
       {detail ? <div className="num mt-1 text-[9px] font-medium leading-snug text-muted">{detail}</div> : null}
+
+      {/* Unfinished bills. A draft holds no stock, carries no invoice number
+          and is in no revenue figure - it is only what somebody typed. */}
+      {draftsOpen && (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-ink/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="w-full max-w-[560px] overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-5 py-4">
+              <div>
+                <h3 className="text-base font-extrabold">Unfinished bills</h3>
+                <p className="mt-0.5 text-xs text-muted">Saved before billing. Nothing here is a sale yet.</p>
+              </div>
+              <button onClick={() => setDraftsOpen(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
+            </div>
+            <div className="max-h-[55vh] overflow-y-auto px-5 py-4">
+              {drafts === null && <p className="py-8 text-center text-sm font-bold text-muted">Loading…</p>}
+              {drafts !== null && drafts.length === 0 && (
+                <p className="py-8 text-center text-sm text-muted">No unfinished bills.</p>
+              )}
+              {(drafts || []).map((d) => (
+                <div key={d.id} className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5 last:border-0">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold">{d.product_code}</p>
+                    <p className="truncate text-xs text-muted">
+                      {d.customer_name || "No buyer yet"}
+                      {d.customer_phone ? ` · ${d.customer_phone}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => resumeDraft(d.id)}>Resume</Button>
+                    <Button size="sm" variant="outline" className="text-danger" onClick={() => discardDraft(d.id)}>Discard</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
