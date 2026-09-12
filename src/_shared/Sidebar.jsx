@@ -111,10 +111,12 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
         )}
         aria-label="Primary navigation"
       >
-        {/* Store identity — visually separated from the nav by its own surface
-            and a stronger divider, so the header reads as a distinct band. */}
+        {/* Store identity. Deliberately NOT given its own surface: a lighter
+            band here reads as a different material laid over the rail rather
+            than part of it. One cream, and a hairline where structure is
+            genuinely needed. */}
         {collapsed ? (
-          <div className="flex justify-center border-b border-accent-line/50 bg-white/50 px-2 py-4">
+          <div className="flex justify-center border-b border-accent-line/45 px-2 py-4">
             <div
               className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm"
               title={`${storeName} · ${roleText(user) || "Admin"}`}
@@ -123,7 +125,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             </div>
           </div>
         ) : (
-          <div className="flex items-start gap-3 border-b border-accent-line/50 bg-white/50 px-4 py-4">
+          <div className="flex items-start gap-3 border-b border-accent-line/45 px-4 py-4">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm">
               {storeName[0]?.toUpperCase() ?? "D"}
             </div>
@@ -253,21 +255,17 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             block used to live here, but the header already shows the store and
             role, so it was duplicate information. Desktop only (mobile uses the
             slide-over drawer, which has no collapsed state). */}
-        <div className="hidden border-t border-accent-line/50 bg-white/50 px-2 py-2 lg:block">
+        <div className="hidden justify-center border-t border-accent-line/45 px-2 py-2.5 lg:flex">
           <button
             onClick={onToggleCollapse}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!collapsed}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-[12.5px] font-bold text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong",
-              collapsed && "justify-center px-0"
-            )}
+            className="grid h-9 w-9 place-items-center rounded-xl text-muted transition-colors hover:bg-accent-soft/70 hover:text-accent-strong"
           >
-            <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d={collapsed ? "M9 18l6-6-6-6" : "M15 18l-6-6 6-6"} />
             </svg>
-            {!collapsed && <span>Collapse</span>}
           </button>
         </div>
       </aside>
