@@ -207,6 +207,46 @@ function CustomRange({ value, onApply, accent }) {
   );
 }
 
+/** Print just the dashboard report.
+ *
+ * window.print() prints the whole document, and this page carries two chart
+ * canvases - printing them crashed the renderer outright ("This page couldn't
+ * load"), which is a worse failure than the wrong thing printing. The report is
+ * a dozen label/value pairs, so it is rendered into a hidden same-origin iframe
+ * and that is printed instead: no canvases, no overlay, and nothing for the
+ * print engine to rasterise. An iframe rather than window.open, because a popup
+ * blocker must not be able to silently swallow a print.
+ */
+function printReport(sections, title) {
+  const esc = (v) => String(v ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const body = sections.map((sec) => `
+      <h2>${esc(sec.title)}</h2>
+      <table>${sec.rows.map(([l, v]) => `<tr><td>${esc(l)}</td><td class="n">${esc(v)}</td></tr>`).join("")}</table>`).join("");
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  document.body.appendChild(frame);
+  const doc = frame.contentDocument;
+  doc.open();
+  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
+    <style>
+      body{font:13px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;margin:24px;}
+      h1{font-size:18px;margin:0 0 2px;}
+      .date{color:#666;font-size:12px;margin:0 0 18px;}
+      h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#888;margin:18px 0 6px;}
+      table{width:100%;border-collapse:collapse;}
+      td{padding:5px 0;border-bottom:1px solid #eee;}
+      td.n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;}
+    </style></head><body>
+    <h1>${esc(title)}</h1><p class="date">${esc(new Date().toLocaleString("en-IN"))}</p>${body}
+    </body></html>`);
+  doc.close();
+  const done = () => setTimeout(() => frame.remove(), 500);
+  frame.contentWindow.focus();
+  frame.contentWindow.print();
+  done();
+}
+
 function ReportRow({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-3 py-0.5">
@@ -632,11 +672,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
       {/* GENERATE REPORT — a snapshot of the dashboard's own live figures for the
           currently-selected periods. No navigation; Print/Save PDF via the browser. */}
       {showReport && (
-        <div className="print-overlay fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={() => setShowReport(false)}>
-          <div className="print-only-root w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={() => setShowReport(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-extrabold text-ink">Dashboard Report</h3>
-              <button onClick={() => setShowReport(false)} className="print-hide grid h-7 w-7 place-items-center rounded-full text-muted hover:bg-canvas hover:text-ink" aria-label="Close">✕</button>
+              <button onClick={() => setShowReport(false)} className="grid h-7 w-7 place-items-center rounded-full text-muted hover:bg-canvas hover:text-ink" aria-label="Close">✕</button>
             </div>
             <div className="text-xs">
               <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-faint">Store Business</div>
@@ -651,7 +691,23 @@ export default function Dashboard({ onNavigate, search = "" }) {
               <ReportRow label={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} />
               <ReportRow label="Overdue Amount" value={fmtCurrency(overdue)} />
             </div>
-            <button onClick={() => window.print()} className="print-hide mt-4 w-full rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-accent-strong">Print / Save PDF</button>
+            <button
+              onClick={() => printReport([
+                { title: "Store Business", rows: [
+                  [`${bizPfx} Sales`, fmtCurrency(bizSales)],
+                  [`${bizPfx} Gold Sold`, fmtGrams(goldSold)],
+                  [`${bizPfx} Profit`, fmtProfit(profit)],
+                  ["Outstanding Amount", fmtCurrency(outstanding)],
+                ] },
+                { title: "Schemes", rows: [
+                  [`${schemePfx} Collection`, fmtCurrency(paySummary?.total_revenue)],
+                  [`${schemePfx} New Enrollments`, fmtCount(newEnroll)],
+                  [`${schemePfx} Estimated Maturity`, fmtCurrency(newMaturity)],
+                  ["Overdue Amount", fmtCurrency(overdue)],
+                ] },
+              ], "Dashboard Report")}
+              className="mt-4 w-full rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-accent-strong"
+            >Print / Save PDF</button>
           </div>
         </div>
       )}

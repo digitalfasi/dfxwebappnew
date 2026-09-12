@@ -15,6 +15,13 @@ function mapStock(raw = {}) {
     inStockNetWeight: raw.in_stock_net_weight_grams ?? 0,
     // All statuses, sold included — this is what makes a delete impossible.
     totalItemCount: raw.total_item_count ?? 0,
+    // What the in-stock weight is made of, computed by the backend over the
+    // same IN_STOCK rows as the count, so the purities sum back to the total.
+    purityBreakdown: (raw.purity_breakdown ?? []).map((p) => ({
+      purity: p.purity,
+      count: p.count ?? 0,
+      netWeight: p.net_weight_grams ?? 0,
+    })),
   };
 }
 

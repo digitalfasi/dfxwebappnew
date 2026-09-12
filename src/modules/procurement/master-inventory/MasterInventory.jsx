@@ -69,6 +69,87 @@ function CodeChip({ value }) {
   );
 }
 
+/** Pieces, grams and what those grams are made of.
+ *
+ * The count is IN-STOCK only, which is what makes this screen answer "what do
+ * I have" - a sold piece leaves this figure the moment it is billed, while
+ * Inventory keeps listing it as SOLD. Two screens, two questions.
+ */
+function StockLine({ stock, small = false }) {
+  const pcs = stock?.inStockCount ?? 0;
+  const grams = stock?.inStockNetWeight ?? 0;
+  const purities = (stock?.purityBreakdown ?? []).filter((p) => p.count > 0);
+  const size = small ? "text-[10px]" : "text-[11px]";
+  if (pcs === 0) {
+    return <span className={`${size} font-semibold text-faint`}>No stock in hand</span>;
+  }
+  return (
+    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${size}`}>
+      <span className="font-bold text-ink">
+        <span className="num">{pcs}</span> {pcs === 1 ? "pc" : "pcs"}
+      </span>
+      <span className="text-faint">·</span>
+      <span className="num font-bold text-ink">{grams.toFixed(3)} g</span>
+      {purities.map((p) => (
+        <span
+          key={p.purity}
+          className="rounded-full border border-accent-line bg-accent-soft/50 px-1.5 py-px font-bold text-accent-strong"
+          title={`${p.count} piece(s) of ${p.purity}, ${p.netWeight.toFixed(3)} g`}
+        >
+          {p.purity} <span className="num font-extrabold">{p.count}</span>
+          <span className="font-semibold text-muted"> · {p.netWeight.toFixed(3)} g</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Names compared the way a person reads them: case, spacing and punctuation
+ * ignored, and a trailing plural folded away, so "Gold Ring" and "gold-rings"
+ * are the same name. */
+function normaliseName(v) {
+  const base = String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return base.endsWith("s") ? base.slice(0, -1) : base;
+}
+
+/** Edit distance, capped - only used to catch a typo of an existing name. */
+function editDistance(a, b) {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > 2) return 99;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      row[j] = Math.min(
+        prev[j] + 1,
+        row[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = row;
+  }
+  return prev[b.length];
+}
+
+/** The existing category this name would duplicate, or null.
+ *
+ * Exact (normalised) matches are duplicates. So are near-misses: "Bnagles"
+ * beside "Bangles" is a typo, and once both exist nobody can tell which one
+ * the stock is filed under - which is the actual damage a duplicate does. */
+function findConflictingCategory(name, categories, ignoreId) {
+  const target = normaliseName(name);
+  if (target.length < 2) return null;
+  for (const c of categories) {
+    if (c.id === ignoreId) continue;
+    const other = normaliseName(c.name);
+    if (other === target) return { category: c, exact: true };
+    if (other.length >= 4 && editDistance(target, other) <= 1) {
+      return { category: c, exact: false };
+    }
+  }
+  return null;
+}
+
 export default function MasterInventory({ onNavigate, search = "" }) {
   const scope = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -147,6 +228,22 @@ export default function MasterInventory({ onNavigate, search = "" }) {
     const name = form.name.trim();
     if (name.length < 2) { setFormError("Enter a name of at least 2 characters."); return; }
     if (form.mode.startsWith("sub") && !form.categoryId) { setFormError("Pick the category it belongs to."); return; }
+    // Categories must stay unique - and not only letter-for-letter. Two
+    // categories a person reads as the same word split the stock between them
+    // and nobody can tell afterwards which one a piece is filed under.
+    // Subcategories are deliberately NOT checked this way: the same
+    // subcategory name under two different categories is legitimate.
+    if (form.mode.startsWith("category")) {
+      const clash = findConflictingCategory(name, categories, form.id);
+      if (clash) {
+        setFormError(
+          clash.exact
+            ? `"${clash.category.name}" already exists. Rename that one, or file this stock under it.`
+            : `This is one character away from "${clash.category.name}". If they are meant to be the same, use that one; if not, give this a clearly different name.`
+        );
+        return;
+      }
+    }
     setSaving(true);
     setFormError("");
     try {
@@ -258,10 +355,17 @@ export default function MasterInventory({ onNavigate, search = "" }) {
             The categories and subcategories your stock is filed under.
           </p>
         </div>
-        <Button size="sm" onClick={openAddCategory}>
-          <Icon d={ICON.plus} className="h-3.5 w-3.5" />
-          New category
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => openAddSubcategory()} disabled={categories.length === 0}
+            title={categories.length === 0 ? "Add a category first" : "Add a subcategory to any category"}>
+            <Icon d={ICON.plus} className="h-3.5 w-3.5" />
+            New subcategory
+          </Button>
+          <Button size="sm" onClick={openAddCategory}>
+            <Icon d={ICON.plus} className="h-3.5 w-3.5" />
+            New category
+          </Button>
+        </div>
       </div>
 
       {!loading && importable.length > 0 && (
@@ -355,13 +459,12 @@ export default function MasterInventory({ onNavigate, search = "" }) {
                       ? "No subcategories"
                       : `${cat.subcategories.length} subcategor${cat.subcategories.length === 1 ? "y" : "ies"}`}
                   </p>
+                  <div className="mt-1.5">
+                    <StockLine stock={cat.stock} />
+                  </div>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <Button variant="outline" size="sm" onClick={() => openAddSubcategory(cat.id)}>
-                  <Icon d={ICON.plus} className="h-3.5 w-3.5" />
-                  Subcategory
-                </Button>
                 <IconAction icon={ICON.edit} label={`Rename ${cat.name}`} onClick={() => openEditCategory(cat)} />
                 <IconAction
                   icon={ICON.trash}
@@ -376,7 +479,8 @@ export default function MasterInventory({ onNavigate, search = "" }) {
               <ul className="border-t border-line-soft">
                 {cat.subcategories.map((sub) => (
                   <li key={sub.id} className="group flex flex-wrap items-center justify-between gap-3 border-b border-line-soft px-5 py-2.5 pl-[4.25rem] last:border-0 transition-colors hover:bg-canvas/50">
-                    <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <div className="flex min-w-0 items-center gap-2.5">
                       <Icon d={ICON.tag} className="h-3.5 w-3.5 shrink-0 text-faint" />
                       <span className="truncate text-sm font-semibold">{sub.name}</span>
                       <CodeChip value={sub.code} />
@@ -391,6 +495,8 @@ export default function MasterInventory({ onNavigate, search = "" }) {
                           Inactive · reactivate
                         </button>
                       )}
+                      </div>
+                      <StockLine stock={sub.stock} small />
                     </div>
                     <div className="flex shrink-0 items-center gap-0.5">
                       <IconAction icon={ICON.eye} label={`View ${sub.name} items in Inventory`} onClick={() => viewItems(cat.name, sub.name)} />
