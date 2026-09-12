@@ -1065,6 +1065,49 @@ export default function Inventory({ onNavigate }) {
                       <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold{bulkBreakdown.stoneTotal > 0 ? " + stones" : ""}</span>
                       <span className="num font-mono text-base font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount)}</span>
                     </div>
+                    {/* The settlement, on the same slip as the payable. One
+                        aggregate vendor_purchases row covers the whole receipt,
+                        so this is the row's own paid/outstanding - nothing is
+                        apportioned across the items. The server re-derives both
+                        from the payment ledger; these are the figures it will
+                        arrive at, shown before the button is pressed. */}
+                    {(() => {
+                      const total = bulkBreakdown.finalAmount || 0;
+                      const mode = bulkHeader.paymentMode;
+                      const typed = Number(bulkHeader.paidNow);
+                      const paid = mode === "CASH" ? total : mode === "CREDIT" ? 0 : (typed > 0 ? typed : 0);
+                      const balance = Math.max(0, Number((total - paid).toFixed(2)));
+                      // A part payment at or above the total is not a part
+                      // payment; the server refuses it, so say so here.
+                      const over = mode === "PARTIAL" && typed > 0 && typed >= total;
+                      return (
+                        <div className="mt-2 grid gap-1 border-t border-accent-line pt-2 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-muted">
+                              Paying now
+                              <span className="ml-1.5 text-[11px] font-bold uppercase tracking-[0.06em] text-accent-strong">{mode}</span>
+                              {mode !== "CREDIT" && <span className="ml-1.5 text-[11px] text-muted">by {bulkHeader.paymentMethod}</span>}
+                            </span>
+                            <span className="num font-mono font-bold tabular-nums">{money(paid)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className={balance > 0 ? "font-extrabold text-accent-strong" : "text-muted"}>
+                              Balance owed to vendor
+                            </span>
+                            <span className={`num font-mono font-extrabold tabular-nums ${balance > 0 ? "text-accent-strong" : ""}`}>{money(balance)}</span>
+                          </div>
+                          <div className="text-[11px] text-muted">
+                            {over
+                              ? `A part payment must be less than ${money(total)} \u2014 use CASH to settle in full.`
+                              : mode === "PARTIAL" && !(typed > 0)
+                                ? "Enter the amount being paid now."
+                                : balance > 0
+                                  ? "Recorded as one outstanding payable for this receipt; settle it later from Purchase History."
+                                  : "Settled in full \u2014 nothing left outstanding on this receipt."}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <p className="text-[11px] text-muted">
                       Tunch is a percentage of the 24K-equivalent gold value and is never added to the rate per gram.
                       The server re-derives every figure row by row when the purchase is recorded.
