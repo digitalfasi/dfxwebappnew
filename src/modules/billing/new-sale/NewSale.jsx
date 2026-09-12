@@ -1010,9 +1010,18 @@ export default function NewSale() {
                   </div>
                   {product.currentGoldValuePnl != null && (
                     <PnlCard
-                      label="Today's Gold Value Profit / Loss"
+                      /* NOT the gold profit. This is the WHOLE bill measured
+                         against the metal, so it carries making, wastage and
+                         stone as well as the gold margin. Calling it "Gold
+                         Value Profit" put it beside a "Gold Profit %" field
+                         reading 10 while this said 13.05, which reads as the
+                         bill contradicting itself when both are right:
+                         22,081.22 gold + 6,624.37 making + 100 stone. The name
+                         and the suffix now say which figure this is. */
+                      label="Whole-bill margin over metal"
                       amount={product.currentGoldValuePnl}
                       pct={product.currentGoldValueMarginPct}
+                      sub="incl. making, wastage & stone"
                       /* The figure is opaque without its own arithmetic: it is
                          the bill with GST taken back out (that money is the
                          government's, not the store's) against what the metal
