@@ -814,9 +814,9 @@ export default function NewSale() {
               {/* One strip, hairline separated: the three facts that decide the
                   price sit on a single line instead of three stacked boxes. */}
               <div className="mt-3.5 grid grid-cols-3 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 [&>*]:min-w-0">
-                <SpecCell flush label="Purity" value={product.purity || "Not provided"} />
-                <SpecCell flush label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
-                <SpecCell flush label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
+                <SpecCell label="Purity" value={product.purity || "Not provided"} />
+                <SpecCell label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
+                <SpecCell label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
               </div>
 
               {/* Mode belongs to the item: it decides whether THIS item's rate is
@@ -956,10 +956,10 @@ export default function NewSale() {
                   <SectionHead step={3} title="Pricing" meta={requoting ? "Updating…" : undefined} />
                   {/* Reference figures stay small: the field below is the one
                       the admin acts on, so it gets the visual weight. */}
-                  {/* Two equal columns with their own padding. SpecCell's
-                      edge-flush rule is for the spec strip that sits directly on
-                      the card; inside this bordered box it pulled the first
-                      label onto the border. */}
+                  {/* Two equal columns, each carrying its own padding. Every
+                      SpecCell strip is a bordered box, so no cell is ever
+                      edge-flush - that only pulled the first label onto the
+                      border while its neighbours stayed indented. */}
                   <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1">
                     {/* Named for what it IS, not for when it was taken. This tile
                         and the bill summary's Gold Value row are different money -
@@ -1687,8 +1687,8 @@ const SectionHead = ({ step, title, meta }) => (
 );
 
 /** One cell of the item spec strip: label over value, hairline separated. */
-const SpecCell = ({ label, value, mono, sub, flush = false }) => (
-  <div className={`min-w-0 flex-1 px-3.5 py-2.5 ${flush ? "first:pl-0 last:pr-0" : ""}`}>
+const SpecCell = ({ label, value, mono, sub }) => (
+  <div className="min-w-0 flex-1 px-3.5 py-2.5">
     <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">{label}</div>
     <div className={`mt-0.5 truncate text-sm font-extrabold text-ink ${mono ? "num" : ""}`}>{value}</div>
     {sub ? <div className="truncate text-[10px] font-semibold text-muted">{sub}</div> : null}
