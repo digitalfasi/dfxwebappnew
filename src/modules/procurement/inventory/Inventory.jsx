@@ -7,7 +7,7 @@ import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { billingService } from "@/modules/billing/billingService";
-import { money } from "@/_shared/utils";
+import { money, istToday } from "@/_shared/utils";
 import { goldRateService } from "@/modules/gold-rate/goldRateService";
 import { masterInventoryService } from "@/modules/procurement/master-inventory/masterInventoryService";
 
@@ -202,7 +202,7 @@ export default function Inventory({ onNavigate }) {
   // which day it priced from rather than implying it is today's.
   const rateEffectiveLabel = todayRate?.effective_date || todayRate?.effectiveDate || null;
   const rateIsCarriedForward = !!rateEffectiveLabel &&
-    rateEffectiveLabel !== new Date().toISOString().slice(0, 10);
+    rateEffectiveLabel !== istToday();
 
   const totalGold = useMemo(() => items.filter(i=>i.status==="In Stock").reduce((s,i)=>s+i.net,0), [items]);
   const vendorNames = useMemo(() => vendorList.map((v) => v.name), [vendorList]);

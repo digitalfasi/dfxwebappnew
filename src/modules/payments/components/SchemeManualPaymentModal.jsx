@@ -4,7 +4,7 @@ import { Button } from "@/_shared/ui/button";
 import { Input, SearchInput } from "@/_shared/ui/input";
 import { Select } from "@/_shared/ui/select";
 import { toast } from "@/_shared/toast";
-import { formatINR } from "@/_shared/utils";
+import { formatINR, istToday } from "@/_shared/utils";
 import { customerService } from "@/modules/customers/customerService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { paymentService } from "@/modules/payments/paymentService";
@@ -26,7 +26,7 @@ const PAY_METHODS = [
 const ADVANCE_OPTIONS = [1, 3, 6];
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return istToday();
 }
 function fmtDate(iso) {
   if (!iso) return "—";

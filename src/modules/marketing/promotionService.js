@@ -6,6 +6,7 @@
  * previously used a local mock store).
  */
 import { apiClient } from "@/_shared/apiClient";
+import { istToday } from "@/_shared/utils";
 
 /** GET /admin/promotions item -> the row/edit shape the Marketing views render. */
 function mapPromotion(raw = {}) {
@@ -86,7 +87,7 @@ export const promotionService = {
 /** Live status label from is_active + the active window (matches old app). */
 export function promotionStatus(p) {
   if (!p.isActive) return "Disabled";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = istToday();
   if (p.startDate && today < p.startDate) return "Scheduled";
   if (p.endDate && today > p.endDate) return "Expired";
   return "Active";

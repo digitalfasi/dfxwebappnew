@@ -6,7 +6,7 @@ import { Badge } from "@/_shared/ui/badge";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
-import { money, grams } from "@/_shared/utils";
+import { money, grams, istToday } from "@/_shared/utils";
 import { billingService } from "@/modules/billing/billingService";
 
 // Vendor purchasing/accounting module. Every financial figure shown here comes
@@ -50,7 +50,7 @@ const fmtDate = (iso) => {
   try { return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
   catch { return iso; }
 };
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => istToday();
 
 /** Sum backend-authoritative per-purchase figures into per-vendor display totals.
  *  Each figure summed is itself backend-computed; this is a display rollup, not a

@@ -4,7 +4,7 @@ import { Button } from "@/_shared/ui/button";
 import { Input, SearchInput } from "@/_shared/ui/input";
 import { Select } from "@/_shared/ui/select";
 import { toast } from "@/_shared/toast";
-import { formatINR } from "@/_shared/utils";
+import { formatINR, istToday } from "@/_shared/utils";
 import { customerService } from "@/modules/customers/customerService";
 import { billingService } from "@/modules/billing/billingService";
 
@@ -18,9 +18,10 @@ const PAY_METHODS = [
 ];
 const PAY_STATUS_TONE = { PAID: "success", PARTIAL: "warning", PENDING: "danger" };
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
+// IST, not UTC. toISOString() gives the UTC date, which is YESTERDAY
+// between 00:00 and 05:30 IST - so this defaulted a payment to the wrong
+// day, and as a `max` it refused today's real date at the counter.
+const todayIso = istToday;
 
 /**
  * Record Manual Payment for an existing BUSINESS sale. This never bills, never

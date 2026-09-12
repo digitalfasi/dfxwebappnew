@@ -7,7 +7,7 @@ import { Input, SearchInput } from "@/_shared/ui/input";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
-import { formatINR } from "@/_shared/utils";
+import { formatINR, istToday } from "@/_shared/utils";
 import { billingService } from "@/modules/billing/billingService";
 
 const STATUS_TONE = { Paid: "success", Partial: "warning", Pending: "danger", Returned: "info", Canceled: "neutral" };
@@ -43,7 +43,7 @@ const RETURN_TYPES = [
 ];
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return istToday();
 }
 
 function formatDate(iso) {
