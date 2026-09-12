@@ -997,7 +997,9 @@ export default function NewSale() {
                   </div>
                   <div className="rounded-2xl border border-accent-line bg-accent-soft p-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-[0.08em] text-accent-strong">Customer Price</span>
+                      <span className="text-xs font-bold uppercase tracking-[0.08em] text-accent-strong">
+                        {quoteHasScheme ? "Price of the piece" : "Customer Price"}
+                      </span>
                       {requoting && <span className="text-[10px] font-semibold text-muted">Updating…</span>}
                     </div>
                     <MoneyInput
@@ -1008,6 +1010,14 @@ export default function NewSale() {
                       value={priceDriver === "PRICE" ? customerPrice : (product.finalAmount != null ? String(round2(product.finalAmount)) : "")}
                       onValueChange={(v) => { setCustomerPrice(v); setPriceDriver("PRICE"); }}
                       aria-label="Customer price in rupees" />
+                    {quoteHasScheme && !quoteError && (
+                      <div className="mt-2.5 flex items-baseline justify-between gap-3 rounded-xl border border-line-soft bg-surface px-3 py-2.5">
+                        <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Customer pays now</span>
+                        <span className="num text-xl font-extrabold tabular-nums text-ink">
+                          {money(round2((priceDriver === "PRICE" && customerPrice !== "" ? Number(customerPrice) : (product.finalAmount ?? sellingPrice)) - quotedScheme))}
+                        </span>
+                      </div>
+                    )}
                     {quoteError ? (
                       <p className="mt-1.5 rounded-lg border border-danger-line bg-danger-soft px-2.5 py-1.5 text-[11px] font-semibold leading-snug text-danger">
                         {/* The server's own floor is authoritative and is already
