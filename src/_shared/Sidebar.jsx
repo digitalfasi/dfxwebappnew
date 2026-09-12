@@ -123,12 +123,15 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3 border-b border-accent-line/50 bg-white/50 px-4 py-4">
+          <div className="flex items-start gap-3 border-b border-accent-line/50 bg-white/50 px-4 py-4">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm">
               {storeName[0]?.toUpperCase() ?? "D"}
             </div>
             <div className="min-w-0 flex-1 leading-tight">
-              <div className="truncate text-sm font-extrabold tracking-tight text-ink" title={storeName}>{storeName}</div>
+              {/* Wraps rather than truncates. "Test Jewellery Store 02…" in the
+                  most prominent position on the screen reads as unfinished, and
+                  a shop cannot confirm it is looking at its own books. */}
+              <div className="text-sm font-extrabold leading-tight tracking-tight text-ink [overflow-wrap:anywhere]" title={storeName}>{storeName}</div>
               <span className="mt-1 inline-flex items-center rounded-full border border-accent-line/60 bg-accent-soft/70 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-accent-strong">
                 {roleText(user) || "Admin"}
               </span>
@@ -250,17 +253,21 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             block used to live here, but the header already shows the store and
             role, so it was duplicate information. Desktop only (mobile uses the
             slide-over drawer, which has no collapsed state). */}
-        <div className="hidden justify-center border-t border-accent-line/50 bg-white/50 px-2 py-3 lg:flex">
+        <div className="hidden border-t border-accent-line/50 bg-white/50 px-2 py-2 lg:block">
           <button
             onClick={onToggleCollapse}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!collapsed}
-            className="grid h-9 w-9 place-items-center rounded-xl border border-line bg-white text-muted transition-colors hover:border-accent-line hover:text-accent-strong"
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-[12.5px] font-bold text-muted transition-colors hover:bg-accent-soft hover:text-accent-strong",
+              collapsed && "justify-center px-0"
+            )}
           >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d={collapsed ? "M9 18l6-6-6-6" : "M15 18l-6-6 6-6"} />
             </svg>
+            {!collapsed && <span>Collapse</span>}
           </button>
         </div>
       </aside>
