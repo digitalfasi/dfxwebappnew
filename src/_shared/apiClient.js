@@ -58,6 +58,9 @@ export const tokenStore = {
   },
   clear() {
     if (!isBrowser()) return;
+    // A marker left over from this session must not make the NEXT login's first
+    // refresh sit waiting for a page that no longer exists.
+    clearMarker();
     localStorage.removeItem(STORAGE_KEYS.accessToken);
     localStorage.removeItem(STORAGE_KEYS.refreshToken);
     localStorage.removeItem(STORAGE_KEYS.role);
@@ -150,9 +153,90 @@ async function rawRequest(path, opts = {}) {
 
 let inFlightRefresh = null;
 
+/* ── Never send the same refresh token twice ──────────────────────────────
+ *
+ * The backend rotates refresh tokens AND treats a reused one as theft: on
+ * reuse it revokes EVERY active token for that user. Measured against the
+ * deployment, not assumed - two concurrent refreshes with one token return
+ * [200, 401], and the replacement the winner issued is ALSO dead afterwards.
+ * So there is nothing left to retry with: the user is logged out on every
+ * device, not just the tab that raced. Recovery is impossible by design; the
+ * only cure is prevention.
+ *
+ * `inFlightRefresh` already covers a single page. It cannot cover a RELOAD
+ * (F5 while a refresh is in flight) or a SECOND TAB - those are separate
+ * module instances sharing one localStorage, and each holds the same token.
+ * That is the case this marker closes.
+ *
+ * The server-side cure is better and is deliberately not attempted here:
+ * replaying the immediately-previous token inside a short grace window should
+ * return the already-issued pair instead of counting as theft. RefreshToken
+ * carries only is_revoked - no revoked_at, no replaced_by - so it needs a
+ * migration and its own deploy.
+ */
+const REFRESH_MARKER_KEY = "jros_refresh_inflight";
+const MARKER_FRESH_MS = 10000; // older than this belongs to a crashed page
+const MARKER_WAIT_MS = 5000;   // never hang the UI on someone else's marker
+const MARKER_POLL_MS = 50;
+
+// Synchronous, not reversible to the token, and never sent anywhere. The only
+// question it answers is "is that marker about the token I am holding?".
+function tokenFingerprint(token) {
+  let h = 5381;
+  for (let i = 0; i < token.length; i += 1) h = ((h << 5) + h + token.charCodeAt(i)) | 0;
+  return String(h >>> 0);
+}
+
+function readMarker() {
+  try {
+    const raw = localStorage.getItem(REFRESH_MARKER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null; // private mode / blocked storage: fall through to a normal refresh
+  }
+}
+function writeMarker(fp) {
+  try {
+    localStorage.setItem(REFRESH_MARKER_KEY, JSON.stringify({ fp, ts: Date.now() }));
+  } catch { /* not fatal - we simply lose cross-page coordination */ }
+}
+function clearMarker() {
+  try { localStorage.removeItem(REFRESH_MARKER_KEY); } catch { /* nothing to do */ }
+}
+
+/**
+ * Another page is already refreshing with the exact token we hold. Sending ours
+ * is what triggers the revoke-all, so wait for that page to swap the token
+ * instead. Returns the fresh access token, or null to mean "go ahead yourself".
+ * Always terminates: a crashed page must never leave this one on a blank screen.
+ */
+async function waitForRotation(ourRefreshToken) {
+  const deadline = Date.now() + MARKER_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, MARKER_POLL_MS));
+    if (tokenStore.getRefreshToken() !== ourRefreshToken) {
+      return tokenStore.getAccessToken(); // they rotated it; use what they stored
+    }
+    const marker = readMarker();
+    if (!marker || Date.now() - marker.ts > MARKER_FRESH_MS) return null; // they gave up
+  }
+  return null; // timed out - try ourselves rather than stall
+}
+
 async function performRefresh() {
   const refreshToken = tokenStore.getRefreshToken();
   if (!refreshToken) return null;
+
+  const fingerprint = tokenFingerprint(refreshToken);
+  const marker = readMarker();
+  if (marker && marker.fp === fingerprint && Date.now() - marker.ts < MARKER_FRESH_MS) {
+    const rotated = await waitForRotation(refreshToken);
+    if (rotated) return rotated;
+    // The other page never finished. Fall through and do it ourselves - a
+    // stale marker must not be able to lock the app out.
+  }
+
+  writeMarker(fingerprint);
   try {
     const res = await rawRequest("/auth/refresh", {
       method: "POST",
@@ -164,6 +248,10 @@ async function performRefresh() {
     return data.access_token;
   } catch {
     return null;
+  } finally {
+    // finally, not the success path: a thrown request or a closed tab must not
+    // leave a marker behind that makes the next page wait for nobody.
+    clearMarker();
   }
 }
 
