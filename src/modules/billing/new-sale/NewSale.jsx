@@ -122,6 +122,8 @@ export default function NewSale() {
   const [quote, setQuote] = useState(null);
   // Created sale — opens the invoice PDF / Print dialog after Create Bill.
   const [invoice, setInvoice] = useState(null);
+  // A failed void, held on screen until dismissed by hand - see onOtpAbandon.
+  const [voidFailure, setVoidFailure] = useState(null);
 
   usePageMotion(scope, [loading, product]);
 
@@ -534,14 +536,27 @@ export default function NewSale() {
   // before the OTP (the challenge needs a sale_id); voiding it returns the item
   // to stock and cancels the invoice, then we re-scan the same HUID so the admin
   // stays on the item (now back in stock) instead of being kicked to a blank
-  // screen. If the void fails, the re-scan surfaces the real state calmly.
+  // screen.
+  //
+  // If the void FAILS the sale is still standing, and that has to be said in
+  // those words. This used to toast "Could not cancel cleanly - re-scan the
+  // item", which reads like a UI hiccup and tells the admin to do the one thing
+  // that hides the problem: a re-scan shows the ITEM's state, not the invoice's,
+  // so a live sale against a customer who walked away gets dismissed as a
+  // glitch. A failed reversal is not a glitch - it is money on the books.
   const onOtpAbandon = async () => {
     const saleId = otp?.saleId;
+    const invoiceNumber = otp?.invoiceNumber;
     setOtp(null);
     setSchemeAmounts({});
     if (saleId) {
-      try { await billingService.voidSale(saleId); toast("Redemption cancelled — item returned to stock"); }
-      catch (err) { toast(err?.message || "Could not cancel cleanly — re-scan the item"); }
+      try {
+        await billingService.voidSale(saleId);
+        setVoidFailure(null);
+        toast("Redemption cancelled — item returned to stock");
+      } catch (err) {
+        setVoidFailure({ invoiceNumber: invoiceNumber || null, saleId, reason: err?.message || "" });
+      }
     }
     handleFind(); // refresh the product from the backend's true state
   };
@@ -581,7 +596,31 @@ export default function NewSale() {
           </label>
           <Button size="sm" className="bg-accent hover:bg-accent-strong h-10 px-6" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
         </div>
-        {lookupError && <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm font-semibold text-danger">{lookupError}</div>}
+        {/* Not a toast. A toast fades and this must not: until someone cancels
+          that invoice there is a sale on the books for a piece the customer
+          never took. It stays until dismissed by hand. */}
+      {voidFailure && (
+        <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm text-danger">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-extrabold">
+                The sale is still standing{voidFailure.invoiceNumber ? ` — invoice ${voidFailure.invoiceNumber}` : ""}
+              </div>
+              <p className="mt-1 font-semibold leading-snug">
+                The redemption was cancelled here, but the invoice could not be voided, so the item is
+                still marked sold. Open Sales History and cancel
+                {voidFailure.invoiceNumber ? ` ${voidFailure.invoiceNumber}` : " that invoice"} there.
+                Do not sell this item again until you have.
+              </p>
+              {voidFailure.reason && (
+                <p className="mt-1 text-xs font-semibold opacity-80">Reason given: {voidFailure.reason}</p>
+              )}
+            </div>
+            <button onClick={() => setVoidFailure(null)} className="shrink-0 rounded-lg border border-danger-line px-2 py-1 text-xs font-bold">Dismiss</button>
+          </div>
+        </div>
+      )}
+      {lookupError && <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm font-semibold text-danger">{lookupError}</div>}
         {!product && !lookupError && !loading && (
           <div className="mt-5 border-t border-line-soft pt-4">
             <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">How a bill is made</div>
