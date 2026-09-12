@@ -79,27 +79,43 @@ function StockLine({ stock, small = false }) {
   const pcs = stock?.inStockCount ?? 0;
   const grams = stock?.inStockNetWeight ?? 0;
   const purities = (stock?.purityBreakdown ?? []).filter((p) => p.count > 0);
-  const size = small ? "text-[10px]" : "text-[11px]";
+
   if (pcs === 0) {
-    return <span className={`${size} font-semibold text-faint`}>No stock in hand</span>;
-  }
-  return (
-    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${size}`}>
-      <span className="font-bold text-ink">
-        <span className="num">{pcs}</span> {pcs === 1 ? "pc" : "pcs"}
+    return (
+      <span className={`inline-flex items-center gap-1.5 rounded-md bg-canvas px-2 py-1 font-semibold text-faint ${small ? "text-[10px]" : "text-[11px]"}`}>
+        <span className="h-1.5 w-1.5 rounded-full bg-line" />
+        No stock in hand
       </span>
-      <span className="text-faint">·</span>
-      <span className="num font-bold text-ink">{grams.toFixed(3)} g</span>
-      {purities.map((p) => (
-        <span
-          key={p.purity}
-          className="rounded-full border border-accent-line bg-accent-soft/50 px-1.5 py-px font-bold text-accent-strong"
-          title={`${p.count} piece(s) of ${p.purity}, ${p.netWeight.toFixed(3)} g`}
-        >
-          {p.purity} <span className="num font-extrabold">{p.count}</span>
-          <span className="font-semibold text-muted"> · {p.netWeight.toFixed(3)} g</span>
-        </span>
-      ))}
+    );
+  }
+
+  // Two figures that answer "how much", then what it is made of. The totals
+  // are set apart from the purity chips so the eye reads the whole before the
+  // parts - a flat run of numbers is what made this hard to scan.
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+      <span className={`inline-flex items-baseline gap-1 rounded-md bg-ink/[0.04] px-2 py-1 ${small ? "text-[10px]" : "text-[11px]"}`}>
+        <span className="num font-extrabold text-ink">{pcs}</span>
+        <span className="font-semibold text-muted">{pcs === 1 ? "piece" : "pieces"}</span>
+        <span className="px-0.5 text-line">|</span>
+        <span className="num font-extrabold text-ink">{grams.toFixed(3)}</span>
+        <span className="font-semibold text-muted">g</span>
+      </span>
+      <div className="flex flex-wrap items-center gap-1">
+        {purities.map((p) => (
+          <span
+            key={p.purity}
+            title={`${p.count} ${p.count === 1 ? "piece" : "pieces"} of ${p.purity}, ${p.netWeight.toFixed(3)} g`}
+            className={`inline-flex items-center gap-1 rounded-md border border-accent-line bg-accent-soft/60 py-1 pl-1.5 pr-2 ${small ? "text-[10px]" : "text-[11px]"}`}
+          >
+            <span className="rounded bg-accent px-1 py-px text-[9px] font-extrabold tracking-wide text-white">
+              {p.purity}
+            </span>
+            <span className="num font-extrabold text-accent-strong">{p.count}</span>
+            <span className="num font-semibold text-muted">{p.netWeight.toFixed(3)} g</span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -433,7 +449,7 @@ export default function MasterInventory({ onNavigate, search = "" }) {
         {!loading && !loadError && shown.map((cat) => (
           <Card key={cat.id} data-motion="reveal" className="overflow-hidden">
             {/* Category — name, code, and its own three actions. */}
-            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-3.5">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
                   <Icon d={ICON.folder} />
@@ -442,6 +458,11 @@ export default function MasterInventory({ onNavigate, search = "" }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="truncate text-[15px] font-extrabold leading-tight">{cat.name}</h3>
                     <CodeChip value={cat.code} />
+                    {cat.subcategories.length > 0 && (
+                      <span className="rounded-full bg-canvas px-2 py-0.5 text-[10px] font-bold text-muted">
+                        <span className="num">{cat.subcategories.length}</span> sub
+                      </span>
+                    )}
                     {!cat.isActive && (
                       <button
                         type="button"
@@ -454,11 +475,6 @@ export default function MasterInventory({ onNavigate, search = "" }) {
                       </button>
                     )}
                   </div>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {cat.subcategories.length === 0
-                      ? "No subcategories"
-                      : `${cat.subcategories.length} subcategor${cat.subcategories.length === 1 ? "y" : "ies"}`}
-                  </p>
                   <div className="mt-1.5">
                     <StockLine stock={cat.stock} />
                   </div>
@@ -476,7 +492,7 @@ export default function MasterInventory({ onNavigate, search = "" }) {
             </div>
 
             {cat.subcategories.length > 0 && (
-              <ul className="border-t border-line-soft">
+              <ul className="border-t border-line-soft bg-canvas/40">
                 {cat.subcategories.map((sub) => (
                   <li key={sub.id} className="group flex flex-wrap items-center justify-between gap-3 border-b border-line-soft px-5 py-2.5 pl-[4.25rem] last:border-0 transition-colors hover:bg-canvas/50">
                     <div className="flex min-w-0 flex-col gap-1">

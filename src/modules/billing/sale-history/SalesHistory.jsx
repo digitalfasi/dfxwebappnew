@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/_shared/AuthContext";
 import { Card, CardContent } from "@/_shared/ui/card";
 import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
@@ -77,6 +78,11 @@ export default function SalesHistory() {
 
   const [bills, setBills] = useState([]);
   const [total, setTotal] = useState(0);
+  // Staff see no profit anywhere in the product. The backend already sends
+  // null, so the column would render a permanent "—"; a column of dashes tells
+  // them a number exists and is being kept from them. It is dropped instead.
+  const { backendRole } = useAuth();
+  const seesProfit = backendRole === "Admin" || backendRole === "SuperAdmin";
   const [totalOutstanding, setTotalOutstanding] = useState(0);
   // Net gold for the whole period, from the backend. The page holds at most
   // 100 bills, so summing what is loaded understates the moment a period has
@@ -308,7 +314,7 @@ export default function SalesHistory() {
                 <th className="text-right">Total Amount</th>
                 <th className="text-right">Paid</th>
                 <th className="text-right">Outstanding</th>
-                <th className="text-right">Profit/Loss</th>
+                {seesProfit && <th className="text-right">Profit/Loss</th>}
                 <th>Status</th>
                 <th className="!pr-5 text-center">Actions</th>
               </tr>
@@ -344,15 +350,17 @@ export default function SalesHistory() {
                   <td className="num whitespace-nowrap text-right font-bold">{formatINR(b.amount)}</td>
                   <td className="num whitespace-nowrap text-right">{formatINR(b.paid)}</td>
                   <td className={`num whitespace-nowrap text-right font-semibold ${b.outstanding > 0 ? "text-danger" : "text-muted"}`}>{formatINR(b.outstanding)}</td>
-                  <td className="num whitespace-nowrap text-right font-semibold">
-                    {b.grossMargin == null ? (
-                      <span className="text-faint">—</span>
-                    ) : (
-                      <span className={b.grossMargin < 0 ? "text-danger" : "text-emerald-600"}>
-                        {b.grossMargin < 0 ? "−" : "+"}{formatINR(Math.abs(b.grossMargin))}
-                      </span>
-                    )}
-                  </td>
+                  {seesProfit && (
+                    <td className="num whitespace-nowrap text-right font-semibold">
+                      {b.grossMargin == null ? (
+                        <span className="text-faint">—</span>
+                      ) : (
+                        <span className={b.grossMargin < 0 ? "text-danger" : "text-emerald-600"}>
+                          {b.grossMargin < 0 ? "−" : "+"}{formatINR(Math.abs(b.grossMargin))}
+                        </span>
+                      )}
+                    </td>
+                  )}
                   <td><Badge tone={STATUS_TONE[b.status]} dot>{b.status}</Badge></td>
                   <td className="!pr-5">
                     <div className="flex items-center justify-center gap-1.5">

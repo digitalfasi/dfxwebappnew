@@ -118,6 +118,7 @@ export default function Inventory({ onNavigate }) {
     JEWELLERY: [emptyBulkRow()],
     RAW_GOLD: [emptyBulkRow()],
   });
+
   const bulkRows = bulkRowsByType[bulkType];
   const setBulkRows = useCallback((next) => {
     setBulkRowsByType((prev) => ({
@@ -413,6 +414,20 @@ export default function Inventory({ onNavigate }) {
     return { ...emptyBulkRow(), rate: live != null ? String(live) : "" };
   }, [todayRate]);
 
+  // Seed the OPEN grid's first row with the live 24K rate. Only the grid that
+  // happened to be active when the modal opened used to be seeded, so switching
+  // to Raw Gold gave an empty 24K COST/G and the first bullion row had to be
+  // priced by hand. Only ever touches a row nobody has typed into.
+  useEffect(() => {
+    if (!showBulk) return;
+    setBulkRows((rows) =>
+      rows.length === 1 && !rows[0].ident && !rows[0].name && !rows[0].net && !rows[0].rate
+        ? [newBulkRow()]
+        : rows,
+    );
+  }, [showBulk, bulkType, newBulkRow, setBulkRows]);
+
+
   // Purity-wise settlement. Every figure here mirrors what the backend
   // derives, so the preview and the recorded payable agree to the paisa:
   //   fine (24K equivalent) = net x karat/24
@@ -634,7 +649,7 @@ export default function Inventory({ onNavigate }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={openDefaults}>Store Pricing Defaults</Button>
-          <Button variant="outline" size="sm" onClick={() => { setBulkRows(rows => (rows.length === 1 && !rows[0].ident && !rows[0].name && !rows[0].net && !rows[0].rate) ? [newBulkRow()] : rows); setShowBulk(true); }}>Bulk Purchase</Button>
+          <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>Bulk Purchase</Button>
           <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => setShowAdd(true)}>Add Purchase</Button>
         </div>
       </div>

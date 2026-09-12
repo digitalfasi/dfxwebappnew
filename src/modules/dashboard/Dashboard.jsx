@@ -6,6 +6,7 @@ import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { formatINR } from "@/_shared/utils";
 import { apiClient } from "@/_shared/apiClient";
+import { useAuth } from "@/_shared/AuthContext";
 import { billingService } from "@/modules/billing/billingService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { LineChart } from "@/_shared/ui/LineChart";
@@ -43,7 +44,7 @@ const ANALYTICS_TABS = [
 ];
 const BIZ_METRICS = [
   { value: "sales", label: "Overall Sales" },
-  { value: "profit", label: "Profit" },
+  { value: "profit", label: "Profit", adminOnly: true },
   { value: "gold", label: "Gold Sold" },
 ];
 const SCHEME_METRICS = [
@@ -349,6 +350,12 @@ async function getReport(path) {
 
 export default function Dashboard({ onNavigate, search = "" }) {
   const scope = useRef(null);
+  // Staff never see profit anywhere else in the product - not the number, not
+  // even the word - so the dashboard does not hand it to them either. The
+  // backend now returns null for them; hiding the card as well means they see
+  // a screen that makes sense rather than a KPI permanently reading "—".
+  const { backendRole } = useAuth();
+  const seesProfit = backendRole === "Admin" || backendRole === "SuperAdmin";
   const nav = (page) => onNavigate && onNavigate(page);
 
   const [loading, setLoading] = useState(true);
@@ -533,7 +540,9 @@ export default function Dashboard({ onNavigate, search = "" }) {
           <div className="grid grid-cols-2 gap-2.5">
             <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSales)} onClick={() => nav("sales-history")} />
             <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} onClick={() => nav("sales-history")} />
-            <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
+            {seesProfit && (
+              <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
+            )}
             <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} danger onClick={() => nav("sales-history")} />
           </div>
 
@@ -542,7 +551,12 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-xs font-bold">Business Trend</CardTitle>
               <div className="flex flex-wrap items-center gap-1.5">
-                <MetricSelect value={bizMetric} onChange={setBizMetric} options={BIZ_METRICS} accent={BUSINESS_ACCENT} />
+                <MetricSelect
+                  value={bizMetric}
+                  onChange={setBizMetric}
+                  options={BIZ_METRICS.filter((m) => seesProfit || !m.adminOnly)}
+                  accent={BUSINESS_ACCENT}
+                />
                 <PeriodTabs value={bizPeriod} onChange={setBizPeriod} accent={BUSINESS_ACCENT} />
               </div>
             </div>
@@ -718,7 +732,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
                 { title: "Store Business", rows: [
                   [`${bizPfx} Sales`, fmtCurrency(bizSales)],
                   [`${bizPfx} Gold Sold`, fmtGrams(goldSold)],
-                  [`${bizPfx} Profit`, fmtProfit(profit)],
+                  ...(seesProfit ? [[`${bizPfx} Profit`, fmtProfit(profit)]] : []),
                   ["Outstanding Amount", fmtCurrency(outstanding)],
                 ] },
                 { title: "Schemes", rows: [
