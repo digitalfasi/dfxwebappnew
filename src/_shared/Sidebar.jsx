@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cn } from "@/_shared/utils";
 import { useAuth } from "@/_shared/AuthContext";
+import { canOpen } from "@/_shared/moduleAccess";
 
 const ROLE_LABEL = { admin: "Admin", superadmin: "Super Admin", customer: "Customer" };
 function roleText(u) {
@@ -87,7 +88,16 @@ export const NAV_SECTIONS = [
 ];
 
 export default function Sidebar({ page, onNavigate, open, onClose, collapsed = false, onToggleCollapse }) {
-  const { user, tenantName } = useAuth();
+  const { user, tenantName, permissions } = useAuth();
+  // D2: every entry used to render for everyone, so a staff member granted two
+  // modules was offered all twenty - and each one he clicked called an API that
+  // correctly refused him and painted a red error. Offer only what the server
+  // will allow. A section whose children are all hidden must not render its
+  // heading either, or the menu grows empty groups.
+  const role = user?.backendRole ?? user?.role ?? null;
+  const VISIBLE = NAV_SECTIONS
+    .map((sec) => ({ ...sec, items: sec.items.filter((it) => canOpen(it.id, role, permissions)) }))
+    .filter((sec) => sec.items.length > 0);
   const storeName = tenantName || "DFX Solution";
   const [openMap, setOpenMap] = useState({ Plans: true, Procurement: true, Billing: true });
   // Sidebar search removed; nav renders unfiltered (query stays empty).
@@ -145,7 +155,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
           {collapsed ? (
             /* Icon rail — every module as a single tooltipped icon. */
             <div className="flex flex-col items-center gap-1">
-              {NAV_SECTIONS.flatMap((s) => s.items).map((item) => {
+              {VISIBLE.flatMap((s) => s.items).map((item) => {
                 const active = page === item.id;
                 return (
                   <button
@@ -167,8 +177,8 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
           ) : (() => {
             const q = query.trim().toLowerCase();
             const filtered = q
-              ? NAV_SECTIONS.map(sec => ({ ...sec, items: sec.items.filter(it => it.name.toLowerCase().includes(q)) })).filter(sec => sec.items.length > 0)
-              : NAV_SECTIONS;
+              ? VISIBLE.map(sec => ({ ...sec, items: sec.items.filter(it => it.name.toLowerCase().includes(q)) })).filter(sec => sec.items.length > 0)
+              : VISIBLE;
             if (q && filtered.length === 0) {
               return <div className="px-3 py-6 text-center text-xs text-muted">No results for “{query}”</div>;
             }

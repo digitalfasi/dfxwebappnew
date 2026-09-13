@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Sidebar, { NAV_SECTIONS } from "@/_shared/Sidebar";
 import { useAuth } from "@/_shared/AuthContext";
+import { canOpen, landingPage } from "@/_shared/moduleAccess";
 import TopBar from "@/_shared/TopBar";
 import Dashboard from "@/modules/dashboard/Dashboard";
 import GoldRate from "@/modules/gold-rate/GoldRate";
@@ -49,6 +50,21 @@ const PAGES = {
   settings: { title: "Settings", component: Settings },
 };
 
+// Shown when a URL resolves to a module this user was not granted. It is a
+// statement, not an error: the server would refuse the calls this page makes,
+// so the page is not opened at all. Not a security boundary - the server is.
+function NoAccess({ name }) {
+  return (
+    <div className="mx-auto mt-16 max-w-md rounded-2xl border border-line bg-canvas/40 px-6 py-8 text-center">
+      <div className="text-sm font-extrabold text-ink">{name} is not part of your access</div>
+      <p className="mt-2 text-xs text-muted">
+        Ask an administrator if you need it. Nothing is wrong — this account simply
+        has not been granted this module.
+      </p>
+    </div>
+  );
+}
+
 function Toast({ onRef }) {
   const [msg, setMsg] = useState("");
   const [show, setShow] = useState(false);
@@ -83,7 +99,7 @@ function pageFromHash() {
 }
 
 export default function App() {
-  const { logout } = useAuth();
+  const { logout, user, permissions } = useAuth();
   const [page, setPageState] = useState(pageFromHash);
   // Navigate = update state AND the URL hash, so refresh/back/forward keep the page.
   const setPage = (p) => setPageState((prev) => (typeof p === "function" ? p(prev) : p));
@@ -137,8 +153,23 @@ export default function App() {
     window.addEventListener("dfx:rate-published", load);
     return () => { alive = false; window.removeEventListener("dfx:rate-published", load); };
   }, []);
+  // D2: gate the ROUTE, not only the menu. The page comes from the URL hash, so
+  // hiding a sidebar entry is not enough - typing #/customers would still mount
+  // the module and let it fire API calls it cannot make. A refusal we control
+  // beats a red error from a screen that should never have opened.
+  const role = user?.backendRole ?? user?.role ?? null;
+  const navOrder = NAV_SECTIONS.flatMap((s) => s.items).map((i) => i.id);
+  const allowed = canOpen(page, role, permissions);
+  // Land somewhere openable. A staff member without Dashboard used to arrive on
+  // a page that refused him before he had touched anything.
+  useEffect(() => {
+    if (allowed || !role) return;
+    const home = landingPage(role, permissions, navOrder);
+    if (home && home !== page) setPage(home);
+  }, [allowed, role, page, permissions]);
+
   const meta = PAGES[page] ?? NAV_SECTIONS.flatMap((s) => s.items).find((i) => i.id === page) ?? { title: "Dashboard" };
-  const Page = meta.component;
+  const Page = allowed ? meta.component : null;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -153,7 +184,11 @@ export default function App() {
           hideTitle
         />
         <main className="content-shell w-full min-w-0 flex-1 overflow-x-hidden px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
-          {Page ? <Page onNavigate={setPage} search={search} promotions={promotions} setPromotions={setPromotions} editingPromo={editingPromo} setEditingPromo={setEditingPromo} /> : <ComingSoon name={meta.title} />}
+          {Page
+            ? <Page onNavigate={setPage} search={search} promotions={promotions} setPromotions={setPromotions} editingPromo={editingPromo} setEditingPromo={setEditingPromo} />
+            : allowed
+              ? <ComingSoon name={meta.title} />
+              : <NoAccess name={meta.title} />}
         </main>
       </div>
       <Toast onRef={() => {}} />
