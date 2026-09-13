@@ -72,11 +72,10 @@ export default function NewSale() {
   // priceDriver says which the admin is currently steering with.
   const [saleMode, setSaleMode] = useState(null); // null until the admin picks Online/Offline
   const [customerPrice, setCustomerPrice] = useState("");
-  const [goldProfit, setGoldProfit] = useState("");
   // Why the last re-quote was refused. Held separately from the breakdown so
   // the previous good figures stay on screen while the reason is stated.
   const [quoteError, setQuoteError] = useState("");
-  const [priceDriver, setPriceDriver] = useState("ENGINE"); // ENGINE | PRICE | PROFIT
+  const [priceDriver, setPriceDriver] = useState("ENGINE"); // ENGINE | PRICE
   // Below-cost approval. The backend refuses a customer price under the item's
   // cost unless the sale carries an explicit approval and a reason, and records
   // that approval in the audit trail. Clearance and damaged stock are real, so
@@ -146,7 +145,14 @@ export default function NewSale() {
   }, []);
 
   const discountNum = num(discount);
-  const goldProfitCeiling = product && product.goldProfitAmount != null ? product.goldProfitAmount : null;
+  // The store's margin now lives in the MAKING CHARGE. A discount is given by
+  // letting that percentage fall, so the making charge is what a discount may
+  // eat. Gold profit stays in the pool because every bill raised before this
+  // change carries one; on a new bill it is 0 and the pool is making alone.
+  const marginCeiling =
+    product && (product.makingChargeAmount != null || product.goldProfitAmount != null)
+      ? round2((product.makingChargeAmount || 0) + (product.goldProfitAmount || 0))
+      : null;
 
   // Scheme (gold-savings) credit the admin wants to redeem, in rupees. Declared
   // ABOVE the re-quote effect so the effect can send it to the backend and carve
@@ -170,24 +176,23 @@ export default function NewSale() {
       ? round2(product.subtotalBeforeTax - product.safePrice.minimumSafePrice / taxFactor)
       : null;
   const discountCeiling =
-    goldProfitCeiling == null
+    marginCeiling == null
       ? costFloorCeiling
       : costFloorCeiling == null
-        ? goldProfitCeiling
-        : Math.min(goldProfitCeiling, costFloorCeiling);
+        ? marginCeiling
+        : Math.min(marginCeiling, costFloorCeiling);
   const ceilingReason =
     discountCeiling == null
       ? null
-      : discountCeiling === costFloorCeiling && (goldProfitCeiling == null || costFloorCeiling <= goldProfitCeiling)
+      : discountCeiling === costFloorCeiling && (marginCeiling == null || costFloorCeiling <= marginCeiling)
         ? "beyond that the bill sells below what the piece cost"
-        : "beyond that it is giving away more than this bill's Gold Profit";
+        : "beyond that it is giving away more than this bill's making charge";
   const discountExceedsProfit = discountCeiling != null && discountNum > discountCeiling + 1e-6;
-  // A discount is absorbed from gold profit and nothing else, so the margin the
-  // bill is really earning is the set profit less the discount. Stating it here
-  // is what makes "the discount ate the profit" visible instead of implied: at
-  // a discount equal to the profit the effective figure reads 0%.
+  // A discount is absorbed from the making charge and nothing else, so what the
+  // bill really earns is the charge less the discount. Stating it is what makes
+  // "the discount ate the margin" visible instead of implied.
   const effectiveProfitAmount =
-    goldProfitCeiling != null ? Math.max(0, goldProfitCeiling - discountNum) : null;
+    marginCeiling != null ? Math.max(0, marginCeiling - discountNum) : null;
   const profitBaseGoldValue = Math.max(
     0,
     (product?.goldValueAmount || 0) - (Number(product?.schemeApplied) || 0)
@@ -196,6 +201,19 @@ export default function NewSale() {
     effectiveProfitAmount != null && profitBaseGoldValue > 0
       ? (effectiveProfitAmount / profitBaseGoldValue) * 100
       : null;
+  // The band the counter prices inside, as the owner set it: 14% is list, of
+  // which 4% is the tunch paid to the vendor and 4% is running cost - 8% that
+  // is already spent and cannot be given away. 11% is break-even. Below that
+  // the bill loses money. These are guidance; the hard stop is still the
+  // item's real purchase cost, which the backend enforces.
+  const MAKING_LIST_PCT = 14;
+  const MAKING_BREAK_EVEN_PCT = 11;
+  // What the counter has actually typed, falling back to the item's own charge
+  // before the first edit. Only meaningful for a PERCENTAGE making charge.
+  const makingPct = (() => {
+    const v = makingVal !== "" ? num(makingVal) : product?.makingChargeValue;
+    return v == null || Number.isNaN(v) ? null : v;
+  })();
 
   // First HUID lookup — confirm a real sellable item and seed edit fields.
   const handleFind = useCallback(async () => {
@@ -205,7 +223,7 @@ export default function NewSale() {
     setLoading(true); setLookupError("");
     setProduct(null); setProductCode("");
     setDiscount(""); setGst(true);
-    setCustomerPrice(""); setGoldProfit(""); setPriceDriver("ENGINE"); setQuoteError("");
+    setCustomerPrice(""); setPriceDriver("ENGINE"); setQuoteError("");
     setSaleMode(null); // a fresh product always starts at the Online/Offline choice
     try {
       const q = await billingService.getSaleQuote(key, { discountAmount: 0, gstApplied: true });
@@ -213,7 +231,12 @@ export default function NewSale() {
       setProductCode(q.productCode);
       setRate(q.goldRateApplied != null ? String(q.goldRateApplied) : "");
       setPublishedRate(q.goldRateApplied != null ? q.goldRateApplied : null);
-      setMakingVal(q.makingChargeValue != null ? String(q.makingChargeValue) : "");
+      // 14% list unless the item carries its own making charge. Only for a
+      // PERCENTAGE charge - seeding 14 into a FIXED field would bill 14 rupees.
+      setMakingVal(
+        q.makingChargeValue ? String(q.makingChargeValue)
+          : (q.makingChargeType || "PERCENTAGE") === "PERCENTAGE" ? "14" : ""
+      );
       setWastageVal(q.wastageValue != null ? String(q.wastageValue) : "");
       toast(`Found ${q.huid || key}`);
     } catch (err) {
@@ -247,11 +270,11 @@ export default function NewSale() {
           makingChargeType: product?.makingChargeType || undefined,
           wastageValue: wastageVal !== "" ? num(wastageVal) : undefined,
           wastageType: product?.wastageType || undefined,
-          // PRICE is a probe: the backend answers with the gold-profit trim that
-          // reaches it, which we then adopt (see the effect below) so the bill is
-          // driven by Gold Profit % alone — never by a discount line.
           customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
-          goldProfitPercent: priceDriver === "PROFIT" && goldProfit !== "" ? num(goldProfit) : undefined,
+          // The gold line is the published rate times the weight and nothing
+          // else. Margin is the making charge, so the item's stored profit %
+          // is explicitly overridden to 0 rather than left to apply itself.
+          goldProfitPercent: 0,
           // Preview under the same rule the sale will apply, so the figures on
           // screen are the figures that will be billed.
           allowBelowCost: allowBelowCost || undefined,
@@ -271,7 +294,7 @@ export default function NewSale() {
     }, 450);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productCode, saleMode, rate, makingVal, wastageVal, discountNum, gst, customerPrice, goldProfit, priceDriver, schemeSelected, schemeRedeemRequested, allowBelowCost]);
+  }, [productCode, saleMode, rate, makingVal, wastageVal, discountNum, gst, customerPrice, priceDriver, schemeSelected, schemeRedeemRequested, allowBelowCost]);
 
   // Customer Price drives the bill: the backend returns the derived discount, so
   // mirror it into the Discount field. Quote 2,50,000 at 2,20,000 and the 30,000
@@ -398,7 +421,7 @@ export default function NewSale() {
       wastageValue: wastageVal !== "" ? num(wastageVal) : undefined,
       wastageType: product.wastageType || undefined,
       customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
-      goldProfitPercent: priceDriver === "PROFIT" && goldProfit !== "" ? num(goldProfit) : undefined,
+      goldProfitPercent: 0,
       allowBelowCost: allowBelowCost || undefined,
       belowCostReason: allowBelowCost ? belowCostReason.trim() : undefined,
       // The credit about to be redeemed against this bill. Validation only -
@@ -437,23 +460,6 @@ export default function NewSale() {
     ? round2((product.finalAmount || 0) + (product.discountAmount || 0) * (1 + (product.gstApplied ? (product.taxRatePercent || 0) : 0) / 100))
     : 0;
 
-  // Gold Profit % to show. Backend bills at full margin and expresses a
-  // negotiated cut as a discount, surfacing the reduced % only in
-  // safe_price.reductions. When the typed price is below the asking price but no
-  // GOLD_PROFIT trim is returned (loss zone) the margin is fully consumed — show
-  // 0, never fall back to the full 10%.
-  const goldProfitCut = (product?.safePrice?.reductions || []).find((r) => r.component === "GOLD_PROFIT");
-  // The percent the bill IS applying, straight from the backend breakdown.
-  // It used to prefer safePrice.reductions.GOLD_PROFIT.toValue, which is only
-  // a SUGGESTED trim — so the field read one number (5.35) while the summary
-  // row billed another (5.72). An input must state what is in force; the
-  // suggestion is surfaced as helper text below instead.
-  const goldProfitShown = product?.goldProfitPercent;
-  const goldProfitSuggested =
-    goldProfitCut?.toValue != null && Math.abs(goldProfitCut.toValue - (product?.goldProfitPercent ?? 0)) > 0.01
-      ? goldProfitCut.toValue
-      : null;
-
   // Max discount the admin may give before crossing break-even = current asking
   // price − minimum safe price. (safe_price.residual_discount is only the sliver
   // beyond all-charges-zero, not the real headroom — so it read ₹0 and confused.)
@@ -480,7 +486,7 @@ export default function NewSale() {
     setRate(""); setMakingVal(""); setWastageVal(""); setDiscount(""); setGst(true);
     setAllowBelowCost(false); setBelowCostReason(""); setPublishedRate(null);
     setPayMethod(""); setPayStatus(""); setPartialAmount(""); setPayRef("");
-    setSaleMode(null); setCustomerPrice(""); setGoldProfit(""); setPriceDriver("ENGINE"); setQuoteError("");
+    setSaleMode(null); setCustomerPrice(""); setPriceDriver("ENGINE"); setQuoteError("");
     clearCustomer(); setCustQuery(""); setCustResults([]); setWalkinName(""); setWalkinPhone("");
     setPayMethod("CASH"); setPayStatus("PAID"); setPartialAmount(""); setPayRef("");
     setLookupError(""); setOtp(null);
@@ -489,7 +495,7 @@ export default function NewSale() {
   const handleCreateBill = async () => {
     if (!canCreate || !product) {
       if (!customerIdentified) toast("Select a customer or enter a walk-in name");
-      else if (discountExceedsProfit) toast("Discount exceeds available Gold Profit");
+      else if (discountExceedsProfit) toast("Discount exceeds this bill’s making charge");
       else if (anyLineOverBalance) toast("A redemption exceeds its scheme balance");
       else if (redeemOverGold) toast(`Scheme redemption can't exceed the item's gold value (${money(goldValue)})`);
       else if (!paymentChosen) toast("Choose the payment method and status before billing");
@@ -544,7 +550,7 @@ export default function NewSale() {
 
   const handleQuotation = async () => {
     if (!product || !customerIdentified) { toast("Load a product and identify the customer first"); return; }
-    if (discountExceedsProfit) { toast("Discount exceeds available Gold Profit"); return; }
+    if (discountExceedsProfit) { toast("Discount exceeds this bill’s making charge"); return; }
     try {
       const schemePreview = {};
       for (const l of redeemLines) schemePreview[l.enrollmentId] = l.amount;
@@ -609,7 +615,7 @@ export default function NewSale() {
         gst_applied: gst,
         making_charge_value: makingVal !== "" ? num(makingVal) : undefined,
         wastage_value: wastageVal !== "" ? num(wastageVal) : undefined,
-        gold_profit_percent: priceDriver === "PROFIT" && goldProfit !== "" ? num(goldProfit) : undefined,
+        gold_profit_percent: 0,
         customer_price: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
         discount_amount: discountNum || 0,
         payment_method: payMethod || "CASH",
@@ -650,7 +656,6 @@ export default function NewSale() {
       setGst(d.gst_applied !== false);
       setMakingVal(d.making_charge_value != null ? String(d.making_charge_value) : "");
       setWastageVal(d.wastage_value != null ? String(d.wastage_value) : "");
-      if (d.gold_profit_percent != null) { setGoldProfit(String(d.gold_profit_percent)); setPriceDriver("PROFIT"); }
       if (d.customer_price != null) { setCustomerPrice(String(d.customer_price)); setPriceDriver("PRICE"); }
       setDiscount(d.discount_amount ? String(d.discount_amount) : "");
       setPayMethod(d.payment_method || "");
@@ -672,14 +677,14 @@ export default function NewSale() {
     }
   };
 
-  // The customer is shown this panel, so the store's margin is never a row of
-  // its own. It goes where a jeweller already puts it: in the RATE. The panel
-  // states the selling rate per gram and the gold value it produces, the two
-  // multiply, and no margin is visible. Splitting it into a "Gold Profit" row
-  // was tried and is wrong for the same reason the invoice never did it.
+  // The gold line is the PUBLISHED rate times the weight, full stop. Folding
+  // the margin into the rate printed 15,587/g where the shop had published
+  // 14,170/g, and the customer cannot reconcile a rate he was never quoted.
+  // The margin is a line of its own now - the making charge - so the rate on
+  // this panel is the rate on the Gold Rate screen.
   const goldProfitLine = product ? (product.goldProfitAmount || 0) : 0;
   const goldValuePure = product ? (product.goldValueAmount || 0) : 0;
-  const goldValueShown = round2(goldValuePure + goldProfitLine);
+  const goldValueShown = round2(goldValuePure);
   const netGrams = product ? (Number(product.netGoldWeightGrams) || 0) : 0;
   const appliedRate = product ? (Number(product.goldRateApplied) || 0) : 0;
   // Only when it actually reproduces the amount beside it. The rate is quoted
@@ -687,9 +692,7 @@ export default function NewSale() {
   // would not describe the figure and the row prints bare instead.
   const sellingRate = (() => {
     if (!(netGrams > 0 && appliedRate > 0)) return null;
-    if (Math.abs(netGrams * appliedRate - goldValuePure) >= 0.01) return null;
-    const eff = round2(goldValueShown / netGrams);
-    return Math.abs(netGrams * eff - goldValueShown) <= 1 ? eff : null;
+    return Math.abs(netGrams * appliedRate - goldValuePure) < 1 ? appliedRate : null;
   })();
   const goldValueLabel = `Gold Value${sellingRate ? ` (${netGrams.toFixed(3)} g \u00d7 ${money(sellingRate)})` : ""}`;
 
@@ -1085,39 +1088,22 @@ export default function NewSale() {
                       )}
                     </label>
                     <label className="grid min-w-0 gap-1.5">
-                      <span className="text-xs font-bold">Gold Profit %</span>
-                      {/* A discount is absorbed from gold profit, so this
-                          states the margin actually being earned - it falls as
-                          the discount grows and reads 0 when the discount has
-                          consumed it. The percentage that was SET is kept and
-                          shown below; typing here still sets it. */}
-                      <Input type="number" step="0.01" min="0" max="100" placeholder="10"
-                        value={
-                          priceDriver === "PROFIT"
-                            ? goldProfit
-                            : effectiveProfitPct != null && discountNum > 0
-                              ? String(round2(effectiveProfitPct))
-                              : (goldProfitShown != null ? String(round2(goldProfitShown)) : "")
-                        }
-                        onChange={(e) => { setGoldProfit(e.target.value); setPriceDriver("PROFIT"); }} />
-                      <span className="text-[11px] text-muted">{schemeSelected ? "Earned on the un-covered grams only — waived on the scheme-covered slice." : "Margin over the published metal rate — drives the selling price."}</span>
-                      {/* What the margin becomes once the discount is taken off
-                          it. Red at zero: there is nothing left to give. */}
-                      {discountNum > 0 && effectiveProfitPct != null && (
-                        <span className={`text-[11px] font-semibold ${effectiveProfitPct <= 0.005 ? "text-danger" : "text-accent-strong"}`}>
-                          {effectiveProfitPct <= 0.005
-                            ? <>Set {round2(goldProfitShown || 0)}% — the {money(discountNum)} discount wipes it out, so this bill earns 0%</>
-                            : <>Set {round2(goldProfitShown || 0)}% — after the {money(discountNum)} discount this bill earns {money(effectiveProfitAmount)}</>}
-                        </span>
-                      )}
-                      {goldProfitSuggested != null && discountNum <= 0 && (
-                        <span className="text-[11px] font-semibold text-accent-strong">This can be cut to {round2(goldProfitSuggested)}% and the bill still makes money.</span>
-                      )}
-                    </label>
-                    <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">Making Charge {chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}</span>
                       <Input type="number" step="0.01" min="0" value={makingVal} onChange={(e) => setMakingVal(e.target.value)} />
-                      <span className="text-[11px] text-muted">= {money(product.makingChargeAmount)}</span>
+                      <span className="text-[11px] text-muted">= {money(product.makingChargeAmount)}{schemeSelected ? " — on the un-covered grams only" : ""}</span>
+                      {/* This is where the whole margin sits now, so the
+                          counter is told what the number means before it is
+                          changed: 8% of it is already spent (4% tunch to the
+                          vendor, 4% running cost) and 11% is break-even. */}
+                      {(product.makingChargeType || "PERCENTAGE") === "PERCENTAGE" && makingPct != null && (
+                        <span className={`text-[11px] font-semibold ${makingPct < MAKING_BREAK_EVEN_PCT ? "text-danger" : makingPct < MAKING_LIST_PCT ? "text-accent-strong" : "text-muted"}`}>
+                          {makingPct < MAKING_BREAK_EVEN_PCT
+                            ? `Below ${MAKING_BREAK_EVEN_PCT}% this bill loses money — 8% is tunch and running cost already spent.`
+                            : makingPct < MAKING_LIST_PCT
+                              ? `${round2(makingPct)}% — still in profit. ${MAKING_BREAK_EVEN_PCT}% is break-even.`
+                              : `${MAKING_LIST_PCT}% list — 4% tunch + 4% running cost + 3% gold profit + 3% extra.`}
+                        </span>
+                      )}
                     </label>
                     <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">Wastage {chargePct(product.wastageType, wastageVal || product.wastageValue)}</span>
@@ -1129,7 +1115,7 @@ export default function NewSale() {
                           value, so the bill falls by the discount plus the GST
                           that is no longer due on it. */}
                       <span className="text-xs font-bold">Discount (₹) <span className="font-normal text-muted">— off the taxable value</span></span>
-                      <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={schemeSelected && priceDriver === "PRICE"} className={schemeSelected && priceDriver === "PRICE" ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds Gold Profit" : undefined} placeholder="0" />
+                      <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={schemeSelected && priceDriver === "PRICE"} className={schemeSelected && priceDriver === "PRICE" ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds making charge" : undefined} placeholder="0" />
                       {discountNum > 0 && product.gstApplied && (product.taxRatePercent || 0) > 0 && (
                         <span className="text-[11px] text-muted">Bill falls by {money(round2(discountNum * taxFactor))} — the discount plus the {product.taxRatePercent}% GST no longer due on it.</span>
                       )}
@@ -1293,13 +1279,11 @@ export default function NewSale() {
                         value={`− ${money(schemeGold)}`}
                         tone="text-emerald-700"
                       />
-                      {/* The margin rides in the gold value above, so it rides
-                          into the chargeable figure too - otherwise this column
-                          stops adding up. The gram sub-label is dropped here on
-                          purpose: it describes the pure gold, and no longer
-                          divides into this number. A label that does not match
-                          its figure is the defect being avoided. */}
-                      <Row label="Chargeable gold value" value={money(round2(chargeableGold + goldProfitLine))} divider />
+                      {/* Pure gold less the credit. The margin is no longer
+                          inside it, so this is the gold the customer is
+                          actually charged for - the grams the making charge
+                          below is calculated on. */}
+                      <Row label="Chargeable gold value" value={money(round2(chargeableGold))} divider />
 
                       <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
                       <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
