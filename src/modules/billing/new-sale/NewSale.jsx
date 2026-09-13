@@ -208,6 +208,13 @@ export default function NewSale() {
   // item's real purchase cost, which the backend enforces.
   const MAKING_LIST_PCT = 14;
   const MAKING_BREAK_EVEN_PCT = 11;
+  // The backend solves a typed price into the making charge and echoes the
+  // value back, so this is read from the quote and never recomputed here -
+  // two places deriving the same percentage is how they come to disagree.
+  const impliedMakingPct =
+    product?.makingChargeValue != null && !Number.isNaN(Number(product.makingChargeValue))
+      ? Number(product.makingChargeValue)
+      : null;
   // What the counter has actually typed, falling back to the item's own charge
   // before the first edit. Only meaningful for a PERCENTAGE making charge.
   const makingPct = (() => {
@@ -296,16 +303,19 @@ export default function NewSale() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productCode, saleMode, rate, makingVal, wastageVal, discountNum, gst, customerPrice, priceDriver, schemeSelected, schemeRedeemRequested, allowBelowCost]);
 
-  // Customer Price drives the bill: the backend returns the derived discount, so
-  // mirror it into the Discount field. Quote 2,50,000 at 2,20,000 and the 30,000
-  // lands here and in the Bill summary's Discount row. The Gold Profit % shown
-  // alongside is the backend's own GOLD_PROFIT trim — the drop is absorbed from
-  // gold profit only, never from making or wastage.
+  // Customer Price drives the bill by moving the MAKING CHARGE, so the charge
+  // field has to show the percentage the typed price actually produced.
+  // Without this the input still read 14% while the summary billed 9.63% - the
+  // same field disagreeing with itself, which is what made this box look
+  // broken before. The backend's solve is idempotent (re-sending the value it
+  // returned yields that value again), so mirroring it cannot oscillate.
   useEffect(() => {
-    if (priceDriver !== "PRICE" || !product || schemeSelected) return;
-    const d = String(round2(product.discountAmount || 0));
-    setDiscount((prev) => (prev === d ? prev : d));
-  }, [product, priceDriver, schemeSelected]);
+    if (priceDriver !== "PRICE" || !product) return;
+    if (product.makingChargeValue == null) return;
+    const m = String(round2(product.makingChargeValue));
+    setMakingVal((prev) => (prev === m ? prev : m));
+    setDiscount((prev) => (prev === "" || prev === "0" ? prev : ""));
+  }, [product, priceDriver]);
 
   // Existing-customer search (debounced).
   useEffect(() => {
@@ -1034,16 +1044,43 @@ export default function NewSale() {
                         {minSafe != null && !/floor|lowest/i.test(quoteError) && <> The lowest price this bill can take is {money(minSafe)}.</>}
                       </p>
                     ) : (
-                      <p className="mt-1 text-[11px] text-muted">
-                        {schemeSelected
-                          ? <>Bill total for the piece. It is converted into the Gold Profit % it implies, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
-                          /* It becomes a discount line, not a new profit %. Saying
-                             "Gold Profit % updates to match" was untrue on a
-                             normal bill and is what made the field look broken. */
-                          : <>Type the quoted price. The gap to {money(sellingPrice)} is recorded as a discount and comes out of Gold Profit — the percentage itself stays as you set it.</>}
-                      </p>
+                      <>
+                        {/* A typed total IS a making charge - the counter is
+                            steering the one margin the bill has, from the other
+                            end. Showing the percentage it works out to is what
+                            stops a price being agreed that quietly sits under
+                            break-even: the cost floor below only catches a bill
+                            that goes under what the PIECE cost, and 11% sits
+                            above that because it carries running cost too. */}
+                        {(product.makingChargeType || "PERCENTAGE") === "PERCENTAGE" && impliedMakingPct != null && (
+                          <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] font-semibold leading-snug ${
+                            impliedMakingPct < MAKING_BREAK_EVEN_PCT
+                              ? "border-danger-line bg-danger-soft text-danger"
+                              : impliedMakingPct < MAKING_LIST_PCT
+                                ? "border-accent-line bg-accent-soft text-accent-strong"
+                                : "border-line-soft bg-surface text-muted"}`}>
+                            This price is a making charge of {round2(impliedMakingPct)}%
+                            {impliedMakingPct < MAKING_BREAK_EVEN_PCT
+                              ? ` — under ${MAKING_BREAK_EVEN_PCT}% break-even. 8% is tunch and running cost already spent.`
+                              : impliedMakingPct < MAKING_LIST_PCT
+                                ? ` — still in profit. ${MAKING_BREAK_EVEN_PCT}% is break-even.`
+                                : "."}
+                          </div>
+                        )}
+                        <p className="mt-1 text-[11px] text-muted">
+                          {schemeSelected
+                            ? <>Bill total for the piece. It sets the making charge, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
+                            : <>Type the quoted price. The making charge moves to match it — no discount line, one charge at the percentage actually agreed.</>}
+                        </p>
+                      </>
                     )}
                   </div>
+                  {/* Staff get the word, never the figure. The backend sends
+                      the rupees only to a privileged caller and the label to
+                      everyone, so the absent number IS the signal here. */}
+                  {product.currentGoldValuePnl == null && product.profitLabel && (
+                    <PnlWordCard label="This bill" verdict={product.profitLabel} />
+                  )}
                   {product.currentGoldValuePnl != null && (
                     <PnlCard
                       /* NOT the gold profit. This is the WHOLE bill measured
@@ -1644,6 +1681,30 @@ function OtpDialog({ otp, onClose, onDone }) {
     </div>
   );
 }
+
+/** What a Staff user sees where an Admin sees rupees: the DIRECTION and
+ *  nothing else. Whether a bill makes or loses money is something the person
+ *  raising it has to know; what the store earns on it is not theirs to see. */
+const PnlWordCard = ({ label, verdict }) => {
+  const loss = verdict === "LOSS";
+  const even = verdict === "BREAK_EVEN";
+  const tone = loss
+    ? "border-red-200 bg-red-50 text-red-700"
+    : even
+      ? "border-line-soft bg-canvas text-muted"
+      : "border-emerald-200 bg-emerald-50 text-emerald-700";
+  return (
+    <div className={`rounded-xl border p-3 text-center ${tone}`}>
+      <div className="text-[10px] font-bold uppercase tracking-wider opacity-80">{label}</div>
+      <div className="mt-0.5 text-base font-extrabold">
+        {loss ? "LOSS" : even ? "BREAK EVEN" : "PROFIT"}
+      </div>
+      <div className="text-[10px] font-semibold opacity-80">
+        {loss ? "This bill sells below what the piece cost" : even ? "This bill neither earns nor loses" : "This bill earns"}
+      </div>
+    </div>
+  );
+};
 
 const PnlCard = ({ label, amount, pct, sub, detail }) => {
   const pos = (amount || 0) >= 0;
