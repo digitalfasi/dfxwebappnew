@@ -119,8 +119,14 @@ export const enrollmentService = {
    * customer self-enroll rules (active scheme, no duplicate active enrollment in
    * the same scheme; different schemes allowed). scheme_tier_id is optional.
    */
-  async adminEnrollCustomer(customerId, { schemeId, schemeTierId } = {}) {
-    const body = { scheme_id: schemeId, ...(schemeTierId ? { scheme_tier_id: schemeTierId } : {}) };
+  async adminEnrollCustomer(customerId, { schemeId, schemeTierId, goldPurity } = {}) {
+    const body = {
+      scheme_id: schemeId,
+      ...(schemeTierId ? { scheme_tier_id: schemeTierId } : {}),
+      // Chosen with the customer at joining. The backend snapshots it and, on a
+      // Fixed Gold Rate plan, locks THAT purity's published rate.
+      ...(goldPurity ? { gold_purity: goldPurity } : {}),
+    };
     const res = await apiClient.post(`/admin/customers/${customerId}/enrollments`, body, { auth: true });
     return res.data?.enrollment;
   },

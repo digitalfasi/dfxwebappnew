@@ -9,6 +9,7 @@ import { toast } from "@/_shared/toast";
 import { money } from "@/_shared/utils";
 import { customerService } from "@/modules/customers/customerService";
 import { schemeService } from "@/modules/plan/scheme/schemeService";
+import { goldRateService } from "@/modules/gold-rate/goldRateService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { useAuth } from "@/_shared/AuthContext";
 
@@ -132,6 +133,13 @@ export default function Customers() {
   const [schemeListLoading, setSchemeListLoading] = useState(false);
   const [chosenSchemeId, setChosenSchemeId] = useState("");
   const [enrollBusy, setEnrollBusy] = useState(false);
+  // The tier and purity chosen with the customer. Both are snapshotted onto the
+  // enrollment, so a later catalogue edit never moves this customer's terms.
+  const [chosenTierId, setChosenTierId] = useState("");
+  const [chosenPurity, setChosenPurity] = useState("");
+  // Today's published rates, shown beside each purity on a Fixed Gold Rate plan
+  // so the admin sees what is about to be frozen for the whole term.
+  const [todayRate, setTodayRate] = useState(null);
 
   useEffect(() => {
     if (!selected) return;
@@ -214,14 +222,49 @@ export default function Customers() {
 
   async function openEnroll() {
     setChosenSchemeId("");
+    setChosenTierId("");
+    setChosenPurity("");
     setEnrollOpen(true);
     await loadActiveSchemes();
+    if (!todayRate) {
+      // carryForward: the screen needs A rate to show, and the row carries the
+      // date it was actually published, so a stale one is never passed off as
+      // today's.
+      goldRateService.getTodayRate({ carryForward: true }).then(setTodayRate).catch(() => {});
+    }
   }
+  // What the chosen scheme actually offers. All read from the scheme list the
+  // backend already sends - nothing here is inferred from the scheme's name.
+  const enrollScheme = schemeList.find((sc) => sc.id === chosenSchemeId) || null;
+  const enrollTiers = (enrollScheme?.tiers || []).filter((t) => t.isActive);
+  const enrollIsFixedRate = enrollScheme?.schemeType === "FIXED_GOLD_RATE";
+  const enrollIsGold = enrollIsFixedRate || enrollScheme?.schemeType === "FLEXIBLE_DIGI_GOLD";
+  // A tier is required only where the shop has defined one; a purity only on a
+  // gold scheme. Neither is invented when the catalogue does not offer it.
+  const enrollReady =
+    !!chosenSchemeId
+    && (enrollTiers.length === 0 || !!chosenTierId)
+    && (!enrollIsGold || !!chosenPurity);
+  // The purities the shop publishes a rate for. 20K has no published column,
+  // so it is not offered here - a plan cannot be sold in a purity the store
+  // cannot value a contribution in.
+  const PURITIES = ["24K", "22K", "18K", "14K", "9K"];
+  const rateFor = (purity) => {
+    if (!todayRate) return null;
+    const key = { "24K": "rate_24k", "22K": "rate_22k", "18K": "rate_18k", "14K": "rate_14k", "9K": "rate_9k" }[purity];
+    const v = key ? todayRate[key] : null;
+    return v == null || v === "" ? null : Number(v);
+  };
+
   async function submitEnroll() {
     if (!selected || !chosenSchemeId) { toast("Pick a scheme"); return; }
     setEnrollBusy(true);
     try {
-      await enrollmentService.adminEnrollCustomer(selected.id, { schemeId: chosenSchemeId });
+      await enrollmentService.adminEnrollCustomer(selected.id, {
+        schemeId: chosenSchemeId,
+        schemeTierId: chosenTierId || undefined,
+        goldPurity: chosenPurity || undefined,
+      });
       const nm = selected.name;
       setEnrollOpen(false);
       await openCustomer(selected); // refresh drawer schemes/history
@@ -854,14 +897,72 @@ export default function Customers() {
                 ) : schemeList.length === 0 ? (
                   <div className="rounded-xl border border-line px-3.5 py-2.5 text-sm text-muted">No active schemes available.</div>
                 ) : (
-                  <Select value={chosenSchemeId} onValueChange={setChosenSchemeId} options={schemeList.map((s) => ({ value: s.id, label: s.name }))} placeholder="Select a scheme…" />
+                  <Select
+                    value={chosenSchemeId}
+                    onValueChange={(v) => { setChosenSchemeId(v); setChosenTierId(""); setChosenPurity(""); }}
+                    options={schemeList.map((s) => ({ value: s.id, label: s.name }))}
+                    placeholder="Select a scheme…"
+                  />
                 )}
               </label>
-              <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">Enrolls on the scheme&apos;s base terms from today. A customer can hold several schemes; the same scheme can&apos;t be active twice.</p>
+
+              {/* The plan the customer actually picks. The tiers are the shop's
+                  own ladder and were never shown here, so every enrollment was
+                  written with a NULL snapshot and silently fell back to the
+                  scheme's base amount. */}
+              {enrollScheme && enrollTiers.length > 0 && (
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Monthly amount<span className="text-danger">*</span></span>
+                  <Select
+                    value={chosenTierId}
+                    onValueChange={setChosenTierId}
+                    options={enrollTiers.map((t) => ({
+                      value: t.id,
+                      label: `${money(t.monthlyAmount)}/month · ${t.durationMonths} months · ${money(t.monthlyAmount * t.durationMonths)} total`,
+                    }))}
+                    placeholder="Select the plan…"
+                  />
+                  <span className="text-[11px] text-muted">Frozen onto this enrollment. Editing the scheme later will not move it.</span>
+                </label>
+              )}
+
+              {/* A gold scheme is bought IN a purity, and the purity decides
+                  what every contribution buys. On a Fixed Gold Rate plan the
+                  chosen purity's rate today is frozen for the whole term, so
+                  the rate is shown beside each option before it is committed. */}
+              {enrollIsGold && (
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Purity<span className="text-danger">*</span></span>
+                  <Select
+                    value={chosenPurity}
+                    onValueChange={setChosenPurity}
+                    options={PURITIES.map((p) => {
+                      const r = rateFor(p);
+                      return {
+                        value: p,
+                        label: enrollIsFixedRate
+                          ? `${p} — ${r != null ? `${money(r)}/g today` : "no published rate"}`
+                          : p,
+                      };
+                    })}
+                    placeholder={enrollScheme?.goldPurity ? `Scheme default ${enrollScheme.goldPurity}` : "Select a purity…"}
+                  />
+                  <span className="text-[11px] text-muted">
+                    {enrollIsFixedRate
+                      ? (chosenPurity && rateFor(chosenPurity) != null
+                          ? `${money(rateFor(chosenPurity))}/g is locked for the whole term. Every contribution buys gold at this rate.`
+                          : "The rate published today for the chosen purity is locked for the whole term.")
+                      : "Contributions buy gold in this purity at the rate on the day each payment is made."}
+                    {todayRate?.effective_date ? ` Rates as published ${todayRate.effective_date}.` : ""}
+                  </span>
+                </label>
+              )}
+
+              <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">Enrolls from today. A customer can hold several schemes; the same scheme can&apos;t be active twice.</p>
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" disabled={enrollBusy} onClick={() => setEnrollOpen(false)}>Cancel</Button>
-              <Button size="sm" disabled={enrollBusy || !chosenSchemeId} onClick={submitEnroll}>{enrollBusy ? "Enrolling…" : "Enroll"}</Button>
+              <Button size="sm" disabled={enrollBusy || !enrollReady} onClick={submitEnroll}>{enrollBusy ? "Enrolling…" : "Enroll"}</Button>
             </div>
           </div>
         </div>

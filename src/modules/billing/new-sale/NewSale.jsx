@@ -538,18 +538,31 @@ export default function NewSale() {
     setCreating(true);
     try {
       if (schemeApplied) {
-        // Create the CASH side first (never PAID — the scheme must settle the
-        // remainder), then redeem the schemes against the created invoice.
-        const createStatus = paidNow > 0 ? "PARTIAL" : "PENDING";
+        // NO money is collected before the OTP. The sale row has to exist first
+        // (the challenge is keyed on a sale_id), but the moment a rupee is
+        // recorded against it the sale can no longer be voided - it has to be
+        // returned or refunded instead. That is what stranded INV-260913-87B4A2:
+        // the admin cancelled the OTP, the void was correctly refused because
+        // 2,00,000 was already on the invoice, and the item stayed SOLD with no
+        // scheme carve on the bill.
+        //
+        // So the sale is created PENDING, the cash is collected only after the
+        // redemption succeeds, and cancelling the OTP has nothing to undo.
         const sale = await billingService.createSale({
           ...baseInputs(),
           paymentMethod: payMethod,
-          paymentStatus: createStatus,
-          initialPaymentAmount: paidNow > 0 ? paidNow : undefined,
-          paymentReferenceNo: payRef.trim() || undefined,
+          paymentStatus: "PENDING",
         });
         await enrollmentService.requestRedemptionOtp(sale.id);
-        setOtp({ saleId: sale.id, invoiceNumber: sale.invoiceNumber, items: redeemLines.map((l) => ({ enrollmentId: l.enrollmentId, amount: l.amount })) });
+        setOtp({
+          saleId: sale.id,
+          invoiceNumber: sale.invoiceNumber,
+          items: redeemLines.map((l) => ({ enrollmentId: l.enrollmentId, amount: l.amount })),
+          // Collected by onOtpDone, once the credit is actually spent.
+          collectAfter: paidNow > 0
+            ? { amount: paidNow, paymentMethod: payMethod, referenceNo: payRef.trim() || undefined }
+            : null,
+        });
         toast("Verification code sent to the customer's app");
         if (resumedDraftId) {
           billingService.deleteDraft(resumedDraftId).catch(() => {});
@@ -599,16 +612,37 @@ export default function NewSale() {
 
   // Scheme redemption verified: the sale is settled. Show the invoice dialog so
   // the admin can print/download, same as a straight cash bill.
-  const onOtpDone = () => {
+  const onOtpDone = async () => {
     const done = otp;
     setOtp(null);
-    toast("Sale completed with scheme redemption");
+    // The cash the customer hands over, recorded only now - before this point
+    // the sale had to stay voidable. If this one call fails the sale is still
+    // correct and carved, just unpaid, and the admin collects it from the
+    // Payments screen; say so plainly rather than implying the sale failed.
+    if (done?.saleId && done?.collectAfter?.amount > 0) {
+      try {
+        await billingService.recordSalePayment(done.saleId, {
+          amount: done.collectAfter.amount,
+          paymentMethod: done.collectAfter.paymentMethod,
+          referenceNo: done.collectAfter.referenceNo,
+        });
+        toast("Sale completed with scheme redemption");
+      } catch (err) {
+        toast(
+          `Scheme redeemed, but the ${money(done.collectAfter.amount)} payment was not recorded` +
+          `${err?.message ? ` — ${err.message}` : ""}. Collect it against ${done.invoiceNumber || "this invoice"} in Payments.`
+        );
+      }
+    } else {
+      toast("Sale completed with scheme redemption");
+    }
     if (done?.saleId) setInvoice({ id: done.saleId, invoiceNumber: done.invoiceNumber });
   };
 
   // Abandoning the OTP step must not leave the item SOLD. The sale was created
-  // before the OTP (the challenge needs a sale_id); voiding it returns the item
-  // to stock and cancels the invoice, then we re-scan the same HUID so the admin
+  // before the OTP (the challenge needs a sale_id) but carries NO payment, so
+  // the void always has something it is allowed to undo; it returns the item to
+  // stock and cancels the invoice, then we re-scan the same HUID so the admin
   // stays on the item (now back in stock) instead of being kicked to a blank
   // screen.
   //
