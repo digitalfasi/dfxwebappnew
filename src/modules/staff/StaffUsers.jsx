@@ -41,6 +41,7 @@ const scope = useRef(null);
   const [busyId, setBusyId] = useState(null);
 
   const [showForm, setShowForm] = useState(false);
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [managing, setManaging] = useState(null); // an existing staff row
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", access: [] });
   const [errors, setErrors] = useState({});
@@ -106,7 +107,12 @@ const scope = useRef(null);
     } else if (COMMON_PASSWORDS.has(form.password.trim().toLowerCase())) {
       e.password = "That password is one of the most commonly used ones. Choose something harder to guess.";
     }
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Invalid email";
+    // Mandatory, not optional. A staff member created with only a phone number
+    // could not sign in - the login field refused it before any request was sent -
+    // so the shop had created an account nobody could use. The backend schema is
+    // required to agree; a screen-only rule is not a rule.
+    if (!form.email || !form.email.trim()) e.email = "Email is required — the staff member signs in with it";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Invalid email";
     // Backend accepts a 10-digit Indian mobile only (must start 6-9).
     if (form.phone && !/^[6-9]\d{9}$/.test(form.phone)) e.phone = "Enter a valid 10-digit mobile number";
     return e;
@@ -288,7 +294,7 @@ const scope = useRef(null);
                   </label>
 
                   <label className="grid gap-1.5">
-                    <span className="text-xs font-bold">Email <span className="font-normal text-muted">(optional)</span></span>
+                    <span className="text-xs font-bold">Email *</span>
                     <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="e.g. priya@store.com" className={errors.email ? "border-danger" : ""} />
                     {errors.email && <span className="text-xs font-semibold text-danger">{errors.email}</span>}
                   </label>
@@ -301,7 +307,21 @@ const scope = useRef(null);
 
                   <label className="grid gap-1.5">
                     <span className="text-xs font-bold">Password * <span className="font-normal text-muted">(min {MIN_PASSWORD_LENGTH} characters, not a common one)</span></span>
-                    <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••" className={errors.password ? "border-danger" : ""} />
+                    {/* The dialog says this password cannot be viewed or changed
+                        later, and then hid it while the admin typed it. That is how a
+                        shop locks itself out. Same reveal control as the sign-in screen. */}
+                    <div className="relative">
+                      <Input type={showStaffPassword ? "text" : "password"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••" className={`pr-11 ${errors.password ? "border-danger" : ""}`} />
+                      <button type="button" onClick={() => setShowStaffPassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-faint transition-colors hover:text-ink"
+                        aria-label={showStaffPassword ? "Hide password" : "Show password"}>
+                        {showStaffPassword ? (
+                          <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" /><circle cx="12" cy="12" r="3" /></svg>
+                        )}
+                      </button>
+                    </div>
                     {errors.password && <span className="text-xs font-semibold text-danger">{errors.password}</span>}
                     {!errors.password && <span className="text-xs text-muted">This is the password the staff member signs in with — note it down, it cannot be viewed or changed later.</span>}
                   </label>

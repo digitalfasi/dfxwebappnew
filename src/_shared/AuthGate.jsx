@@ -196,10 +196,16 @@ export default function AuthGate({ children }) {
 
           <form onSubmit={onSubmit} className="mt-8 space-y-5">
             <label className="grid gap-1.5">
-              <span className="text-xs font-bold text-ink-soft">Email</span>
+              <span className="text-xs font-bold text-ink-soft">Email or phone</span>
+              {/* NOT type="email". The server accepts either an email or a phone
+                  number (auth/service.py: User.email == username OR a phone match),
+                  but the browser refused a phone number before a single request was
+                  sent - "Please include an '@'" - so a staff member created with a
+                  phone and no email could not sign in at all. The server decides what
+                  is a valid identifier, not the browser. */}
               <Input
-                type="email"
-                placeholder="you@company.com"
+                type="text"
+                placeholder="you@company.com or 9876543210"
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
