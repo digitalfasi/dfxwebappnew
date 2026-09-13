@@ -287,7 +287,7 @@ export default function NewSale() {
           makingChargeType: product?.makingChargeType || undefined,
           wastageValue: wastageVal !== "" ? num(wastageVal) : undefined,
           wastageType: product?.wastageType || undefined,
-          customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
+          customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? toBillTotal(num(customerPrice)) : undefined,
           // The gold line is the published rate times the weight and nothing
           // else. Margin is the making charge, so the item's stored profit %
           // is explicitly overridden to 0 rather than left to apply itself.
@@ -388,6 +388,19 @@ export default function NewSale() {
   // (non-scheme) breakdown on screen, and dressing that up as a scheme bill
   // invents a scheme portion, unscaled charges and a total the server rejected.
   const quotedScheme = Number(product?.schemeApplied) || 0;
+  // The credit this request will actually carve. The backend caps the redeemed
+  // amount at the piece's gold value, so the same cap is applied here - the
+  // figure has to be the one the server will use, not the one that was asked
+  // for, or the conversion below lands on a different total.
+  const schemeCarveNow = Math.min(
+    schemeRedeemRequested,
+    Number(product?.goldValueAmount) || schemeRedeemRequested
+  );
+  // On a scheme bill the counter types what the CUSTOMER PAYS, because that is
+  // the number said out loud at the counter. The backend's customer_price is
+  // the whole bill - the scheme is settled against it as a payment - so the
+  // credit is added back on the way out and taken off again on the way in.
+  const toBillTotal = (paid) => round2(Number(paid) + schemeCarveNow);
   const quoteHasScheme = quotedScheme > 0;
   // Typed but not yet in the figures - the quote was refused or is still in
   // flight. Worth saying out loud, because the summary below is the bill
@@ -440,7 +453,7 @@ export default function NewSale() {
       makingChargeType: product.makingChargeType || undefined,
       wastageValue: wastageVal !== "" ? num(wastageVal) : undefined,
       wastageType: product.wastageType || undefined,
-      customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
+      customerPrice: priceDriver === "PRICE" && customerPrice !== "" ? toBillTotal(num(customerPrice)) : undefined,
       goldProfitPercent: 0,
       allowBelowCost: allowBelowCost || undefined,
       belowCostReason: allowBelowCost ? belowCostReason.trim() : undefined,
@@ -636,7 +649,7 @@ export default function NewSale() {
         making_charge_value: makingVal !== "" ? num(makingVal) : undefined,
         wastage_value: wastageVal !== "" ? num(wastageVal) : undefined,
         gold_profit_percent: 0,
-        customer_price: priceDriver === "PRICE" && customerPrice !== "" ? num(customerPrice) : undefined,
+        customer_price: priceDriver === "PRICE" && customerPrice !== "" ? toBillTotal(num(customerPrice)) : undefined,
         discount_amount: discountNum || 0,
         payment_method: payMethod || "CASH",
         payment_status: payStatus || "PAID",
@@ -1021,7 +1034,7 @@ export default function NewSale() {
                   <div className="rounded-2xl border border-accent-line bg-accent-soft p-4">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold uppercase tracking-[0.08em] text-accent-strong">
-                        {quoteHasScheme ? "Price of the piece" : "Customer Price"}
+                        {quoteHasScheme ? "Customer pays now" : "Customer Price"}
                       </span>
                       {requoting && <span className="text-[10px] font-semibold text-muted">Updating…</span>}
                     </div>
@@ -1030,15 +1043,30 @@ export default function NewSale() {
                       placeholder="0"
                       className="mt-2 h-14 bg-surface pl-10 text-center text-2xl font-extrabold tracking-tight"
                       symbolClassName="text-lg font-extrabold text-ink"
-                      value={priceDriver === "PRICE" ? customerPrice : (product.finalAmount != null ? String(round2(product.finalAmount)) : "")}
+                      value={
+                        priceDriver === "PRICE"
+                          ? customerPrice
+                          : product.finalAmount != null
+                            ? String(round2(product.finalAmount - quotedScheme))
+                            : ""
+                      }
                       onValueChange={(v) => { setCustomerPrice(v); setPriceDriver("PRICE"); }}
                       aria-label="Customer price in rupees" />
                     {quoteHasScheme && !quoteError && (
-                      <div className="mt-2.5 flex items-baseline justify-between gap-3 rounded-xl border border-line-soft bg-surface px-3 py-2.5">
-                        <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Customer pays now</span>
-                        <span className="num text-xl font-extrabold tabular-nums text-ink">
-                          {money(round2((priceDriver === "PRICE" && customerPrice !== "" ? Number(customerPrice) : (product.finalAmount ?? sellingPrice)) - quotedScheme))}
-                        </span>
+                      /* The box above is the money changing hands. This states
+                         where it came from, so an Admin can see the credit
+                         doing its work instead of having to subtract. */
+                      <div className="mt-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2.5">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="text-[11px] font-semibold text-emerald-900">Bill total for the piece</span>
+                          <span className="num text-[13px] font-bold tabular-nums text-emerald-900">
+                            {money(round2((priceDriver === "PRICE" && customerPrice !== "" ? toBillTotal(Number(customerPrice)) : (product.finalAmount ?? sellingPrice))))}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-emerald-200/70 pt-1">
+                          <span className="text-[11px] font-semibold text-emerald-700">Less: scheme credit</span>
+                          <span className="num text-[13px] font-bold tabular-nums text-emerald-700">− {money(quotedScheme)}</span>
+                        </div>
                       </div>
                     )}
                     {quoteError ? (
@@ -1074,7 +1102,7 @@ export default function NewSale() {
                         )}
                         <p className="mt-1 text-[11px] text-muted">
                           {schemeSelected
-                            ? <>Bill total for the piece. It sets the making charge, so it survives the scheme redemption. Scheme {money(redeemTotal)} comes off — balance to pay {money(remaining)}.</>
+                            ? <>What the customer hands over today. Raise or lower it and the making charge moves to match — the scheme credit of {money(quotedScheme)} is already taken off.</>
                             : <>Type the quoted price. The making charge moves to match it — no discount line, one charge at the percentage actually agreed.</>}
                         </p>
                       </>
