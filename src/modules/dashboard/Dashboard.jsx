@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/_shared/ui/card";
 import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
@@ -24,6 +24,11 @@ const DONUT_SCHEME = ["#d19a2e", "#059669", "#8b5cf6", "#2563eb", "#e11d48", "#0
 
 // Distinguishes "the shop has no pending actions" from "we could not find out".
 const CARDS_FAILED = { __failed: true };
+// D7: a refusal is NOT a failure. A staff member whose grants do not cover the
+// alert sources was shown "Alerts unavailable", which reads as an outage and
+// teaches staff to ignore real ones. A panel he may not see is simply not
+// shown; a panel that genuinely broke still says so. The two must stay apart.
+const CARDS_REFUSED = { __refused: true };
 
 const QUICK_ACTIONS = [
   { title: "New Sale", page: "new-sale", icon: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0" },
@@ -70,6 +75,28 @@ function buildQuery(params) {
   const s = qs.toString();
   return s ? `?${s}` : "";
 }
+// The senior did a full day's business, opened the dashboard at 00:52 and saw
+// zeroes. The figures were right - the shop's day had rolled over to the 14th
+// and his work belonged to the 13th - but the card said only "TODAY'S", never
+// which day, so he had no way to check and concluded the product was stuck.
+// The shop's day is IST, not the browser's.
+function periodWindowLabel(sel, custom) {
+  const d = istToday();  // "YYYY-MM-DD" on the shop's calendar
+  const pretty = (iso) => {
+    const [y, m, day] = iso.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, day));
+    return dt.toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" });
+  };
+  switch (sel) {
+    case "today": return `${pretty(d)}, since 12:00 AM IST`;
+    case "this_week": return `This week to ${pretty(d)}, IST`;
+    case "this_month": return `This month to ${pretty(d)}, IST`;
+    case "this_year": return `This year to ${pretty(d)}, IST`;
+    default:
+      return custom?.from && custom?.to ? `${custom.from} → ${custom.to}, IST` : null;
+  }
+}
+
 function periodPrefix(sel) {
   switch (sel) {
     case "today": return "Today's";
@@ -108,10 +135,16 @@ function analyticsLabel(sel, custom) {
   return custom.from && custom.to ? `${custom.from} → ${custom.to}` : "Custom";
 }
 
-function formatGrowth(value) {
+// A comparison against a period with no business is not information. Beside
+// "Rs 0" a bare -100% reads as a fault - it was the first thing the senior saw
+// on a dashboard that was telling him the truth. Suppressed when there is
+// nothing to compare, and named when there is.
+function formatGrowth(value, current) {
   if (value === null || value === undefined) return null;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
+  const now = Number(current);
+  if (n <= -100 && Number.isFinite(now) && now === 0) return null;
   return `${n > 0 ? "+" : ""}${n}%`;
 }
 function fmtGrams(g) {
@@ -222,8 +255,8 @@ function ReportRow({ label, value }) {
   );
 }
 
-function KpiCard({ title, value, growth, danger, onClick }) {
-  const g = formatGrowth(growth);
+function KpiCard({ title, value, growth, growthOf, danger, onClick }) {
+  const g = formatGrowth(growth, growthOf);
   const up = g === null ? true : !String(g).startsWith("-");
   return (
     <button onClick={onClick} data-motion="stat"
@@ -298,7 +331,10 @@ async function fetchDashboard(path, pick) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       return pick(await apiClient.get(path, { auth: true }));
-    } catch {
+    } catch (err) {
+      // 403 is an answer, not an outage: this caller may not see this panel.
+      // Returning it immediately also avoids a pointless second attempt.
+      if (err && err.status === 403) return CARDS_REFUSED;
       if (attempt === 1) return null;
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
@@ -372,6 +408,34 @@ export default function Dashboard({ onNavigate, search = "" }) {
   usePageMotion(scope, [loading]);
   usePressFeedback(scope);
 
+  // Bumping this re-runs every fetch below. A dashboard left open across
+  // midnight silently starts describing a different day - which is exactly how
+  // this was reported: a full day's business, then zeroes, and refreshing the
+  // browser was the only thing that worked.
+  const [reloadToken, setReloadToken] = useState(0);
+  const reload = useCallback(() => setReloadToken((n) => n + 1), []);
+
+  // The IST date the page was drawn for. When the shop's day rolls over, or the
+  // window is looked at again after being away, refetch rather than keep
+  // showing yesterday under today's heading. No polling timer: nothing here
+  // fires while the tab is idle and untouched.
+  const drawnFor = useRef(istToday());
+  useEffect(() => {
+    const check = () => {
+      const now = istToday();
+      if (now !== drawnFor.current) { drawnFor.current = now; reload(); }
+    };
+    const onFocus = () => { check(); reload(); };
+    const t = setInterval(check, 60000);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [reload]);
+
   // one-time base load (rate, all-time dues, recent tables, alerts)
   useEffect(() => {
     let alive = true;
@@ -405,7 +469,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
       setLoading(false);
     })();
     return () => { alive = false; };
-  }, []);
+  }, [reloadToken]);
 
   // Business KPIs + Sales Trend follow bizPeriod
   const bizReq = useRef("today");
@@ -418,7 +482,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
       if (bizReq.current !== key) return;
       setSalesTrend(t?.trend ?? []);
     });
-  }, [bizPeriod, bizCustom]);
+  }, [bizPeriod, bizCustom, reloadToken]);
 
   // Scheme KPIs + Collections Trend follow schemePeriod
   const schemeReq = useRef("today");
@@ -433,7 +497,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
         setPaySummary(p);
         setEnrollSummary(e);
       });
-  }, [schemePeriod, schemeCustom]);
+  }, [schemePeriod, schemeCustom, reloadToken]);
 
   // Top Selling Categories (analytics period)
   const catReq = useRef("this_year");
@@ -510,7 +574,17 @@ export default function Dashboard({ onNavigate, search = "" }) {
     <div ref={scope} className="mx-auto w-full max-w-[1440px]">
       {/* QUICK ACTIONS */}
       <Card data-motion="reveal" className="mb-4 p-3.5">
-        <CardTitle className="mb-3 text-xs font-bold">Quick Actions</CardTitle>
+        {/* The senior reached for a Refresh here, found none, used the browser
+            and concluded the product was stuck. Enrollment Management already
+            has one; this page did not. */}
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <CardTitle className="text-xs font-bold">Quick Actions</CardTitle>
+          <button type="button" onClick={reload}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-[11px] font-bold text-muted transition-colors hover:border-accent-line hover:text-ink">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
+            Refresh
+          </button>
+        </div>
         <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-7">
           {QUICK_ACTIONS.map((qa) => (
             <button key={qa.title} onClick={() => (qa.report ? setShowReport(true) : nav(qa.page))}
@@ -531,7 +605,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-white">
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0" /></svg>
             </span>
-            <div><h3 className="text-sm font-extrabold text-ink">Store Business</h3><p className="text-[10px] font-medium text-muted">Product sales, inventory &amp; billing overview</p></div>
+            <div><h3 className="text-sm font-extrabold text-ink">Store Business</h3><p className="text-[10px] font-medium text-muted">Product sales, inventory &amp; billing overview</p>{periodWindowLabel(bizPeriod, bizCustom) && <p className="text-[10px] font-semibold text-accent-strong">{periodWindowLabel(bizPeriod, bizCustom)}</p>}</div>
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">
@@ -611,11 +685,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <span className="grid h-9 w-9 place-items-center rounded-lg text-white" style={{ backgroundColor: SCHEME_ACCENT }}>
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
             </span>
-            <div><h3 className="text-sm font-extrabold text-ink">Schemes</h3><p className="text-[10px] font-medium text-muted">Scheme collections, enrollments &amp; performance</p></div>
+            <div><h3 className="text-sm font-extrabold text-ink">Schemes</h3><p className="text-[10px] font-medium text-muted">Scheme collections, enrollments &amp; performance</p>{periodWindowLabel(schemePeriod, schemeCustom) && <p className="text-[10px] font-semibold text-accent-strong">{periodWindowLabel(schemePeriod, schemeCustom)}</p>}</div>
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">
-            <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} growth={paySummary?.total_revenue_growth_percent} onClick={() => nav("payments")} />
+            <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} growth={paySummary?.total_revenue_growth_percent} growthOf={paySummary?.total_revenue} onClick={() => nav("payments")} />
             <KpiCard title={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} onClick={() => nav("scheme-management")} />
             <KpiCard title={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} onClick={() => nav("scheme-management")} />
             <KpiCard title="Pending Dues" value={fmtCurrency(pendingDues)} danger onClick={() => nav("payments")} />
@@ -681,7 +755,14 @@ export default function Dashboard({ onNavigate, search = "" }) {
       </div>
 
       {/* ACTION CENTER — real operational alerts (overdue payments, pending KYC,
-          items to inspect). Each row deep-links to the module that resolves it. */}
+          items to inspect). Each row deep-links to the module that resolves it.
+
+          D7: when this caller may not see ANY of its sources the card is not
+          rendered at all. It used to say "Alerts unavailable", which reads as an
+          outage on a screen where nothing is wrong - and a staff member taught
+          to ignore that message will ignore a real one. A genuine failure still
+          says so, below; only a refusal disappears. */}
+      {!cards.__refused && (
       <Card data-motion="reveal" className="p-3.5">
         <CardTitle className="mb-2 text-xs font-bold">Action Center</CardTitle>
         {cards.__failed ? (
@@ -705,6 +786,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
           </ul>
         )}
       </Card>
+      )}
 
       {/* GENERATE REPORT — a snapshot of the dashboard's own live figures for the
           currently-selected periods. No navigation; Print/Save PDF via the browser. */}
