@@ -306,6 +306,19 @@ async function fetchDashboard(path, pick) {
   return null;
 }
 
+/** The same one-retry policy for a service call that is not a plain GET. */
+async function retryOnce(run, fallback) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await run();
+    } catch {
+      if (attempt === 1) return fallback;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  }
+  return fallback;
+}
+
 async function getSummary(path, wrap = "summary") {
   return fetchDashboard(path, (res) => res.data?.[wrap] ?? null);
 }
@@ -370,9 +383,16 @@ export default function Dashboard({ onNavigate, search = "" }) {
     (async () => {
       const [payAll, billing, enr, cds] = await Promise.all([
         getSummary(`/reports/payment-summary${allTime}`),
-        billingService.listSales({ limit: 5 }).catch(() => null),
-        enrollmentService.getEnrollments().catch(() => []),
-        apiClient.get("/reports/dashboard-cards", { auth: true }).then((r) => r.data).catch(() => CARDS_FAILED),
+        retryOnce(() => billingService.listSales({ limit: 5 }), null),
+        retryOnce(() => enrollmentService.getEnrollments(), []),
+        // Today's KPI cards go through the same retry as every other
+        // dashboard fetch. A single failed first call - a token refresh still
+        // in flight straight after login - used to leave the cards dead for
+        // the life of the page, which is why only a browser refresh brought
+        // today's figures back.
+        fetchDashboard("/reports/dashboard-cards", (r) => r.data ?? CARDS_FAILED).then(
+          (d) => d ?? CARDS_FAILED
+        ),
       ]);
       if (!alive) return;
       // Bullion rate now lives in the global TopBar (fetched once in App), so the
