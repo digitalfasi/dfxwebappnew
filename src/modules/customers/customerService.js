@@ -129,7 +129,7 @@ export const customerService = {
   },
 
   /** POST /api/v1/admin/customers — walk-in/manual create; scheme_id optional. */
-  async createCustomer({ name, password, phone, email, dateOfBirth, schemeId }) {
+  async createCustomer({ name, password, phone, email, dateOfBirth, schemeId, schemeTierId, goldPurity }) {
     const body = {
       name,
       password,
@@ -137,6 +137,11 @@ export const customerService = {
       ...(phone ? { phone } : {}),
       ...(email ? { email } : {}),
       ...(schemeId ? { scheme_id: schemeId } : {}),
+      // The plan and purity the customer actually joined on. Without them the
+      // enrollment is written with no tier snapshot and falls back to the
+      // scheme's base amount, whatever the shop's ladder offers.
+      ...(schemeId && schemeTierId ? { scheme_tier_id: schemeTierId } : {}),
+      ...(schemeId && goldPurity ? { gold_purity: goldPurity } : {}),
     };
     const res = await apiClient.post("/admin/customers", body, { auth: true });
     return res.data?.customer;

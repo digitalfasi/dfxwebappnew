@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { planOptionsFor, BASE_PLAN } from "./schemePlan";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/_shared/ui/card";
 import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
@@ -102,7 +103,7 @@ export default function Customers() {
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   // `schemeId` is a real backend id (or NO_SCHEME), never a display name.
-  const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", dob: "", schemeId: NO_SCHEME });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", dob: "", schemeId: NO_SCHEME, schemeTierId: "", goldPurity: "" });
   const [errors, setErrors] = useState({});
   // Password visibility toggle — an admin typing a password FOR a customer needs
   // to be able to read back what they are about to hand over.
@@ -220,30 +221,46 @@ export default function Customers() {
     }
   }, [schemeList.length]);
 
+  // Both dialogs need a published rate to label the purity options on a Fixed
+  // Gold Rate plan. carryForward: the screen needs A rate to show, and the row
+  // carries the date it was actually published, so a stale one is never passed
+  // off as today's.
+  function loadTodayRate() {
+    if (todayRate) return;
+    goldRateService.getTodayRate({ carryForward: true }).then(setTodayRate).catch(() => {});
+  }
+
   async function openEnroll() {
     setChosenSchemeId("");
     setChosenTierId("");
     setChosenPurity("");
     setEnrollOpen(true);
     await loadActiveSchemes();
-    if (!todayRate) {
-      // carryForward: the screen needs A rate to show, and the row carries the
-      // date it was actually published, so a stale one is never passed off as
-      // today's.
-      goldRateService.getTodayRate({ carryForward: true }).then(setTodayRate).catch(() => {});
-    }
+    loadTodayRate();
   }
   // What the chosen scheme actually offers. All read from the scheme list the
   // backend already sends - nothing here is inferred from the scheme's name.
   const enrollScheme = schemeList.find((sc) => sc.id === chosenSchemeId) || null;
   const enrollTiers = (enrollScheme?.tiers || []).filter((t) => t.isActive);
+  // D6: the list offered only the TIERS, so a shop selling the plan at its own
+  // advertised Rs 1,000 could not enrol anyone at Rs 1,000 - the base amount
+  // lives on the scheme, not as a tier row, so it was never in the list.
+  // Composed here, de-duplicated when a tier repeats the base, and used by both
+  // this modal and Add Customer so the two screens cannot disagree.
+  const planOptions = planOptionsFor(enrollScheme);
+  // The same three derivations for the Add Customer dialog, off the same
+  // builder and the same scheme list - one implementation, two screens.
+  const addScheme = schemeList.find((sc) => sc.id === form.schemeId) || null;
+  const addPlanOptions = planOptionsFor(addScheme);
+  const addIsFixedRate = addScheme?.schemeType === "FIXED_GOLD_RATE";
+  const addIsGold = addIsFixedRate || addScheme?.schemeType === "FLEXIBLE_DIGI_GOLD";
   const enrollIsFixedRate = enrollScheme?.schemeType === "FIXED_GOLD_RATE";
   const enrollIsGold = enrollIsFixedRate || enrollScheme?.schemeType === "FLEXIBLE_DIGI_GOLD";
   // A tier is required only where the shop has defined one; a purity only on a
   // gold scheme. Neither is invented when the catalogue does not offer it.
   const enrollReady =
     !!chosenSchemeId
-    && (enrollTiers.length === 0 || !!chosenTierId)
+    && (planOptions.length === 0 || !!chosenTierId)
     && (!enrollIsGold || !!chosenPurity);
   // The purities the shop publishes a rate for. 20K has no published column,
   // so it is not offered here - a plan cannot be sold in a purity the store
@@ -262,7 +279,9 @@ export default function Customers() {
     try {
       await enrollmentService.adminEnrollCustomer(selected.id, {
         schemeId: chosenSchemeId,
-        schemeTierId: chosenTierId || undefined,
+        // BASE_PLAN is the scheme's own amount, which is not a tier row - so it
+        // is sent as no tier at all, exactly as before this list existed.
+        schemeTierId: chosenTierId && chosenTierId !== BASE_PLAN ? chosenTierId : undefined,
         goldPurity: chosenPurity || undefined,
       });
       const nm = selected.name;
@@ -311,9 +330,14 @@ export default function Customers() {
         // scheme_id parameter. Previously the picked value never left this
         // function, so the enrollment simply never happened.
         schemeId: form.schemeId || undefined,
+        // D5: without these the enrollment was written with no tier and no
+        // purity and silently fell back to the scheme's base amount - so a shop
+        // offering 1,000 / 5,000 / 10,000 could only ever create the 1,000 here.
+        schemeTierId: form.schemeId && form.schemeTierId && form.schemeTierId !== BASE_PLAN ? form.schemeTierId : undefined,
+        goldPurity: form.schemeId && form.goldPurity ? form.goldPurity : undefined,
       });
       setShowAdd(false);
-      setForm({ name: "", phone: "", email: "", password: "", dob: "", schemeId: NO_SCHEME });
+      setForm({ name: "", phone: "", email: "", password: "", dob: "", schemeId: NO_SCHEME, schemeTierId: "", goldPurity: "" });
       setErrors({});
       await loadCustomers();
       toast(`Customer created — ${created?.customer_code ?? created?.name ?? "OK"}`);
@@ -444,7 +468,7 @@ export default function Customers() {
         </div>
         {/* The scheme list is fetched when the form opens, so the picker is
             already populated by the time the admin scrolls to it. */}
-        <Button size="sm" onClick={() => { setShowAdd(true); loadActiveSchemes(); }}>
+        <Button size="sm" onClick={() => { setShowAdd(true); loadActiveSchemes(); loadTodayRate(); }}>
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
           Add customer
         </Button>
@@ -743,6 +767,51 @@ export default function Customers() {
                     : `${schemeList.length} active scheme${schemeList.length === 1 ? "" : "s"} available. The customer is enrolled as soon as the account is created.`}
                 </span>
               </label>
+
+              {/* D5: the same two choices the Enroll modal offers, from the same
+                  builder. Enrolling from here used to send neither, so the
+                  enrollment fell back to the scheme's base amount and a gold plan
+                  was never asked its purity. */}
+              {addScheme && addPlanOptions.length > 0 && (
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Monthly amount<span className="text-danger">*</span></span>
+                  <Select
+                    value={form.schemeTierId}
+                    onValueChange={(v) => setForm({ ...form, schemeTierId: v })}
+                    options={addPlanOptions.map((o) => ({
+                      value: o.value,
+                      label: `${money(o.amount)}/month · ${o.months} months · ${money(o.amount * (o.months || 0))} total`,
+                    }))}
+                    placeholder="Select the plan…"
+                  />
+                  <span className="text-[11px] text-muted">Frozen onto this enrollment. Editing the scheme later will not move it.</span>
+                </label>
+              )}
+
+              {addScheme && addIsGold && (
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Purity<span className="text-danger">*</span></span>
+                  <Select
+                    value={form.goldPurity}
+                    onValueChange={(v) => setForm({ ...form, goldPurity: v })}
+                    options={PURITIES.map((pp) => {
+                      const r = rateFor(pp);
+                      return {
+                        value: pp,
+                        label: addIsFixedRate
+                          ? `${pp} — ${r != null ? `${money(r)}/g today` : "no published rate"}`
+                          : pp,
+                      };
+                    })}
+                    placeholder={addScheme?.goldPurity ? `Scheme default ${addScheme.goldPurity}` : "Select a purity…"}
+                  />
+                  <span className="text-[11px] text-muted">
+                    {addIsFixedRate
+                      ? "The rate published today for the chosen purity is locked for the whole term."
+                      : "Contributions buy gold in this purity at the rate on the day each payment is made."}
+                  </span>
+                </label>
+              )}
               <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">Note: Phone is required. Leave email blank for a walk-in customer — a Customer ID is generated either way.</p>
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
@@ -910,15 +979,15 @@ export default function Customers() {
                   own ladder and were never shown here, so every enrollment was
                   written with a NULL snapshot and silently fell back to the
                   scheme's base amount. */}
-              {enrollScheme && enrollTiers.length > 0 && (
+              {enrollScheme && planOptions.length > 0 && (
                 <label className="grid gap-1.5">
                   <span className="text-xs font-bold">Monthly amount<span className="text-danger">*</span></span>
                   <Select
                     value={chosenTierId}
                     onValueChange={setChosenTierId}
-                    options={enrollTiers.map((t) => ({
-                      value: t.id,
-                      label: `${money(t.monthlyAmount)}/month · ${t.durationMonths} months · ${money(t.monthlyAmount * t.durationMonths)} total`,
+                    options={planOptions.map((o) => ({
+                      value: o.value,
+                      label: `${money(o.amount)}/month · ${o.months} months · ${money(o.amount * (o.months || 0))} total`,
                     }))}
                     placeholder="Select the plan…"
                   />
