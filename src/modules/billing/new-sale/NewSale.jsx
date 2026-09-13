@@ -1159,7 +1159,6 @@ export default function NewSale() {
                          22,081.22 gold + 6,624.37 making + 100 stone. The name
                          and the suffix now say which figure this is. */
                       label="Whole-bill margin over metal"
-                      verdict={product.profitLabel}
                       amount={product.currentGoldValuePnl}
                       pct={product.currentGoldValueMarginPct}
                       sub="incl. making, wastage & stone"
@@ -1774,18 +1773,27 @@ const PnlWordCard = ({ label, verdict }) => {
   );
 };
 
-const PnlCard = ({ label, amount, pct, sub, detail, verdict }) => {
-  // The WORD comes from the bill's verdict, never from the sign of this
-  // number. They answer different questions - this figure is what the piece
-  // made over what it cost, the verdict is the 11% rule - and letting each
-  // pick its own colour is how the card came to read PROFIT beside a price
-  // box reading "under 11% break-even".
-  const v = VERDICT[verdict] || (((amount || 0) >= 0) ? VERDICT.PROFIT : VERDICT.LOSS);
+const PnlCard = ({ label, amount, pct, sub, detail }) => {
+  // This card carries NO verdict, by design. It measures the bill against the
+  // metal; the verdict is the 11% making-charge rule. They are different
+  // questions with different answers, and putting the word on this number made
+  // the card read LOSS beside +24,576.45 on a bill priced at 10% making - both
+  // halves correct, the pairing nonsense.
+  //
+  // The verdict lives in exactly one place on this screen: the strip under the
+  // price box. Here the figure is stated plainly, in the neutral tone of a
+  // measurement, and says what it is measured against.
+  const negative = (amount || 0) < 0;
   return (
-    <div className={`rounded-xl border p-3 text-center ${v.line}`}>
-      <div className={`text-[10px] font-bold uppercase tracking-wider ${v.text}`}>{label}</div>
-      <div className={`num mt-0.5 text-base font-extrabold ${v.text}`}>{amount < 0 ? "-" : ""}{money(Math.abs(amount || 0))}</div>
-      <div className={`text-[10px] font-semibold ${v.text}`}>{v.word}{pct != null ? ` · ${Math.abs(pct).toFixed(2)}%` : ""}{sub ? <span className="ml-1 text-[9px] font-medium text-muted">{sub}</span> : null}</div>
+    <div className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-center">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-muted">{label}</div>
+      <div className={`num mt-0.5 text-base font-extrabold ${negative ? "text-danger" : "text-ink"}`}>
+        {negative ? "-" : ""}{money(Math.abs(amount || 0))}
+      </div>
+      <div className="text-[10px] font-semibold text-muted">
+        over the metal{pct != null ? ` · ${Math.abs(pct).toFixed(2)}%` : ""}
+        {sub ? <span className="ml-1 text-[9px] font-medium text-muted">{sub}</span> : null}
+      </div>
       {detail ? <div className="num mt-1 text-[9px] font-medium leading-snug text-muted">{detail}</div> : null}
     </div>
   );
