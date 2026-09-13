@@ -98,7 +98,11 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
   const VISIBLE = NAV_SECTIONS
     .map((sec) => ({ ...sec, items: sec.items.filter((it) => canOpen(it.id, role, permissions)) }))
     .filter((sec) => sec.items.length > 0);
-  const storeName = tenantName || "DFX Solution";
+  // Never fall back to the product name. Showing "DFX Solution" to a staff
+  // member of Afsar jewellers displays a different business's identity, which
+  // in a multi-tenant product is the most alarming thing a screen can get
+  // wrong. If the name genuinely cannot be resolved, show nothing.
+  const storeName = tenantName || "";
   const [openMap, setOpenMap] = useState({ Plans: true, Procurement: true, Billing: true });
   // Sidebar search removed; nav renders unfiltered (query stays empty).
   const query = "";
@@ -129,7 +133,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
           <div className="flex justify-center border-b border-accent-line/45 px-2 py-4">
             <div
               className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm"
-              title={`${storeName} · ${roleText(user) || "Admin"}`}
+              title={[storeName, roleText(user) || "Admin"].filter(Boolean).join(" · ")}
             >
               {storeName[0]?.toUpperCase() ?? "D"}
             </div>

@@ -28,8 +28,11 @@ export function AuthProvider({ children }) {
       try {
         const u = await authService.fetchCurrentUser();
         if (alive) setUser(u);
+        // /users/me carries the caller's own shop name, so staff are never left
+        // with the product name. The admin-only profile is still preferred when
+        // it resolves; it is the record the shop edits.
         const tn = await authService.getTenantName();
-        if (alive) setTenantName(tn);
+        if (alive) setTenantName(tn || u?.tenantName || null);
       } catch {
         tokenStore.clear();
       } finally {
@@ -59,7 +62,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (username, password) => {
     const u = await authService.loginWithEmail(username, password);
     setUser(u);
-    authService.getTenantName().then(setTenantName);
+    authService.getTenantName().then((tn) => setTenantName(tn || u?.tenantName || null));
     return u;
   }, []);
 

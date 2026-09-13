@@ -27,6 +27,7 @@ function mapBackendUser(raw) {
     kycStatus: raw.kyc_status ?? "Pending",
     memberSince: raw.member_since ?? "",
     permissions: raw.permissions ?? [],
+    tenantName: raw.tenant_name ?? null,
   };
 }
 
@@ -74,8 +75,14 @@ export const authService = {
     return !!tokenStore.getAccessToken();
   },
 
-  /** GET /users/me is the identity; the store/tenant display name comes from
-   *  GET /admin/tenant/profile. Best-effort — staff without access simply 403. */
+  /** The shop name now travels on GET /users/me, so every signed-in user —
+   *  staff included — gets their OWN shop. This used to read
+   *  /admin/tenant/profile, which is admin-only: staff got 403, the catch
+   *  returned null, and the sidebar fell back to the product name, showing a
+   *  staff member a different business's identity.
+   *
+   *  The admin profile is still read for an Admin, because it is the record the
+   *  shop edits and may be fresher; /users/me is the fallback for everyone. */
   async getTenantName() {
     try {
       const res = await apiClient.get("/admin/tenant/profile", { auth: true });
