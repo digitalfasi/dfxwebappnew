@@ -210,7 +210,10 @@ export const billingService = {
       making_charge_value: f.makingValue !== "" ? Number(f.makingValue) : null,
       wastage_type: f.wastageType,
       wastage_value: f.wastageValue !== "" ? Number(f.wastageValue) : null,
-      gold_profit_percent: f.goldProfit !== "" ? Number(f.goldProfit) : null,
+      // Preserved, not edited. The screen no longer offers a Gold Profit
+      // default - margin lives in the making charge - so whatever the store had
+      // is sent back untouched rather than being wiped to null on the next save.
+      gold_profit_percent: f.goldProfit !== "" && f.goldProfit != null ? Number(f.goldProfit) : null,
       tax_rate_percent: f.tax !== "" ? Number(f.tax) : null,
       default_pricing_mode: f.pricingMode,
     };

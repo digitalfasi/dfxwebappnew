@@ -1205,7 +1205,12 @@ export default function Inventory({ onNavigate }) {
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Making Value {defaults.makingType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.makingValue} onValueChange={v=>setDefaults({...defaults, makingValue:v})} maxDigits={defaults.makingType === "PERCENTAGE" ? 2 : 7} /></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Type</span><Select value={defaults.wastageType} onValueChange={v=>setDefaults({...defaults, wastageType:v})} options={["PERCENTAGE","FIXED","PER_GRAM"]} /></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Value {defaults.wastageType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.wastageValue} onValueChange={v=>setDefaults({...defaults, wastageValue:v})} maxDigits={defaults.wastageType === "PERCENTAGE" ? 2 : 7} /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Gold Profit % <span className="font-normal text-muted">— 0-99</span></span><DigitsInput value={defaults.goldProfit} onValueChange={v=>setDefaults({...defaults, goldProfit:v})} maxDigits={2} /></label>
+                  {/* Gold Profit is gone from the counter: the store's margin
+                      is the making charge (14% list, 11% break-even), so a
+                      second margin default here would quietly add itself to
+                      every bill on top of the one the counter sets. The stored
+                      value is preserved for invoices already raised against it
+                      and sent back unchanged - it is simply no longer edited. */}
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Tax / GST % <span className="font-normal text-muted">— 0-9</span></span><DigitsInput value={defaults.tax} onValueChange={v=>setDefaults({...defaults, tax:v})} maxDigits={1} /><span className="text-[11px] text-muted">GST on jewellery is 3%.</span></label>
                   {/* One mode exists, so this was a dropdown that could only ever
                       pick what it already showed. Read-only until a second mode is
