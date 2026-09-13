@@ -211,16 +211,26 @@ export default function NewSale() {
   // The backend solves a typed price into the making charge and echoes the
   // value back, so this is read from the quote and never recomputed here -
   // two places deriving the same percentage is how they come to disagree.
-  const impliedMakingPct =
-    product?.makingChargeValue != null && !Number.isNaN(Number(product.makingChargeValue))
-      ? Number(product.makingChargeValue)
-      : null;
-  // What the counter has actually typed, falling back to the item's own charge
-  // before the first edit. Only meaningful for a PERCENTAGE making charge.
-  const makingPct = (() => {
-    const v = makingVal !== "" ? num(makingVal) : product?.makingChargeValue;
-    return v == null || Number.isNaN(v) ? null : v;
+  // The making charge as a share of the gold actually charged for. Read off
+  // the backend's own figures so it is right for a per-gram or fixed charge
+  // too, where there is no percentage to read.
+  const impliedMakingPct = (() => {
+    if (!product) return null;
+    const chargeable = (product.goldValueAmount || 0) - (Number(product.schemeApplied) || 0);
+    if (!(chargeable > 0)) return null;
+    return ((product.makingChargeAmount || 0) / chargeable) * 100;
   })();
+  // The verdict is the backend's. The local fallback keeps the colour right
+  // between quotes and uses the same 11% line, never a second rule.
+  const billVerdict =
+    product?.profitLabel
+    || (impliedMakingPct == null
+          ? "BREAK_EVEN"
+          : impliedMakingPct > MAKING_BREAK_EVEN_PCT + 0.005
+            ? "PROFIT"
+            : impliedMakingPct < MAKING_BREAK_EVEN_PCT - 0.005
+              ? "LOSS"
+              : "BREAK_EVEN");
 
   // First HUID lookup — confirm a real sellable item and seed edit fields.
   const handleFind = useCallback(async () => {
@@ -1052,19 +1062,14 @@ export default function NewSale() {
                             break-even: the cost floor below only catches a bill
                             that goes under what the PIECE cost, and 11% sits
                             above that because it carries running cost too. */}
-                        {(product.makingChargeType || "PERCENTAGE") === "PERCENTAGE" && impliedMakingPct != null && (
-                          <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] font-semibold leading-snug ${
-                            impliedMakingPct < MAKING_BREAK_EVEN_PCT
-                              ? "border-danger-line bg-danger-soft text-danger"
-                              : impliedMakingPct < MAKING_LIST_PCT
-                                ? "border-accent-line bg-accent-soft text-accent-strong"
-                                : "border-line-soft bg-surface text-muted"}`}>
-                            This price is a making charge of {round2(impliedMakingPct)}%
-                            {impliedMakingPct < MAKING_BREAK_EVEN_PCT
-                              ? ` — under ${MAKING_BREAK_EVEN_PCT}% break-even. 8% is tunch and running cost already spent.`
-                              : impliedMakingPct < MAKING_LIST_PCT
-                                ? ` — still in profit. ${MAKING_BREAK_EVEN_PCT}% is break-even.`
-                                : "."}
+                        {impliedMakingPct != null && (
+                          <div className={`mt-2 flex items-baseline justify-between gap-3 rounded-xl border px-3 py-2 ${VERDICT[billVerdict].line}`}>
+                            <span className={`text-[11px] font-bold uppercase tracking-[0.07em] ${VERDICT[billVerdict].text}`}>
+                              {VERDICT[billVerdict].word}
+                            </span>
+                            <span className={`num text-[11px] font-semibold tabular-nums ${VERDICT[billVerdict].text}`}>
+                              {round2(impliedMakingPct)}% making · 11% break-even
+                            </span>
                           </div>
                         )}
                         <p className="mt-1 text-[11px] text-muted">
@@ -1092,6 +1097,7 @@ export default function NewSale() {
                          22,081.22 gold + 6,624.37 making + 100 stone. The name
                          and the suffix now say which figure this is. */
                       label="Whole-bill margin over metal"
+                      verdict={product.profitLabel}
                       amount={product.currentGoldValuePnl}
                       pct={product.currentGoldValueMarginPct}
                       sub="incl. making, wastage & stone"
@@ -1132,13 +1138,13 @@ export default function NewSale() {
                           counter is told what the number means before it is
                           changed: 8% of it is already spent (4% tunch to the
                           vendor, 4% running cost) and 11% is break-even. */}
-                      {(product.makingChargeType || "PERCENTAGE") === "PERCENTAGE" && makingPct != null && (
-                        <span className={`text-[11px] font-semibold ${makingPct < MAKING_BREAK_EVEN_PCT ? "text-danger" : makingPct < MAKING_LIST_PCT ? "text-accent-strong" : "text-muted"}`}>
-                          {makingPct < MAKING_BREAK_EVEN_PCT
-                            ? `Below ${MAKING_BREAK_EVEN_PCT}% this bill loses money — 8% is tunch and running cost already spent.`
-                            : makingPct < MAKING_LIST_PCT
-                              ? `${round2(makingPct)}% — still in profit. ${MAKING_BREAK_EVEN_PCT}% is break-even.`
-                              : `${MAKING_LIST_PCT}% list — 4% tunch + 4% running cost + 3% gold profit + 3% extra.`}
+                      {impliedMakingPct != null && (
+                        <span className={`text-[11px] font-semibold ${VERDICT[billVerdict].text}`}>
+                          {billVerdict === "LOSS"
+                            ? `Under 11% — this bill loses money. 4% tunch + 4% running cost + 3% gold profit = 11%.`
+                            : billVerdict === "BREAK_EVEN"
+                              ? `At 11% — costs recovered, nothing earned.`
+                              : `${MAKING_LIST_PCT}% list = 4% tunch + 4% running cost + 3% gold profit + 3% extra.`}
                         </span>
                       )}
                     </label>
@@ -1682,37 +1688,42 @@ function OtpDialog({ otp, onClose, onDone }) {
   );
 }
 
+/** The verdict, in the one wording the whole screen uses. Break-even is 11%
+ *  making charge - 4% tunch, 4% running cost, 3% gold profit - so above it the
+ *  bill earns, at it the bill has only recovered what it spent, and below it
+ *  the bill loses money. The backend decides; nothing here re-derives it. */
+const VERDICT = {
+  PROFIT:     { word: "PROFIT",     line: "border-emerald-200 bg-emerald-50",   text: "text-emerald-700", note: "Above 11% break-even" },
+  BREAK_EVEN: { word: "BREAK EVEN", line: "border-amber-200 bg-amber-50",       text: "text-amber-700",   note: "At 11% — earns nothing" },
+  LOSS:       { word: "LOSS",       line: "border-danger-line bg-danger-soft",  text: "text-danger",      note: "Under 11% break-even" },
+};
+
 /** What a Staff user sees where an Admin sees rupees: the DIRECTION and
  *  nothing else. Whether a bill makes or loses money is something the person
  *  raising it has to know; what the store earns on it is not theirs to see. */
 const PnlWordCard = ({ label, verdict }) => {
-  const loss = verdict === "LOSS";
-  const even = verdict === "BREAK_EVEN";
-  const tone = loss
-    ? "border-red-200 bg-red-50 text-red-700"
-    : even
-      ? "border-line-soft bg-canvas text-muted"
-      : "border-emerald-200 bg-emerald-50 text-emerald-700";
+  const v = VERDICT[verdict] || VERDICT.BREAK_EVEN;
   return (
-    <div className={`rounded-xl border p-3 text-center ${tone}`}>
-      <div className="text-[10px] font-bold uppercase tracking-wider opacity-80">{label}</div>
-      <div className="mt-0.5 text-base font-extrabold">
-        {loss ? "LOSS" : even ? "BREAK EVEN" : "PROFIT"}
-      </div>
-      <div className="text-[10px] font-semibold opacity-80">
-        {loss ? "This bill sells below what the piece cost" : even ? "This bill neither earns nor loses" : "This bill earns"}
-      </div>
+    <div className={`rounded-xl border p-3 text-center ${v.line}`}>
+      <div className={`text-[10px] font-bold uppercase tracking-wider opacity-70 ${v.text}`}>{label}</div>
+      <div className={`mt-0.5 text-base font-extrabold ${v.text}`}>{v.word}</div>
+      <div className={`text-[10px] font-semibold opacity-80 ${v.text}`}>{v.note}</div>
     </div>
   );
 };
 
-const PnlCard = ({ label, amount, pct, sub, detail }) => {
-  const pos = (amount || 0) >= 0;
+const PnlCard = ({ label, amount, pct, sub, detail, verdict }) => {
+  // The WORD comes from the bill's verdict, never from the sign of this
+  // number. They answer different questions - this figure is what the piece
+  // made over what it cost, the verdict is the 11% rule - and letting each
+  // pick its own colour is how the card came to read PROFIT beside a price
+  // box reading "under 11% break-even".
+  const v = VERDICT[verdict] || (((amount || 0) >= 0) ? VERDICT.PROFIT : VERDICT.LOSS);
   return (
-    <div className={`rounded-xl border p-3 text-center ${pos ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
-      <div className={`text-[10px] font-bold uppercase tracking-wider ${pos ? "text-emerald-700" : "text-red-700"}`}>{label}</div>
-      <div className={`num mt-0.5 text-base font-extrabold ${pos ? "text-emerald-700" : "text-red-700"}`}>{amount < 0 ? "-" : ""}{money(Math.abs(amount || 0))}</div>
-      <div className={`text-[10px] font-semibold ${pos ? "text-emerald-600" : "text-red-600"}`}>{pos ? "Profit" : "Loss"}{pct != null ? ` · ${Math.abs(pct).toFixed(2)}%` : ""}{sub ? <span className="ml-1 text-[9px] font-medium text-muted">{sub}</span> : null}</div>
+    <div className={`rounded-xl border p-3 text-center ${v.line}`}>
+      <div className={`text-[10px] font-bold uppercase tracking-wider ${v.text}`}>{label}</div>
+      <div className={`num mt-0.5 text-base font-extrabold ${v.text}`}>{amount < 0 ? "-" : ""}{money(Math.abs(amount || 0))}</div>
+      <div className={`text-[10px] font-semibold ${v.text}`}>{v.word}{pct != null ? ` · ${Math.abs(pct).toFixed(2)}%` : ""}{sub ? <span className="ml-1 text-[9px] font-medium text-muted">{sub}</span> : null}</div>
       {detail ? <div className="num mt-1 text-[9px] font-medium leading-snug text-muted">{detail}</div> : null}
     </div>
   );
