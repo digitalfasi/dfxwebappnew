@@ -33,10 +33,18 @@ export const PAGE_MODULE = {
   // Plans
   schemes: "schemes",
   "scheme-management": "enrollments",
-  // Procurement — all three read and write inventory
-  "master-inventory": "billing_inventory",
+  // Procurement — three different jobs, and they were all mapped to one key.
+  // Inventory counts the stock on the shelf. Master Inventory defines the
+  // product master every future piece is created from, and now answers to its
+  // own grant (constants.py: STAFF_MODULE_MASTER_INVENTORY). Purchase History
+  // is the vendor payables ledger, and its routes are require_admin
+  // (app/modules/billing/router.py: list_vendors, create_vendor,
+  // vendor-purchases, vendor-summary) — no module key opens it, so offering it
+  // to a staff member could only ever end in the red "Admin or SuperAdmin
+  // privileges required" the screen was painting.
+  "master-inventory": "master_inventory",
   inventory: "billing_inventory",
-  vendors: "billing_inventory",
+  vendors: ADMIN_ONLY,
   // Billing — three independently grantable areas
   "new-sale": "billing_new_sale",
   "sales-history": "billing_sales_history",

@@ -19,11 +19,31 @@ import { canOpen, landingPage, PAGE_MODULE, ADMIN_ONLY, expandPermissions } from
 const RAM = ["enrollments", "billing_inventory"];
 
 describe("D2 — what a staff member may open", () => {
-  it("opens the two modules he was granted", () => {
+  it("opens the two modules he was granted, and only those", () => {
     expect(canOpen("scheme-management", "Staff", RAM)).toBe(true);
     expect(canOpen("inventory", "Staff", RAM)).toBe(true);
-    expect(canOpen("master-inventory", "Staff", RAM)).toBe(true);
-    expect(canOpen("vendors", "Staff", RAM)).toBe(true);
+  });
+
+  // Ram holds enrollments + billing_inventory - Enrollment Management and
+  // Inventory. He was still shown Master Inventory and Purchase History,
+  // because all three Procurement pages were mapped to the single
+  // billing_inventory key. Purchase History is the vendor ledger and its
+  // routes are require_admin, so it could only ever answer him with the red
+  // "Admin or SuperAdmin privileges required" in the screenshot. Master
+  // Inventory is the product master, a different job from counting stock, and
+  // now has its own grant (constants.py: STAFF_MODULE_MASTER_INVENTORY).
+  it("does not offer the two Procurement pages he was never granted", () => {
+    expect(canOpen("master-inventory", "Staff", RAM)).toBe(false);
+    expect(canOpen("vendors", "Staff", RAM)).toBe(false);
+  });
+
+  it("opens Master Inventory once that grant is actually made", () => {
+    expect(canOpen("master-inventory", "Staff", [...RAM, "master_inventory"])).toBe(true);
+  });
+
+  // Purchase History answers to no module key at all. No grant opens it.
+  it("never opens Purchase History for any staff grant", () => {
+    expect(canOpen("vendors", "Staff", ["billing", "master_inventory", "billing_inventory"])).toBe(false);
   });
 
   it("opens none of the ten he was offered before", () => {
