@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { planOptionsFor, BASE_PLAN } from "./schemePlan";
+import { isWalletScheme, DIGI_MIN, DIGI_MAX } from "@/modules/plan/scheme/schemeCapabilities";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/_shared/ui/card";
 import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
@@ -252,6 +253,11 @@ export default function Customers() {
   // builder and the same scheme list - one implementation, two screens.
   const addScheme = schemeList.find((sc) => sc.id === form.schemeId) || null;
   const addPlanOptions = planOptionsFor(addScheme);
+  // A wallet has no instalment to choose. planOptionsFor() already returns an
+  // empty ladder for one, so the amount field simply never renders; this flag
+  // is what lets the dialog SAY so rather than leave a silent gap.
+  const addIsWallet = isWalletScheme(addScheme?.schemeType);
+  const enrollIsWallet = isWalletScheme(enrollScheme?.schemeType);
   const addIsFixedRate = addScheme?.schemeType === "FIXED_GOLD_RATE";
   const addIsGold = addIsFixedRate || addScheme?.schemeType === "FLEXIBLE_DIGI_GOLD";
   const enrollIsFixedRate = enrollScheme?.schemeType === "FIXED_GOLD_RATE";
@@ -753,10 +759,19 @@ export default function Customers() {
                 <span className="text-xs font-bold">Enroll in Scheme <span className="font-normal text-muted">— optional</span></span>
                 <Select
                   value={form.schemeId}
-                  onValueChange={(v) => setForm({ ...form, schemeId: v })}
+                  // A tier or purity chosen for the PREVIOUS scheme must not
+                  // survive the switch - it would be submitted against a scheme
+                  // that never offered it.
+                  onValueChange={(v) => setForm({ ...form, schemeId: v, schemeTierId: "", goldPurity: "" })}
                   options={[
                     { value: NO_SCHEME, label: schemeListLoading ? "Loading schemes…" : "No scheme" },
-                    ...schemeList.map((sc) => ({ value: sc.id, label: `${sc.name} · ${money(sc.amount)}/mo · ${sc.tenure}` })),
+                    // The scheme's NAME, and nothing else. Printing
+                    // "Rs 1,000.00/mo · 12 installments" beside it stated terms
+                    // the customer had not chosen yet - and on a Flexible Digi
+                    // Gold wallet it stated terms that do not exist at all. The
+                    // terms belong to the fields BELOW this one, which is where
+                    // they are actually picked.
+                    ...schemeList.map((sc) => ({ value: sc.id, label: sc.name })),
                   ]}
                 />
                 <span className="text-[11px] text-muted">
@@ -786,6 +801,12 @@ export default function Customers() {
                   />
                   <span className="text-[11px] text-muted">Frozen onto this enrollment. Editing the scheme later will not move it.</span>
                 </label>
+              )}
+
+              {addScheme && addIsWallet && (
+                <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">
+                  No monthly amount: this is a wallet. The customer deposits {money(DIGI_MIN)} to {money(DIGI_MAX)} whenever they choose, any number of times. What is fixed here is the purity below.
+                </p>
               )}
 
               {addScheme && addIsGold && (
@@ -999,6 +1020,12 @@ export default function Customers() {
                   what every contribution buys. On a Fixed Gold Rate plan the
                   chosen purity's rate today is frozen for the whole term, so
                   the rate is shown beside each option before it is committed. */}
+              {enrollIsWallet && (
+                <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">
+                  No monthly amount: this is a wallet. The customer deposits {money(DIGI_MIN)} to {money(DIGI_MAX)} whenever they choose, any number of times. What is fixed here is the purity below.
+                </p>
+              )}
+
               {enrollIsGold && (
                 <label className="grid gap-1.5">
                   <span className="text-xs font-bold">Purity<span className="text-danger">*</span></span>

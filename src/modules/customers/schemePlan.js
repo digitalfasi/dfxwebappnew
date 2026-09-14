@@ -1,3 +1,5 @@
+import { isWalletScheme } from "../plan/scheme/schemeCapabilities";
+
 /**
  * Every monthly amount a scheme is actually sold at.
  *
@@ -16,6 +18,15 @@ export const BASE_PLAN = "__base__";
  *  used by the Enroll modal and by Add Customer, so the two cannot drift. */
 export function planOptionsFor(scheme) {
   if (!scheme) return [];
+  // A Flexible Digi Gold enrollment is a WALLET, not an instalment plan. The
+  // scheme's "amount" is the per-deposit GUIDE - Rs 500 to Rs 1,00,000, any
+  // number of times - which app/modules/plan/scheme/schema.py states in those
+  // words and enforces as a RANGE, not as an instalment. Asking "which monthly
+  // amount?" when enrolling therefore invented a commitment the plan does not
+  // have, and froze a tier onto a wallet. What actually decides a wallet
+  // enrollment is the PURITY: each deposit buys grams of that purity at the
+  // rate published on the day the money is paid. So a wallet sells no ladder.
+  if (isWalletScheme(scheme.schemeType)) return [];
   const tiers = (scheme.tiers || []).filter((t) => t.isActive);
   const base = {
     value: BASE_PLAN,
