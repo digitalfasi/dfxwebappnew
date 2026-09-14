@@ -33,6 +33,10 @@ function mapItem(raw) {
     catalogue: raw.add_to_catalogue ? "Yes" : "No",
     huid: raw.huid ?? "",
     cost: raw.purchase_cost ?? 0,
+    // The tunch this piece was bought at. null (not 0) when the lot never
+    // recorded one - the table shows a dash, because "no tunch charged" and
+    // "nobody wrote it down" must not look the same.
+    tunch: raw.tunch_percent ?? null,
     imageUrl: raw.image_url ?? null,
   };
 }
@@ -79,6 +83,7 @@ export const billingService = {
       purchaseInvoiceRef: r.purchase_invoice_ref ?? "",
       purchaseRatePerGram: r.purchase_rate_per_gram ?? null,
       purchaseCost: r.purchase_cost ?? null,
+      tunch: r.tunch_percent ?? null,
       stockStatus: r.stock_status,
     }));
   },
@@ -288,7 +293,12 @@ export const billingService = {
     const d = res.data ?? {};
     return {
       makingType: d.making_charge_type ?? "PERCENTAGE",
-      makingValue: d.making_charge_value ?? "",
+      // 6% is the shop's stated default (3% gold profit + 3% negotiable
+      // extra). The field shipped blank and a blank number input saves as 0,
+      // which the billing rule then read as "no margin at all" - so 0 and
+      // unset both show the default here, and the owner can still type
+      // anything else over it.
+      makingValue: d.making_charge_value ? d.making_charge_value : 6,
       wastageType: d.wastage_type ?? "PERCENTAGE",
       wastageValue: d.wastage_value ?? "",
       goldProfit: d.gold_profit_percent ?? "",

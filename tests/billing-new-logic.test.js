@@ -19,19 +19,84 @@ describe("the making charge is this lot's, not a hard-coded 14", () => {
     expect(ns).toMatch(/q\.makingBands\?\.listPercent != null \? String\(round2\(q\.makingBands\.listPercent\)\)/);
   });
   it("a FIXED charge is never seeded with a percentage", () => {
-    expect(ns).toMatch(/\(q\.makingChargeType \|\| "PERCENTAGE"\) !== "PERCENTAGE" \? ""/);
+    // Seeding 16 into a rupees field would bill sixteen rupees of making.
+    // Both halves of the guard, without tying the test to how it wraps.
+    expect(ns).toMatch(/\(q\.makingChargeType \|\| "PERCENTAGE"\) !== "PERCENTAGE"/);
+    expect(ns).toMatch(/\? \(q\.makingChargeValue != null \? String\(q\.makingChargeValue\) : ""\)/);
+  });
+  it("the shop's rule outranks the number frozen on the piece", () => {
+    // HU8879 carried an old 11% and that 11 was winning over base + running +
+    // tunch, which is how a live bill opened sitting on its own break-even.
+    const seed = ns.slice(ns.indexOf("setMakingVal("), ns.indexOf("setWastageVal("));
+    const bands = seed.indexOf("makingBands?.listPercent");
+    // lastIndexOf, not indexOf: the same expression is also the FIXED-charge
+    // branch above. What matters is the order inside the PERCENTAGE path.
+    const frozen = seed.lastIndexOf("q.makingChargeValue != null ? String(q.makingChargeValue)");
+    expect(bands).toBeGreaterThan(-1);
+    expect(frozen).toBeGreaterThan(bands);
   });
 });
 
-describe("one concession, two editors", () => {
-  it("the discount box mirrors the concession while the price box drives", () => {
-    expect(ns).toMatch(/value=\{priceDriver === "PRICE" \? \(comeDown \? String\(round2\(comeDown \/ taxFactor\)\) : ""\) : discount\}/);
+describe("one concession, three boxes that agree", () => {
+  // There used to be two money models under this screen: a typed price solved
+  // the making charge down and carried no discount line, while a typed
+  // discount left the charge alone and added one. The two halves of the screen
+  // then described different bills - a discount box reading 14,708 beside a
+  // summary reading 5,000. There is now ONE: the discount line.
+  it("there is no second driver left", () => {
+    expect(ns).not.toMatch(/priceDriver/);
+    expect(ns).not.toMatch(/customerPrice:/);
   });
-  it("it is read-only then, because the number is derived and not entered", () => {
-    expect(ns).toMatch(/readOnly=\{priceDriver === "PRICE"\}/);
+  it("the quote always sends the discount, and never a customer price", () => {
+    expect(ns).toMatch(/discountAmount: discountNum,/);
+    expect(ns).not.toMatch(/customerPrice: .*toBillTotal/);
   });
-  it("the pre-GST figure is stated, since a discount comes off the taxable value", () => {
-    expect(ns).toMatch(/which is \{money\(round2\(comeDown \/ taxFactor\)\)\} before GST/);
+  it("a typed price becomes the discount that produces it", () => {
+    expect(ns).toMatch(/const applyCustomerPrice = \(v\) => \{/);
+    expect(ns).toMatch(/const off = Math\.max\(0, round2\(\(askingPrice - wanted\) \/ taxFactor\)\);/);
+    expect(ns).toMatch(/setDiscount\(off > 0 \? String\(off\) : ""\);/);
+  });
+  it("the discount box is always editable, and always live", () => {
+    expect(ns).toMatch(/value=\{discount\}/);
+    expect(ns).toMatch(/onChange=\{\(e\) => \{ setDiscount\(e\.target\.value\); releasePriceText\(\); \}\}/);
+  });
+  it("the making charge is the admin's field and nothing writes back to it", () => {
+    // An effect used to mirror the backend's solved value in after every
+    // quote, which snapped the number back the instant it was typed.
+    expect(ns).not.toMatch(/setMakingVal\(\(prev\)/);
+    expect(ns).toMatch(/setMakingVal\(e\.target\.value\); releasePriceText\(\);/);
+  });
+  it("selling price is what the bill comes to, not the price before the discount", () => {
+    expect(ns).toMatch(/const sellingPrice = product \? round2\(product\.finalAmount \|\| 0\) : 0;/);
+    expect(ns).toMatch(/const askingPrice = product/);
+  });
+});
+
+describe("Online actually charges the tax-inclusive rate", () => {
+  it("both modes send the rate they display", () => {
+    // ONLINE used to send nothing, so the field read Rs 14,548.75 while the
+    // bill still charged 14 g x Rs 14,125 - the mode was decoration.
+    expect(ns).toMatch(/appliedRatePerGram: rate !== "" && !rateOutOfBand \? num\(rate\) : undefined,/);
+  });
+  it("the tax is applied to the published rate, never to an already-taxed one", () => {
+    expect(ns).toMatch(/const modeRate = \(m\) => \{/);
+    expect(ns).toMatch(/const base = publishedRate;/);
+  });
+});
+
+describe("the tunch a piece was bought at is visible in stock", () => {
+  it("the service carries it, and null stays null", () => {
+    expect(svc).toMatch(/tunch: raw\.tunch_percent \?\? null,/);
+    expect(svc).toMatch(/tunch: r\.tunch_percent \?\? null,/);
+  });
+  it("both tables have the column, and an unrecorded tunch is a dash not 0%", () => {
+    expect(inv).toMatch(/<th className="px-3 py-3 text-right">Tunch<\/th>/);
+    expect(inv).toMatch(/<th className="px-4 py-2.5 text-right">Tunch<\/th>/);
+    expect(inv).toMatch(/\{p\.tunch != null \? `\$\{p\.tunch\}%` : "—"\}/);
+    expect(inv).toMatch(/\{r\.tunch != null \? `\$\{r\.tunch\}%` : "—"\}/);
+  });
+  it("the store default making value is the shop's 6%, not a saved blank 0", () => {
+    expect(svc).toMatch(/makingValue: d\.making_charge_value \? d\.making_charge_value : 6,/);
   });
 });
 

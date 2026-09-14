@@ -91,13 +91,14 @@ describe("New Sale says what it is doing", () => {
     expect(src).toMatch(/border-danger-line bg-danger-soft\/50/);
   });
 
-  it("the discount field is disabled while the price box is steering", () => {
-    expect(src).toMatch(/disabled=\{priceDriver === "PRICE"\}/);
+  it("the discount field is never locked out — there is only one driver now", () => {
+    expect(src).not.toMatch(/disabled=\{priceDriver === "PRICE"\}/);
+    expect(src).not.toMatch(/priceDriver/);
   });
 
   it("the concession is stated instead of left to be worked out", () => {
-    expect(src).toMatch(/const comeDown = product && priceDriver === "PRICE"/);
-    expect(src).toMatch(/Come down from/);
+    expect(src).toMatch(/const comeDown = product \? Math\.max\(0, round2\(askingPrice - sellingPrice\)\) : 0;/);
+    expect(src).toMatch(/off the \{money\(askingPrice\)\} asking price/);
   });
 });
 

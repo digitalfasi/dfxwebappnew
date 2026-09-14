@@ -821,6 +821,7 @@ export default function Inventory({ onNavigate }) {
                   <th className="px-4 py-2.5 text-right">Gross</th>
                   <th className="px-4 py-2.5 text-right">Net</th>
                   <th className="px-4 py-2.5">Vendor</th>
+                  <th className="px-4 py-2.5 text-right">Tunch</th>
                   <th className="px-4 py-2.5 text-right">Cost</th>
                   <th className="px-4 py-2.5">Status</th>
                 </tr>
@@ -834,6 +835,7 @@ export default function Inventory({ onNavigate }) {
                     <td className="num px-4 py-2.5 text-right">{Number(r.grossWeightGrams).toFixed(3)} g</td>
                     <td className="num px-4 py-2.5 text-right font-semibold">{Number(r.netGoldWeightGrams).toFixed(3)} g</td>
                     <td className="px-4 py-2.5 text-muted">{r.vendorName || "—"}</td>
+                    <td className="num px-4 py-2.5 text-right tabular-nums">{r.tunch != null ? `${r.tunch}%` : "—"}</td>
                     <td className="num px-4 py-2.5 text-right">{r.purchaseCost != null ? money(r.purchaseCost) : "—"}</td>
                     <td className="px-4 py-2.5">
                       <Badge tone={r.stockStatus === "IN_STOCK" ? "success" : "neutral"}>{r.stockStatus}</Badge>
@@ -851,16 +853,16 @@ export default function Inventory({ onNavigate }) {
         <CardContent className="overflow-x-auto px-0 pb-0">
           {/* Fixed column widths: the Name cell truncates instead of pushing
               into Category, and the full value stays available on hover. */}
-          <table className="w-full min-w-[1120px] table-fixed border-collapse text-sm">
+          <table className="w-full min-w-[1210px] table-fixed border-collapse text-sm">
             <colgroup>
               <col className="w-[130px]" /><col className="w-[220px]" /><col className="w-[130px]" />
               <col className="w-[140px]" /><col className="w-[90px]" /><col className="w-[110px]" />
-              <col className="w-[150px]" /><col className="w-[110px]" /><col className="w-[110px]" />
-              <col className="w-[190px]" />
+              <col className="w-[150px]" /><col className="w-[90px]" /><col className="w-[110px]" />
+              <col className="w-[110px]" /><col className="w-[190px]" />
             </colgroup>
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left align-middle text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Vendor</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
+                <th className="px-6 py-3">HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Vendor</th><th className="px-3 py-3 text-right">Tunch</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -873,6 +875,10 @@ export default function Inventory({ onNavigate }) {
                   <td className="px-3 py-3.5"><Badge tone="neutral">{p.purity}</Badge></td>
                   <td className="px-3 py-3.5 text-right font-mono whitespace-nowrap tabular-nums">{p.net} g</td>
                   <td className="px-3 py-3.5"><span className="block truncate text-xs" title={p.vendor}>{p.vendor || "—"}</span></td>
+                  {/* The tunch this piece was bought at - the vendor's own
+                      charge, which sets this piece's billing floors. A dash
+                      means the lot never recorded one, not 0%. */}
+                  <td className="px-3 py-3.5 text-right font-mono whitespace-nowrap tabular-nums">{p.tunch != null ? `${p.tunch}%` : "—"}</td>
                   <td className="px-3 py-3.5"><Badge tone={p.status==="In Stock"?"success":p.status==="Sold"?"warning":"neutral"} dot>{p.status}</Badge></td>
                   <td className="px-3 py-3.5"><Badge tone={p.catalogue==="Yes"?"success":"neutral"}>{p.catalogue}</Badge></td>
                   <td className="py-3.5 pr-6 whitespace-nowrap">
@@ -886,13 +892,13 @@ export default function Inventory({ onNavigate }) {
                 </tr>
               ))}
               {loading && (
-                <tr><td colSpan={10} className="px-6 py-14 text-center text-sm font-bold text-muted">Loading…</td></tr>
+                <tr><td colSpan={11} className="px-6 py-14 text-center text-sm font-bold text-muted">Loading…</td></tr>
               )}
               {!loading && loadError && (
-                <tr><td colSpan={10} className="px-6 py-14 text-center"><div className="font-bold text-danger">Couldn’t load inventory</div><p className="mt-1 text-sm text-muted">{loadError}</p><Button size="sm" variant="outline" className="mt-3" onClick={load}>Retry</Button></td></tr>
+                <tr><td colSpan={11} className="px-6 py-14 text-center"><div className="font-bold text-danger">Couldn’t load inventory</div><p className="mt-1 text-sm text-muted">{loadError}</p><Button size="sm" variant="outline" className="mt-3" onClick={load}>Retry</Button></td></tr>
               )}
               {!loading && !loadError && filtered.length === 0 && (
-                <tr><td colSpan={10} className="px-6 py-14 text-center"><div className="font-bold">No purchases found</div><p className="mt-1 text-sm text-muted">Add a purchase or adjust filters.</p></td></tr>
+                <tr><td colSpan={11} className="px-6 py-14 text-center"><div className="font-bold">No purchases found</div><p className="mt-1 text-sm text-muted">Add a purchase or adjust filters.</p></td></tr>
               )}
             </tbody>
           </table>
@@ -1292,7 +1298,7 @@ export default function Inventory({ onNavigate }) {
                       rupees and needs real room (a Rs 500 flat making charge is an
                       ordinary figure). The cap follows the unit, exactly as the
                       server validates it. */}
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Making Value {defaults.makingType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.makingValue} onValueChange={v=>setDefaults({...defaults, makingValue:v})} maxDigits={defaults.makingType === "PERCENTAGE" ? 2 : 7} /></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Making Value {defaults.makingType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.makingValue} onValueChange={v=>setDefaults({...defaults, makingValue:v})} maxDigits={defaults.makingType === "PERCENTAGE" ? 2 : 7} />{defaults.makingType === "PERCENTAGE" && <span className="text-[11px] text-muted">The shop&rsquo;s base making charge &mdash; 3% gold profit + 3% negotiable extra. Billing adds the running cost below and the lot&rsquo;s own tunch on top, so a 6% base on a 6% tunch lot bills at 16%.</span>}</label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Type</span><Select value={defaults.wastageType} onValueChange={v=>setDefaults({...defaults, wastageType:v})} options={["PERCENTAGE","FIXED","PER_GRAM"]} /></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Value {defaults.wastageType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.wastageValue} onValueChange={v=>setDefaults({...defaults, wastageValue:v})} maxDigits={defaults.wastageType === "PERCENTAGE" ? 2 : 7} /></label>
                   {/* Gold Profit is gone from the counter: the store's margin
