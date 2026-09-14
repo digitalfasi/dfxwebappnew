@@ -65,3 +65,27 @@ describe("the running build is visible without devtools", () => {
     expect(read("../src/_shared/Sidebar.jsx")).toMatch(/\{BUILD_SHA\}/);
   });
 });
+
+describe("a dead session is named as one", () => {
+  const api = readFileSync(new URL("../src/_shared/apiClient.js", import.meta.url), "utf8");
+
+  // The hole that left a browser looking signed in while every call 401'd:
+  // refresh kept SUCCEEDING, so notifySessionExpired() was never reached, and
+  // the retry's own 401 was simply thrown to the caller as a data error.
+  it("a second 401, after a successful refresh, ends the session", () => {
+    expect(api).toMatch(/catch \(retryError\) \{/);
+    expect(api).toMatch(/retryError instanceof ApiError && retryError\.status === 401/);
+    const block = api.slice(api.indexOf("catch (retryError)"), api.indexOf("throw retryError"));
+    expect(block).toMatch(/tokenStore\.clear\(\)/);
+    expect(block).toMatch(/notifySessionExpired\(\)/);
+  });
+
+  it("the dashboard says signed-out rather than could-not-load on a 401", () => {
+    expect(dash).toMatch(/Your session is no longer valid/);
+  });
+
+  it("the build shows next to the role, where no viewport can hide it", () => {
+    const top = readFileSync(new URL("../src/_shared/TopBar.jsx", import.meta.url), "utf8");
+    expect(top).toMatch(/\{BUILD_SHA\}/);
+  });
+});

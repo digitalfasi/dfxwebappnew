@@ -360,7 +360,25 @@ export async function apiRequest(path, options = {}) {
         notifySessionExpired();
         throw new ApiError("Your session has expired. Please sign in again.", 401);
       }
-      return rawRequest(path, { method, body, token: newToken, signal });
+      // A refresh that SUCCEEDS is not proof the session works. If the retry
+      // with the brand-new token is refused too, then something between this
+      // browser and the API is rejecting our credentials no matter how fresh
+      // they are - a proxy stripping the Authorization header, a revoked
+      // session, a clock the server disagrees with. Before this, that case
+      // left the app permanently signed-in-looking: refresh kept succeeding,
+      // notifySessionExpired() was never reached, and every screen sat on
+      // empty data with 401s piling up in the console and nothing said. The
+      // second 401 is the answer: stop, and drop to login.
+      try {
+        return await rawRequest(path, { method, body, token: newToken, signal });
+      } catch (retryError) {
+        if (retryError instanceof ApiError && retryError.status === 401) {
+          tokenStore.clear();
+          notifySessionExpired();
+          throw new ApiError("Your session has expired. Please sign in again.", 401);
+        }
+        throw retryError;
+      }
     }
     throw error;
   }

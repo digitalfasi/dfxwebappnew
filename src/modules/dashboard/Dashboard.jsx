@@ -677,8 +677,13 @@ export default function Dashboard({ onNavigate, search = "" }) {
               shop's day. */}
           {bizFailed && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft/40 px-3 py-2">
+              {/* A 401 is not a loading problem, it is a signed-out problem,
+                  and saying "could not be loaded" for it sends people hunting
+                  the wrong fault. Name it. */}
               <span className="text-[11px] font-semibold text-danger">
-                These figures could not be loaded — they are not zero, they are unknown.
+                {bizReason === "HTTP 401"
+                  ? "Your session is no longer valid — sign out and sign in again."
+                  : "These figures could not be loaded — they are not zero, they are unknown."}
                 {bizReason ? <span className="ml-1 font-bold">({bizReason})</span> : null}
                 <span className="ml-1 font-normal opacity-70">build {BUILD_SHA}</span>
               </span>
