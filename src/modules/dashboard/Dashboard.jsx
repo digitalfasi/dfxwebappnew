@@ -362,6 +362,28 @@ async function getReport(path) {
   return fetchDashboard(path, (res) => res.data?.report ?? null);
 }
 
+/**
+ * A report that did not arrive is NOT an empty report.
+ *
+ * This is the bug behind "the dashboard shows nothing for today on his
+ * machine but works on mine". getReport() returns null when both attempts
+ * fail and the refusal sentinel on a 403 - and the caller then wrote
+ * `t?.trend ?? []` into state. An empty ARRAY is a real answer: the KPIs
+ * reduce it to 0 and print a confident "Today's Sales Rs 0.00". So a machine
+ * that reliably loses that one request - a slow link, a proxy, a token
+ * refresh that outlives both attempts - was told the shop sold nothing today,
+ * over and over, refresh after refresh, while the same account on another
+ * machine saw the real figure. The server was right the whole time.
+ *
+ * null means "we do not know" and every KPI formatter already renders that as
+ * an em dash. Keeping the distinction is the entire fix: a zero must be
+ * something the shop actually did, never something the network did.
+ */
+function rowsOrUnknown(payload, key) {
+  if (!payload || payload.__refused || payload.__failed) return null;
+  return payload[key] ?? [];
+}
+
 export default function Dashboard({ onNavigate, search = "" }) {
   const scope = useRef(null);
   // Staff never see profit anywhere else in the product - not the number, not
@@ -389,6 +411,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const [bizCustom, setBizCustom] = useState({ from: "", to: "" });
   const [bizMetric, setBizMetric] = useState("sales");
   const [salesTrend, setSalesTrend] = useState(null);     // sales-trend points
+  // Whether the LAST attempt to load this panel failed, as opposed to the panel
+  // simply not having been asked for yet. Without it a failure and a first
+  // paint look identical, and the screen has no way to say "this did not load"
+  // - which is how a broken dashboard sat there looking merely quiet.
+  const [bizFailed, setBizFailed] = useState(false);
 
   // Scheme period (KPIs + Collections Trend chart share it)
   const [schemePeriod, setSchemePeriod] = useState("today");
@@ -480,7 +507,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
     if (!q) return; // custom awaiting Apply
     getReport(`/reports/sales-trend${q}`).then((t) => {
       if (bizReq.current !== key) return;
-      setSalesTrend(t?.trend ?? []);
+      // null (unknown) survives into state so the KPIs read "—" instead of a
+      // fabricated zero. See rowsOrUnknown.
+      const rows = rowsOrUnknown(t, "trend");
+      setSalesTrend(rows);
+      setBizFailed(rows === null);
     });
   }, [bizPeriod, bizCustom, reloadToken]);
 
@@ -521,7 +552,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
     popReq.current = key;
     const q = analyticsQuery(popPeriod, popCustom);
     if (!q) return;
-    getReport(`/reports/scheme-summary${q}`).then((r) => { if (popReq.current === key) setPopSchemes(r?.schemes ?? []); });
+    getReport(`/reports/scheme-summary${q}`).then((r) => { if (popReq.current === key) setPopSchemes(rowsOrUnknown(r, "schemes")); });
   }, [popPeriod, popCustom, loading]);
 
   /* derived — all backend-authoritative, summed only (no invented values) */
@@ -608,6 +639,23 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <div><h3 className="text-sm font-extrabold text-ink">Store Business</h3><p className="text-[10px] font-medium text-muted">Product sales, inventory &amp; billing overview</p>{periodWindowLabel(bizPeriod, bizCustom) && <p className="text-[10px] font-semibold text-accent-strong">{periodWindowLabel(bizPeriod, bizCustom)}</p>}</div>
           </div>
 
+          {/* Say it out loud. These figures used to come back as a confident
+              Rs 0.00 when the request had actually failed, so there was nothing
+              on screen to tell an owner that what he was reading was not his
+              shop's day. */}
+          {bizFailed && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft/40 px-3 py-2">
+              <span className="text-[11px] font-semibold text-danger">
+                These figures could not be loaded — they are not zero, they are unknown.
+              </span>
+              <button
+                onClick={reload}
+                className="rounded-lg border border-danger-line bg-white px-2.5 py-1 text-[11px] font-bold text-danger hover:bg-danger-soft"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2.5">
             <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSales)} onClick={() => nav("sales-history")} />
             <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} onClick={() => nav("sales-history")} />
