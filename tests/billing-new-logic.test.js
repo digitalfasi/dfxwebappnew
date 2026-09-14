@@ -251,3 +251,30 @@ describe("the metal rate the two modes quote", () => {
     expect(fn).not.toMatch(/setGst\(/);
   });
 });
+
+
+describe("the verdict states this piece's own floors", () => {
+  it("the strip names both floors, from the bands", () => {
+    // It read "11% break-even" welded - which on a 4% tunch lot is the PROFIT
+    // floor, not break-even (8%). It named the wrong line, and welded it.
+    expect(ns).toMatch(/profit \{round2\(profitFloorPct\)\}% . break-even \{round2\(breakEvenPct\)\}%/);
+    expect(ns).not.toMatch(/% making . 11% break-even/);
+  });
+
+  it("the Staff word-card claims no percentage it cannot know", () => {
+    // Staff are not sent the bands at all, so a number on their card could not
+    // be checked against anything - and it was welded at 11 regardless.
+    expect(ns).not.toMatch(/Above 11% break-even/);
+    expect(ns).not.toMatch(/Under 11% break-even/);
+    expect(ns).toMatch(/note: "Gold profit intact"/);
+  });
+
+  it("the derivation lives in Store Defaults, not over the billing field", () => {
+    // The counter needs the decision; the arithmetic belongs where the numbers
+    // that make it are set.
+    expect(ns).not.toMatch(/% list = /);
+    expect(ns).not.toMatch(/% tunch \+ /);
+    expect(inv).toMatch(/How a bill is priced/);
+    expect(inv).toMatch(/this Making Value \+ Running Cost \+ that piece/);
+  });
+});

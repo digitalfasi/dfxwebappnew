@@ -1316,6 +1316,25 @@ export default function Inventory({ onNavigate }) {
                   {/* One mode exists, so this was a dropdown that could only ever
                       pick what it already showed. Read-only until a second mode is
                       a real product decision. */}
+                  {/* The whole rule, stated once, where the numbers that make
+                      it are set. New Sale prints the verdict only - the counter
+                      needs the decision, not the derivation. */}
+                  <div className="grid gap-1.5 sm:col-span-2 rounded-xl border border-line bg-canvas/60 p-3.5">
+                    <span className="text-xs font-bold">How a bill is priced</span>
+                    <p className="text-[11px] leading-relaxed text-muted">
+                      Making charge at billing = <b className="text-ink">this Making Value + Running Cost + that piece&rsquo;s own tunch</b>.
+                      {" "}The tunch comes from the lot the piece was bought on, so a dearer lot bills higher on its own.
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-muted">
+                      Of the Making Value, half is gold profit and half is negotiable extra &mdash; at 6% that is 3% + 3%.
+                      {" "}Only the extra may be given away: below it the gold profit starts going, and below
+                      {" "}<b className="text-ink">running cost + tunch</b> the bill loses money.
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-muted">
+                      Example &mdash; 6% here, 4% running cost, a 6% tunch lot: <b className="text-ink">16% list</b>,
+                      {" "}13% keeps the gold profit whole, 10% is a loss.
+                    </p>
+                  </div>
                   <div className="grid gap-1.5 sm:col-span-2">
                     <span className="text-xs font-bold">Pricing Mode</span>
                     <div className="flex h-10 items-center gap-2 rounded-xl border border-line bg-canvas/60 px-3.5">

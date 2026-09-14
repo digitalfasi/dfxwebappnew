@@ -224,14 +224,6 @@ export default function NewSale() {
   // tax out again gives the cost in pre-tax rupees - the same units a discount
   // is now expressed in.
   const taxFactor = 1 + (product?.gstApplied ? (product?.taxRatePercent || 0) : 0) / 100;
-  const profitBaseGoldValue = Math.max(
-    0,
-    (product?.goldValueAmount || 0) - (Number(product?.schemeApplied) || 0)
-  );
-  const effectiveProfitPct =
-    effectiveProfitAmount != null && profitBaseGoldValue > 0
-      ? (effectiveProfitAmount / profitBaseGoldValue) * 100
-      : null;
   // The band the counter prices inside, as the owner set it: 14% is list, of
   // which 4% is the tunch paid to the vendor and 4% is running cost - 8% that
   // is already spent and cannot be given away. 11% is break-even. Below that
@@ -1432,7 +1424,11 @@ export default function NewSale() {
                               {VERDICT[billVerdict].word}
                             </span>
                             <span className={`num text-[11px] font-semibold tabular-nums ${VERDICT[billVerdict].text}`}>
-                              {round2(impliedMakingPct)}% making · 11% break-even
+                              {/* Both floors, each by its right name. This read
+                                  "11% break-even" welded, which on this piece is
+                                  the PROFIT floor - break-even is 8% - so the
+                                  strip named the wrong line, and welded it. */}
+                              {round2(impliedMakingPct)}% making · profit {round2(profitFloorPct)}% · break-even {round2(breakEvenPct)}%
                             </span>
                           </div>
                         )}
@@ -1515,16 +1511,16 @@ export default function NewSale() {
                           lot actually bought at 7%. */}
                       {impliedMakingPct != null && (
                         <span className={`text-[11px] font-semibold ${VERDICT[billVerdict].text}`}>
+                          {/* The verdict only. What the bands are MADE of -
+                              tunch, running cost, gold profit, extra - belongs
+                              in Store Pricing Defaults, where they are set; the
+                              counter needs the decision, not the derivation. */}
                           {bands
-                            ? <>
-                                {round2(listPct)}% list = {round2(bands.tunchPercent)}% tunch + {round2(bands.runningCostPercent)}% running cost + {round2(bands.goldProfitPercent)}% gold profit + {round2(bands.extraPercent)}% extra.
-                                {" "}
-                                {billVerdict === "LOSS"
-                                  ? `At or under ${round2(breakEvenPct)}% this bill loses money.`
-                                  : billVerdict === "BREAK_EVEN"
-                                    ? `At ${round2(impliedMakingPct)}% the gold profit is being eaten — ${round2(profitFloorPct)}% keeps it whole.`
-                                    : `At ${round2(impliedMakingPct)}% the gold profit is intact.`}
-                              </>
+                            ? billVerdict === "LOSS"
+                              ? `At ${round2(impliedMakingPct)}% this bill loses money — ${round2(breakEvenPct)}% only covers costs.`
+                              : billVerdict === "BREAK_EVEN"
+                                ? `At ${round2(impliedMakingPct)}% the gold profit is being eaten — ${round2(profitFloorPct)}% keeps it whole.`
+                                : `At ${round2(impliedMakingPct)}% the gold profit is intact.`
                             : billVerdict === "LOSS" ? "This bill loses money."
                               : billVerdict === "BREAK_EVEN" ? "Costs recovered, margin being eaten."
                               : "In profit."}
@@ -2095,9 +2091,13 @@ function OtpDialog({ otp, onClose, onDone }) {
  *  bill earns, at it the bill has only recovered what it spent, and below it
  *  the bill loses money. The backend decides; nothing here re-derives it. */
 const VERDICT = {
-  PROFIT:     { word: "PROFIT",     line: "border-emerald-200 bg-emerald-50",   text: "text-emerald-700", note: "Above 11% break-even" },
-  BREAK_EVEN: { word: "BREAK EVEN", line: "border-amber-200 bg-amber-50",       text: "text-amber-700",   note: "At 11% — earns nothing" },
-  LOSS:       { word: "LOSS",       line: "border-danger-line bg-danger-soft",  text: "text-danger",      note: "Under 11% break-even" },
+  // No percentage in these notes. They were welded at 11, which is only this
+  // shop's floor on a 4% tunch lot - the floors move with the lot and with the
+  // store's running cost. This card is also what a STAFF user sees, and Staff
+  // are not shown the bands at all, so a number here could not be checked.
+  PROFIT:     { word: "PROFIT",     line: "border-emerald-200 bg-emerald-50",   text: "text-emerald-700", note: "Gold profit intact" },
+  BREAK_EVEN: { word: "BREAK EVEN", line: "border-amber-200 bg-amber-50",       text: "text-amber-700",   note: "Margin being eaten" },
+  LOSS:       { word: "LOSS",       line: "border-danger-line bg-danger-soft",  text: "text-danger",      note: "Costs not recovered" },
 };
 
 /** What a Staff user sees where an Admin sees rupees: the DIRECTION and
