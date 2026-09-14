@@ -33,9 +33,7 @@ describe("waiting is not the same as not knowing", () => {
 });
 
 describe("a failure states itself", () => {
-  it("the wait is bounded well under the 45s default", () => {
-    const ms = Number(dash.match(/const DASHBOARD_TIMEOUT_MS = (\d+)/)[1]);
-    expect(ms).toBeLessThanOrEqual(15000);
+  it("dashboard reads carry their own, shorter ceiling", () => {
     expect(dash).toMatch(/timeoutMs: DASHBOARD_TIMEOUT_MS/);
   });
 
@@ -87,5 +85,28 @@ describe("a dead session is named as one", () => {
   it("the build shows next to the role, where no viewport can hide it", () => {
     const top = readFileSync(new URL("../src/_shared/TopBar.jsx", import.meta.url), "utf8");
     expect(top).toMatch(/\{BUILD_SHA\}/);
+  });
+});
+
+describe("no panel may silently show dashes", () => {
+  it("Schemes has the same three states as Store Business", () => {
+    expect(dash).toMatch(/const \[schemeLoading, setSchemeLoading\] = useState\(true\)/);
+    expect(dash).toMatch(/const \[schemeFailed, setSchemeFailed\] = useState\(false\)/);
+    expect(dash).toMatch(/\{schemeFailed && \(/);
+  });
+
+  it("its KPIs show the skeleton while in flight", () => {
+    expect(dash).toMatch(/Collection`\} value=\{fmtCurrency\(paySummary\?\.total_revenue\)\} loading=\{schemeLoading\}/);
+    expect(dash).toMatch(/New Enrollments`\} value=\{fmtCount\(newEnroll\)\} loading=\{schemeLoading\}/);
+  });
+
+  it("a refused or failed summary is not mistaken for real data", () => {
+    expect(dash).toMatch(/const usable = \(v\) => \(v && !v\.__refused && !v\.__failed \? v : null\)/);
+  });
+
+  it("the wait is generous but still bounded", () => {
+    const ms = Number(dash.match(/const DASHBOARD_TIMEOUT_MS = (\d+)/)[1]);
+    expect(ms).toBeGreaterThanOrEqual(20000);
+    expect(ms).toBeLessThan(45000);
   });
 });

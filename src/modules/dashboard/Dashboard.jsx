@@ -337,7 +337,14 @@ function Donut({ items, centerValue, centerLabel }) {
 // blocked network showed a bare em dash for a minute and a half with no
 // spinner and nothing to click - indistinguishable from "the shop did nothing
 // today". Twelve seconds is longer than this API has ever legitimately taken.
-const DASHBOARD_TIMEOUT_MS = 12000;
+// 20s, twice over: the API has never legitimately taken more than a second or
+// two, and the skeleton now covers the whole wait, so a slow link reads as
+// "loading" rather than as "no data" however long it takes. It stays BOUNDED on
+// purpose - with no ceiling at all a request that will never answer leaves the
+// panel loading forever, which is the same silence in a different costume.
+// Worth stating plainly: this is not what emptied anyone's dashboard. A 401
+// comes back in milliseconds; no timeout was ever involved in that.
+const DASHBOARD_TIMEOUT_MS = 20000;
 
 /** Why the last attempt failed, for the panel to state. Set as a side effect
  *  rather than returned, so every existing caller keeps its shape. */
@@ -443,6 +450,13 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // like a quiet morning - which is how this went unexplained for a day.
   const [bizLoading, setBizLoading] = useState(true);
   const [bizReason, setBizReason] = useState("");
+  // The Schemes panel needs the same three states as Store Business. It had
+  // none: its KPIs read paySummary/enrollSummary, which are simply null when a
+  // fetch fails, so four em dashes appeared with nothing to say why - the same
+  // silence, one panel over.
+  const [schemeLoading, setSchemeLoading] = useState(true);
+  const [schemeFailed, setSchemeFailed] = useState(false);
+  const [schemeReason, setSchemeReason] = useState("");
 
   // Scheme period (KPIs + Collections Trend chart share it)
   const [schemePeriod, setSchemePeriod] = useState("today");
@@ -554,11 +568,20 @@ export default function Dashboard({ onNavigate, search = "" }) {
     schemeReq.current = key;
     const q = rangeQuery(schemePeriod, schemeCustom);
     if (!q) return;
+    setSchemeLoading(true);
     Promise.all([getSummary(`/reports/payment-summary${q}`), getSummary(`/reports/enrollment-summary${q}`)])
       .then(([p, e]) => {
         if (schemeReq.current !== key) return;
-        setPaySummary(p);
-        setEnrollSummary(e);
+        setSchemeLoading(false);
+        // A refused panel is not a failed one, but neither is a zero.
+        const usable = (v) => (v && !v.__refused && !v.__failed ? v : null);
+        const pay = usable(p);
+        const enr = usable(e);
+        setPaySummary(pay);
+        setEnrollSummary(enr);
+        const dead = pay === null || enr === null;
+        setSchemeFailed(dead);
+        setSchemeReason(dead ? ((p && p.__refused) || (e && e.__refused) ? "not permitted for this account" : dashboardFailureReason()) : "");
       });
   }, [schemePeriod, schemeCustom, reloadToken]);
 
@@ -775,10 +798,22 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <div><h3 className="text-sm font-extrabold text-ink">Schemes</h3><p className="text-[10px] font-medium text-muted">Scheme collections, enrollments &amp; performance</p>{periodWindowLabel(schemePeriod, schemeCustom) && <p className="text-[10px] font-semibold text-accent-strong">{periodWindowLabel(schemePeriod, schemeCustom)}</p>}</div>
           </div>
 
+          {schemeFailed && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft/40 px-3 py-2">
+              <span className="text-[11px] font-semibold text-danger">
+                {schemeReason === "HTTP 401"
+                  ? "Your session is no longer valid — sign out and sign in again."
+                  : "These figures could not be loaded — they are not zero, they are unknown."}
+                {schemeReason ? <span className="ml-1 font-bold">({schemeReason})</span> : null}
+                <span className="ml-1 font-normal opacity-70">build {BUILD_SHA}</span>
+              </span>
+              <button onClick={reload} className="rounded-lg border border-danger-line bg-white px-2.5 py-1 text-[11px] font-bold text-danger hover:bg-danger-soft">Retry</button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2.5">
-            <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} growth={paySummary?.total_revenue_growth_percent} growthOf={paySummary?.total_revenue} onClick={() => nav("payments")} />
-            <KpiCard title={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} onClick={() => nav("scheme-management")} />
-            <KpiCard title={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} onClick={() => nav("scheme-management")} />
+            <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} loading={schemeLoading} growth={paySummary?.total_revenue_growth_percent} growthOf={paySummary?.total_revenue} onClick={() => nav("payments")} />
+            <KpiCard title={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} loading={schemeLoading} onClick={() => nav("scheme-management")} />
+            <KpiCard title={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} loading={schemeLoading} onClick={() => nav("scheme-management")} />
             <KpiCard title="Pending Dues" value={fmtCurrency(pendingDues)} danger onClick={() => nav("payments")} />
           </div>
 
