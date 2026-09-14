@@ -5,6 +5,12 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+/** The commit this bundle was built from, inlined by next.config.mjs from the
+ *  DEPLOY_SHA that scripts/archive.sh stamps into the deploy archive. "dev"
+ *  when running from a plain checkout. Shown in the UI so that "which build is
+ *  that browser running?" is answerable from a screenshot. */
+export const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA || "dev";
+
 export function formatINR(value, opts = {}) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { cn } from "@/_shared/utils";
 import { useAuth } from "@/_shared/AuthContext";
 import { canOpen } from "@/_shared/moduleAccess";
+import { BUILD_SHA } from "@/_shared/utils";
 
 const ROLE_LABEL = { admin: "Admin", superadmin: "Super Admin", customer: "Customer" };
 function roleText(u) {
@@ -269,7 +270,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             block used to live here, but the header already shows the store and
             role, so it was duplicate information. Desktop only (mobile uses the
             slide-over drawer, which has no collapsed state). */}
-        <div className="hidden justify-center border-t border-accent-line/45 px-2 py-2.5 lg:flex">
+        <div className="hidden items-center border-t border-accent-line/45 px-2 py-2.5 lg:flex">
           <button
             onClick={onToggleCollapse}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -281,6 +282,16 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
               <path d={collapsed ? "M9 18l6-6-6-6" : "M15 18l-6-6 6-6"} />
             </svg>
           </button>
+          {/* Which bundle this browser is actually running. Two people on the
+              same URL seeing different screens is, more often than not, two
+              different builds - and until this there was no way to tell from a
+              screenshot. Deliberately quiet: it is for the rare moment someone
+              has to ask, not for everyday reading. */}
+          {!collapsed && (
+            <span className="ml-auto select-all pr-1 font-mono text-[10px] leading-none text-muted/60" title="Build running in this browser">
+              {BUILD_SHA}
+            </span>
+          )}
         </div>
       </aside>
     </>

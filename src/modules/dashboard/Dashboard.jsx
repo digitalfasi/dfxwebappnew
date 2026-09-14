@@ -4,7 +4,7 @@ import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
-import { formatINR, istToday } from "@/_shared/utils";
+import { formatINR, istToday, BUILD_SHA } from "@/_shared/utils";
 import { apiClient } from "@/_shared/apiClient";
 import { useAuth } from "@/_shared/AuthContext";
 import { toast } from "@/_shared/toast";
@@ -255,7 +255,7 @@ function ReportRow({ label, value }) {
   );
 }
 
-function KpiCard({ title, value, growth, growthOf, danger, onClick }) {
+function KpiCard({ title, value, growth, growthOf, danger, onClick, loading = false }) {
   const g = formatGrowth(growth, growthOf);
   const up = g === null ? true : !String(g).startsWith("-");
   return (
@@ -265,7 +265,11 @@ function KpiCard({ title, value, growth, growthOf, danger, onClick }) {
         <div className="line-clamp-2 min-h-[1.9em] text-[10px] font-bold uppercase tracking-[0.06em] text-muted">{title}</div>
         {g && <span className={`text-[11px] font-bold ${up ? "text-accent-strong" : "text-danger"}`}>{g}</span>}
       </div>
-      <div data-motion="count" className={`num mt-1.5 text-xl font-extrabold tracking-tight ${danger ? "text-danger" : "text-ink"}`}>{value}</div>
+      {/* A figure still on the wire is not a figure of "—". The em dash is
+          reserved for "we asked and do not know"; this is "we are asking". */}
+      {loading
+        ? <div className="mt-1.5 h-7 w-24 animate-pulse rounded-md bg-line-soft" aria-label="Loading" />
+        : <div data-motion="count" className={`num mt-1.5 text-xl font-extrabold tracking-tight ${danger ? "text-danger" : "text-ink"}`}>{value}</div>}
       <span className="mt-2 self-end inline-flex items-center gap-0.5 text-[10px] font-bold text-accent-strong transition-all group-hover:gap-1">View <span aria-hidden="true">→</span></span>
     </button>
   );
@@ -327,15 +331,33 @@ function Donut({ items, centerValue, centerLabel }) {
  * A failure after that still returns null, which the cards render as "—"
  * rather than as a zero pretending to be real.
  */
+// A dashboard card is not worth waiting 45 seconds for, and the default
+// per-request ceiling is built for a cold backend waking up, not for a figure
+// somebody is standing at a counter reading. Two attempts at 45s each meant a
+// blocked network showed a bare em dash for a minute and a half with no
+// spinner and nothing to click - indistinguishable from "the shop did nothing
+// today". Twelve seconds is longer than this API has ever legitimately taken.
+const DASHBOARD_TIMEOUT_MS = 12000;
+
+/** Why the last attempt failed, for the panel to state. Set as a side effect
+ *  rather than returned, so every existing caller keeps its shape. */
+let lastFailureReason = "";
+export function dashboardFailureReason() { return lastFailureReason; }
+
 async function fetchDashboard(path, pick) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return pick(await apiClient.get(path, { auth: true }));
+      const out = pick(await apiClient.get(path, { auth: true, timeoutMs: DASHBOARD_TIMEOUT_MS }));
+      lastFailureReason = "";
+      return out;
     } catch (err) {
       // 403 is an answer, not an outage: this caller may not see this panel.
       // Returning it immediately also avoids a pointless second attempt.
       if (err && err.status === 403) return CARDS_REFUSED;
-      if (attempt === 1) return null;
+      if (attempt === 1) {
+        lastFailureReason = err?.status ? `HTTP ${err.status}` : (err?.message || "no response");
+        return null;
+      }
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
   }
@@ -416,6 +438,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // paint look identical, and the screen has no way to say "this did not load"
   // - which is how a broken dashboard sat there looking merely quiet.
   const [bizFailed, setBizFailed] = useState(false);
+  // In flight. Without this, a request still on the wire and a request that
+  // came back empty both render a bare em dash, so a slow network looks exactly
+  // like a quiet morning - which is how this went unexplained for a day.
+  const [bizLoading, setBizLoading] = useState(true);
+  const [bizReason, setBizReason] = useState("");
 
   // Scheme period (KPIs + Collections Trend chart share it)
   const [schemePeriod, setSchemePeriod] = useState("today");
@@ -505,13 +532,18 @@ export default function Dashboard({ onNavigate, search = "" }) {
     bizReq.current = key;
     const q = rangeQuery(bizPeriod, bizCustom);
     if (!q) return; // custom awaiting Apply
+    setBizLoading(true);
     getReport(`/reports/sales-trend${q}`).then((t) => {
+      // A superseded response must not paint, but it must not leave the panel
+      // stuck "loading" either - the newer request owns that flag.
       if (bizReq.current !== key) return;
+      setBizLoading(false);
       // null (unknown) survives into state so the KPIs read "—" instead of a
       // fabricated zero. See rowsOrUnknown.
       const rows = rowsOrUnknown(t, "trend");
       setSalesTrend(rows);
       setBizFailed(rows === null);
+      setBizReason(rows === null ? (t && t.__refused ? "not permitted for this account" : dashboardFailureReason()) : "");
     });
   }, [bizPeriod, bizCustom, reloadToken]);
 
@@ -647,6 +679,8 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft/40 px-3 py-2">
               <span className="text-[11px] font-semibold text-danger">
                 These figures could not be loaded — they are not zero, they are unknown.
+                {bizReason ? <span className="ml-1 font-bold">({bizReason})</span> : null}
+                <span className="ml-1 font-normal opacity-70">build {BUILD_SHA}</span>
               </span>
               <button
                 onClick={reload}
@@ -657,10 +691,10 @@ export default function Dashboard({ onNavigate, search = "" }) {
             </div>
           )}
           <div className="grid grid-cols-2 gap-2.5">
-            <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSales)} onClick={() => nav("sales-history")} />
-            <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} onClick={() => nav("sales-history")} />
+            <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSales)} loading={bizLoading} onClick={() => nav("sales-history")} />
+            <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} loading={bizLoading} onClick={() => nav("sales-history")} />
             {seesProfit && (
-              <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
+              <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} loading={bizLoading} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
             )}
             <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} danger onClick={() => nav("sales-history")} />
           </div>

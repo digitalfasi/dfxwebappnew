@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /** @type {import('next').NextConfig} */
 
 // Content-Security-Policy.
@@ -84,7 +85,21 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
 ];
 
+// The commit this bundle was built from, read at BUILD time from the DEPLOY_SHA
+// that scripts/archive.sh stamps into the archive root. Surfaced in the UI so
+// "which build is that browser actually running?" is answerable from a
+// screenshot instead of by asking someone to open devtools. Two people looking
+// at the same URL and disagreeing about what it shows is, more often than not,
+// two different bundles - and there was no way to tell.
+let BUILD_SHA = "dev";
+try {
+  BUILD_SHA = readFileSync(new URL("./DEPLOY_SHA", import.meta.url), "utf8").trim() || "dev";
+} catch {
+  // Not an archive build (local dev, or a checkout without the stamp).
+}
+
 const nextConfig = {
+  env: { NEXT_PUBLIC_BUILD_SHA: BUILD_SHA },
   reactStrictMode: true,
   outputFileTracingRoot: process.cwd(),
   // Sent for every response this origin serves, pages and assets alike.
