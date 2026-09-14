@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Sidebar, { NAV_SECTIONS } from "@/_shared/Sidebar";
 import { useAuth } from "@/_shared/AuthContext";
 import { canOpen, landingPage } from "@/_shared/moduleAccess";
+import { istToday } from "@/_shared/utils";
 import TopBar from "@/_shared/TopBar";
 import Dashboard from "@/modules/dashboard/Dashboard";
 import GoldRate from "@/modules/gold-rate/GoldRate";
@@ -140,9 +141,16 @@ export default function App() {
         const today = await goldRateService.getTodayRate();
         if (!alive) return;
         if (today?.rate_24k != null) { setBullion({ ...today, isToday: true }); return; }
-        const last = await goldRateService.getLastPublishedRate();
+        // Fall back to the last published rate through carry_forward on the
+        // SAME endpoint, not through the rate HISTORY. History is the Gold
+        // Rate screen's own data and is still module-gated, so a staff member
+        // without that module got a 403 here and the header strip sat at
+        // "-/g" - the shop looking like it has no price. The carried rate
+        // arrives with its own effective_date, which is what decides isToday;
+        // a stale figure is never passed off as today's.
+        const last = await goldRateService.getTodayRate({ carryForward: true });
         if (!alive) return;
-        setBullion(last ? { ...last, isToday: false } : null);
+        setBullion(last?.rate_24k != null ? { ...last, isToday: last.effective_date === istToday() } : null);
       } catch {
         if (alive) setBullion(null);
       }
