@@ -108,14 +108,51 @@ describe("a bullion bill has a buyer, but never a scheme", () => {
   });
 });
 
-describe("remaining is not overdue", () => {
-  it("the enrollment screen says what the figure actually is", () => {
-    expect(sm).toMatch(/Remaining to collect/);
-    expect(sm).toMatch(/>Remaining</);
-    expect(sm).toMatch(/Remaining to pay/);
+describe("the enrollment list shows overdue, not the rest of the contract", () => {
+  it("the column is Overdue", () => {
+    expect(sm).toMatch(/>Overdue</);
   });
-  it("and no longer calls it Outstanding beside an Overdue filter", () => {
+
+  it("it reads the backend's own per-enrollment overdue figure", () => {
+    expect(sm).toMatch(/money\(r\.overdueAmount\)/);
+    expect(sm).toMatch(/const overdueTotal = rows\.reduce\(\(s, r\) => s \+ \(Number\(r\.overdueAmount\) \|\| 0\), 0\)/);
+  });
+
+  it("a plan merely mid-term shows a dash, not eleven months of future contract", () => {
+    // No newline in the pattern: the source wraps there, so match the two
+    // halves separately rather than guessing the line ending.
+    expect(sm).toMatch(/isWalletScheme\(r\.schemeType\) \|\| !\(r\.overdueAmount > 0\)/);
+    expect(sm).toMatch(/\? NOT_APPLICABLE/);
+  });
+
+  it("the remaining-contract figure is gone from the list entirely", () => {
     expect(sm).not.toMatch(/label="Outstanding"/);
-    expect(sm).not.toMatch(/>Outstanding</);
+    expect(sm).not.toMatch(/Remaining to collect/);
+    expect(sm).not.toMatch(/money\(outstanding\(r\)\)/);
+  });
+});
+
+describe("the metal rate the two modes quote", () => {
+  it("Offline uses the published rate, ex-tax", () => {
+    expect(ns).toMatch(/const modeRate = \(m\) => \{/);
+    expect(ns).toMatch(/the published \$\{product\.purity \|\| ""\} rate, before tax/);
+  });
+
+  it("Online quotes the same rate tax-inclusive", () => {
+    expect(ns).toMatch(/const onlineRateFactor = 1 \+ \(Number\(product\?\.taxRatePercent\) \|\| 0\) \/ 100/);
+    expect(ns).toMatch(/m === "ONLINE" \? base \* onlineRateFactor : base/);
+  });
+
+  it("22K at 14,125 with 3% quotes 14,548.75", () => {
+    const f = 1 + 3 / 100;
+    expect(Math.round(14125 * f * 100) / 100).toBe(14548.75);
+  });
+
+  it("the bill's own GST line is not removed by Online", () => {
+    // The two taxes are different things: one is baked into the quoted metal
+    // rate, the other is the invoice's tax on the product. Nothing in the mode
+    // switch touches the gst toggle.
+    const fn = ns.slice(ns.indexOf("const selectMode"), ns.indexOf("const rateBand"));
+    expect(fn).not.toMatch(/setGst\(/);
   });
 });

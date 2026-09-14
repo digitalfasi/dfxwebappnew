@@ -88,11 +88,6 @@ export default function NewSale() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawGoldRate, rawGoldGst, rawGold?.serialNumber]);
 
-  // A bill needs a buyer, the same as any other. Either a real customer is
-  // chosen, or a walk-in is named with a phone that is either blank or whole.
-  const rawGoldBuyerReady =
-    (customerMode === "existing" ? !!selectedCustomer?.id : walkinName.trim().length >= 2) && !walkinPhoneInvalid;
-
   async function createRawGoldSale() {
     if (!rawGold) return;
     setRawGoldBusy(true);
@@ -513,6 +508,17 @@ export default function NewSale() {
   // carries the number, so it is required now - and required in full: nine
   // digits is not a phone number.
   const walkinPhoneInvalid = customerMode === "walkin" && walkinPhone.length !== 10;
+  // A bill needs a buyer, the same as any other. Either a real customer is
+  // chosen, or a walk-in is named with a phone that is either blank or whole.
+  //
+  // Declared HERE, after the state it reads. It sat near the top of the
+  // component and referenced customerMode/selectedCustomer/walkinName, all
+  // declared a hundred lines below - a const evaluated on every render before
+  // its dependencies exist, which is a temporal dead zone error. New Sale threw
+  // "Cannot access before initialization" and the router fell back to another
+  // page, so the whole screen was unreachable.
+  const rawGoldBuyerReady =
+    (customerMode === "existing" ? !!selectedCustomer?.id : walkinName.trim().length >= 2) && !walkinPhoneInvalid;
 
   const customerIdentified =
     (customerMode === "existing" ? !!selectedCustomer?.id : walkinName.trim().length >= 2) && !walkinPhoneInvalid;
@@ -545,11 +551,29 @@ export default function NewSale() {
     };
   };
 
-  // Pick the mode. Online restores the live purity rate (rate is the only thing
-  // the mode changes); every other calculator control stays available in both.
+  // The metal rate the two modes quote. This is the METAL rate only - the
+  // product's own tax is a separate line on the bill and is untouched by this.
+  //
+  //   OFFLINE  the published rate, ex-tax. What the shop pays for metal.
+  //   ONLINE   the same rate tax-inclusive, because an online price is quoted
+  //            all-in. 22K published at Rs 14,125 quotes at Rs 14,549.
+  //
+  // Stated plainly because it is easy to misread: the bill's own GST line is
+  // NOT removed in Online. The two are different taxes on the screen - one is
+  // baked into the quoted metal rate, the other is the invoice's tax on the
+  // product - and the brief is explicit that they are not to be mixed.
+  const onlineRateFactor = 1 + (Number(product?.taxRatePercent) || 0) / 100;
+  const modeRate = (m) => {
+    const base = product?.goldRateApplied;
+    if (base == null) return "";
+    return String(round2(m === "ONLINE" ? base * onlineRateFactor : base));
+  };
+
+  // Pick the mode. It changes the metal rate and nothing else; every other
+  // calculator control stays available in both.
   const selectMode = (m) => {
     setSaleMode(m);
-    if (m === "ONLINE") setRate(product?.goldRateApplied != null ? String(product.goldRateApplied) : "");
+    setRate(modeRate(m));
   };
 
   // The band the backend enforces on a negotiated rate/g (+/-50% of the rate
@@ -1398,7 +1422,7 @@ export default function NewSale() {
                     <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
                       <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
-                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Published ${product.purity || ""} rate ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} — locked in Online.` : `Editable. Default ${publishedRate != null ? money(publishedRate) : "—"} — the published ${product.purity || ""} rate.`}</span>
+                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Published ${product.purity || ""} rate ${product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} + ${product.taxRatePercent || 0}% = ${money(round2((product.goldRateApplied || 0) * onlineRateFactor))} — Online quotes the metal rate tax-inclusive, and is locked. The bill's own GST line is separate.` : `Editable. Default ${publishedRate != null ? money(publishedRate) : "—"} — the published ${product.purity || ""} rate, before tax.`}</span>
                       {/* The backend refuses a rate more than 50% either side of
                           the published one — a tamper/typo net, not a haggling
                           limit. Stating the range here means the counter never

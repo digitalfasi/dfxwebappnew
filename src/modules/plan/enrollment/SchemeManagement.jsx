@@ -142,6 +142,12 @@ export default function SchemeManagement() {
   // labelled Outstanding and not Overdue.)
   const FILTER_TO_SLICE = { All: "all", Active: "active", Overdue: "active", Completed: "completed", Cancelled: "cancelled" };
   const kpis = summary?.[FILTER_TO_SLICE[filter]] ?? null;
+  // The backend's summary slices carry no overdue total - only a per-enrollment
+  // overdue_amount, which it computes from the oldest unpaid due date. Summing
+  // those is not a recomputation of anything: each figure is the server's, and
+  // the list is unpaginated, so the total is exact rather than a page's worth.
+  const overdueTotal = rows.reduce((s, r) => s + (Number(r.overdueAmount) || 0), 0);
+  const overdueCount = rows.filter((r) => (Number(r.overdueAmount) || 0) > 0).length;
 
   // Outstanding is backend-authoritative (enrollment.outstanding_amount). The
   // frontend never computes it — `—` when the live backend hasn't sent it yet.
@@ -272,13 +278,14 @@ export default function SchemeManagement() {
       <div data-motion="reveal" className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard label="Active Enrollments" value={loading || !kpis ? "—" : String(kpis.active_enrollments)} />
         <KpiCard label="Total Paid" value={loading || !kpis ? "—" : money(kpis.total_paid)} />
-        {/* NOT "Outstanding". This is the contract value still to be
-            collected over the remaining term - on a 12-month plan with one
-            instalment paid it is eleven months' worth, and none of it is late.
-            Sitting beside an Overdue filter, the old word read as "owed now"
-            and made a perfectly healthy enrollment look delinquent. The
-            arithmetic is unchanged; only the label was wrong. */}
-        <KpiCard label="Remaining to collect" value={loading || !kpis ? "—" : money(kpis.outstanding)} />
+        {/* OVERDUE, not "remaining". The remaining contract value of a healthy
+            plan is not a number a shop needs on this screen - on a 12-month
+            plan with one instalment paid it is eleven months' worth, none of it
+            late, and shown beside an Overdue filter it only ever read as money
+            owed. What a shop wants to see is who has MISSED an instalment date,
+            which the backend already computes (overdue_amount / overdue_days)
+            from the oldest unpaid due date. */}
+        <KpiCard label={overdueCount ? `Overdue · ${overdueCount}` : "Overdue"} value={loading ? "—" : money(overdueTotal)} danger />
         <KpiCard label="Completed" value={loading || !kpis ? "—" : String(kpis.completed)} />
       </div>
 
@@ -309,7 +316,7 @@ export default function SchemeManagement() {
           <table className="w-full min-w-[1160px] border-collapse text-sm">
             <thead>
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3 text-right">Installment</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Remaining</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
+                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3 text-right">Installment</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Overdue</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -335,7 +342,15 @@ export default function SchemeManagement() {
                       ? <span className="font-bold">{money(r.totalPaid)}<span className="ml-1 text-[11px] font-semibold text-muted">in</span></span>
                       : <span className="font-bold">{r.paid}/{r.total}</span>}
                   </td>
-                  <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${isWalletScheme(r.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(r.schemeType) ? NOT_APPLICABLE : money(outstanding(r))}</td>
+                  {/* Overdue only: an instalment whose due date has passed
+                      unpaid. A plan that is simply mid-term owes nothing today
+                      and shows a dash, not eleven months of future contract.
+                      A wallet can never be overdue - nothing is ever due. */}
+                  <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${(r.overdueAmount || 0) > 0 ? "font-bold text-danger" : "font-semibold text-muted"}`}>
+                    {isWalletScheme(r.schemeType) || !(r.overdueAmount > 0)
+                      ? NOT_APPLICABLE
+                      : <>{money(r.overdueAmount)}<span className="ml-1 text-[11px] font-semibold">· {r.overdueDays}d</span></>}
+                  </td>
                   <td className="px-4 py-3.5"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></td>
                   <td className="px-4 py-3.5 pr-6 text-right">
                     <Button size="sm" variant="outline" onClick={() => openManage(r)}>Manage</Button>
@@ -424,7 +439,7 @@ export default function SchemeManagement() {
                       {/* Overdue and Next Due only mean something while the
                           enrollment is still running. On a closed/completed
                           record they read Nil rather than a stale figure. */}
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Remaining to pay</td><td className={`px-4 py-2.5 ${isWalletScheme(manage.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(manage.schemeType) ? NOT_APPLICABLE : (isClosed ? "Nil" : money(outstanding(manage)))}</td></tr>
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Overdue</td><td className={`px-4 py-2.5 ${(manage.overdueAmount || 0) > 0 ? "font-bold text-danger" : "font-semibold text-muted"}`}>{isWalletScheme(manage.schemeType) || isClosed || !(manage.overdueAmount > 0) ? NOT_APPLICABLE : `${money(manage.overdueAmount)} · ${manage.overdueDays} days late`}</td></tr>
                       {/* The customer's own terms, frozen when he joined: a
                           Monthly plan redeems the rupees he paid; the two gold
                           schemes redeem what his grams are worth today, which
