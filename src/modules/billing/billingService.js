@@ -83,6 +83,68 @@ export const billingService = {
     }));
   },
 
+  /**
+   * GET /api/v1/billing/sell/raw-gold/quote/{serial} — price one bullion bar.
+   *
+   * Metal at the published rate for its purity, plus GST, and nothing else: a
+   * bar carries no making, wastage, stone or discount, because there is no
+   * labour in it. The shop buys below the market and sells at it, and that
+   * difference is the whole profit.
+   */
+  async getRawGoldQuote(serialNumber, { appliedRatePerGram, gstApplied = true } = {}) {
+    const params = new URLSearchParams();
+    if (appliedRatePerGram) params.set("applied_rate_per_gram", String(appliedRatePerGram));
+    params.set("gst_applied", String(!!gstApplied));
+    const res = await apiClient.get(
+      `/billing/sell/raw-gold/quote/${encodeURIComponent(serialNumber)}?${params.toString()}`,
+      { auth: true }
+    );
+    const d = res.data ?? {};
+    return {
+      serialNumber: d.serial_number,
+      productName: d.product_name,
+      purity: d.purity,
+      netGoldWeightGrams: d.net_gold_weight_grams ?? 0,
+      grossWeightGrams: d.gross_weight_grams ?? 0,
+      goldRate24k: d.gold_rate_24k ?? null,
+      publishedRatePerGram: d.published_rate_per_gram ?? null,
+      appliedRatePerGram: d.applied_rate_per_gram ?? null,
+      goldValueAmount: d.gold_value_amount ?? 0,
+      subtotalBeforeTax: d.subtotal_before_tax ?? 0,
+      taxRatePercent: d.tax_rate_percent ?? 0,
+      taxAmount: d.tax_amount ?? 0,
+      finalAmount: d.final_amount ?? 0,
+      gstApplied: !!d.gst_applied,
+      effectiveDate: d.effective_date ?? null,
+      // Admin-only; null for Staff, who still get the direction label.
+      purchaseCost: d.purchase_cost ?? null,
+      profitOrLoss: d.profit_or_loss ?? null,
+      profitLabel: d.profit_or_loss_label ?? null,
+    };
+  },
+
+  /** POST /api/v1/billing/sell/raw-gold — sell one bar into the same sales
+   *  ledger as jewellery. No scheme: a scheme buys jewellery gold at a
+   *  contracted rate, not bullion at the market rate. */
+  async sellRawGold({ serialNumber, customerId, customerName, customerPhone,
+                      appliedRatePerGram, gstApplied = true, paymentMethod,
+                      amountPaid = 0, paymentReferenceNo, allowBelowCost = false }) {
+    const body = {
+      serial_number: serialNumber,
+      gst_applied: !!gstApplied,
+      payment_method: paymentMethod,
+      amount_paid: Number(amountPaid) || 0,
+      allow_below_cost: !!allowBelowCost,
+    };
+    if (customerId) body.customer_id = customerId;
+    if (customerName) body.customer_name = customerName;
+    if (customerPhone) body.customer_phone = customerPhone;
+    if (appliedRatePerGram) body.applied_rate_per_gram = Number(appliedRatePerGram);
+    if (paymentReferenceNo) body.payment_reference_no = paymentReferenceNo;
+    const res = await apiClient.post("/billing/sell/raw-gold", body, { auth: true });
+    return res.data?.sale ?? null;
+  },
+
   /** GET /api/v1/billing/vendors — real vendor list (full vendor master rows). */
   async listVendors(search = "") {
     const params = search ? `?search=${encodeURIComponent(search)}` : "";

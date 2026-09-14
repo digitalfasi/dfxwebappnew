@@ -57,6 +57,59 @@ export default function NewSale() {
   const [loading, setLoading] = useState(false);
   const [requoting, setRequoting] = useState(false);
   const [lookupError, setLookupError] = useState("");
+  // Raw gold / bullion. One search box serves the whole counter: if the code
+  // scanned is not a hallmarked piece it may be a bar, which is a different
+  // TRADE - metal at the live rate plus GST, no making, no wastage, no
+  // discount, no scheme - so the screen switches rather than pretending a bar
+  // is a piece with all its charges zeroed.
+  const [rawGold, setRawGold] = useState(null);
+  const [rawGoldRate, setRawGoldRate] = useState("");
+  const [rawGoldGst, setRawGoldGst] = useState(true);
+  const [rawGoldPaid, setRawGoldPaid] = useState("");
+  const [rawGoldMethod, setRawGoldMethod] = useState("CASH");
+  const [rawGoldBusy, setRawGoldBusy] = useState(false);
+
+  // Re-price the bar whenever the counter changes the rate or the GST switch.
+  // The rate is the only negotiable number on a bar, because on a bar the rate
+  // IS the price - there is no charge to move instead.
+  useEffect(() => {
+    if (!rawGold?.serialNumber) return;
+    let alive = true;
+    const t = setTimeout(async () => {
+      try {
+        const rg = await billingService.getRawGoldQuote(rawGold.serialNumber, {
+          appliedRatePerGram: Number(rawGoldRate) || undefined,
+          gstApplied: rawGoldGst,
+        });
+        if (alive) setRawGold((prev) => (prev ? { ...rg } : prev));
+      } catch { /* keep the last good figures on screen */ }
+    }, 350);
+    return () => { alive = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawGoldRate, rawGoldGst, rawGold?.serialNumber]);
+
+  async function createRawGoldSale() {
+    if (!rawGold) return;
+    setRawGoldBusy(true);
+    try {
+      const sale = await billingService.sellRawGold({
+        serialNumber: rawGold.serialNumber,
+        customerId: customerMode === "existing" ? (selectedCustomer?.id || undefined) : undefined,
+        customerName: customerMode === "existing" ? (selectedCustomer?.name || undefined) : (walkinName || undefined),
+        customerPhone: customerMode === "existing" ? undefined : (walkinPhone || undefined),
+        appliedRatePerGram: Number(rawGoldRate) || undefined,
+        gstApplied: rawGoldGst,
+        paymentMethod: rawGoldMethod,
+        amountPaid: Number(rawGoldPaid) || 0,
+      });
+      toast(`Bill ${sale?.invoice_number || ""} created`);
+      setRawGold(null); setRawGoldRate(""); setRawGoldPaid(""); setCode("");
+    } catch (err) {
+      toast(err?.message || "Could not create the bill");
+    } finally {
+      setRawGoldBusy(false);
+    }
+  }
   const [creating, setCreating] = useState(false);
 
   // Editable pricing inputs (seeded once from the first quote).
@@ -239,6 +292,7 @@ export default function NewSale() {
     if (loading) return;
     setLoading(true); setLookupError("");
     setProduct(null); setProductCode("");
+    setRawGold(null); setRawGoldRate("");
     setDiscount(""); setGst(true);
     setCustomerPrice(""); setPriceDriver("ENGINE"); setQuoteError("");
     setSaleMode(null); // a fresh product always starts at the Online/Offline choice
@@ -263,6 +317,21 @@ export default function NewSale() {
       setWastageVal(q.wastageValue != null ? String(q.wastageValue) : "");
       toast(`Found ${q.huid || key}`);
     } catch (err) {
+      // 409 with this shape is the backend saying "that is a bullion bar".
+      // Load it on the raw-gold path instead of making the user find another
+      // screen - they scanned a real thing the shop really holds.
+      if (err?.status === 409 && /raw gold/i.test(err?.message || "")) {
+        try {
+          const rg = await billingService.getRawGoldQuote(key);
+          setRawGold(rg);
+          setRawGoldRate(rg.publishedRatePerGram != null ? String(rg.publishedRatePerGram) : "");
+          toast(`Found bar ${rg.serialNumber}`);
+          return;
+        } catch (e2) {
+          setLookupError(e2?.message || `Could not price bar ${key}`);
+          return;
+        }
+      }
       setLookupError(err?.message || `No sellable item found for ${key}`);
     } finally {
       setLoading(false);
@@ -823,7 +892,78 @@ export default function NewSale() {
         </div>
       )}
       {lookupError && <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm font-semibold text-danger">{lookupError}</div>}
-        {!product && !lookupError && !loading && (
+        {/* A bar, not a piece. Its own panel because it is its own trade:
+            metal at the live rate plus GST, and none of the charge fields
+            beside it apply. No scheme section either - a scheme buys jewellery
+            gold at a contracted rate, and spending it on bullion at the market
+            rate is a different promise than the one the customer was sold. */}
+        {rawGold && (
+          <div className="mt-5 space-y-4 border-t border-line-soft pt-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <div className="text-sm font-extrabold">{rawGold.productName}</div>
+                <div className="mt-0.5 font-mono text-[11px] text-muted">{rawGold.serialNumber} · {rawGold.purity} · {Number(rawGold.netGoldWeightGrams).toFixed(3)} g net</div>
+              </div>
+              <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-accent-strong">Raw gold</span>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">{rawGold.purity} Sale Rate/g (₹) *</span>
+                <Input type="number" step="0.01" min="0" value={rawGoldRate} onChange={(e) => setRawGoldRate(e.target.value)} />
+                <span className="text-[11px] text-muted">
+                  Published {money(rawGold.publishedRatePerGram)}. On a bar the rate is the price — there is no making charge to move instead.
+                </span>
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">GST</span>
+                <Select value={rawGoldGst ? "ON" : "OFF"} onValueChange={(v) => setRawGoldGst(v === "ON")} options={["ON", "OFF"]} />
+                <span className="text-[11px] text-muted">{rawGold.taxRatePercent}% on the metal. A bar carries no other charge.</span>
+              </label>
+            </div>
+
+            <div className="rounded-xl border border-line bg-canvas/40 p-4">
+              <div className="grid grid-cols-2 gap-y-1.5 text-sm">
+                <span className="text-muted">Gold value ({Number(rawGold.netGoldWeightGrams).toFixed(3)} g × {money(rawGold.appliedRatePerGram)})</span>
+                <span className="num text-right font-semibold">{money(rawGold.goldValueAmount)}</span>
+                <span className="text-muted">GST {rawGold.taxRatePercent}%</span>
+                <span className="num text-right font-semibold">{money(rawGold.taxAmount)}</span>
+                <span className="mt-1 border-t border-line pt-1 font-extrabold">Bill total</span>
+                <span className="num mt-1 border-t border-line pt-1 text-right font-extrabold">{money(rawGold.finalAmount)}</span>
+              </div>
+              {rawGold.profitOrLoss != null && (
+                <div className={`mt-3 flex items-baseline justify-between rounded-lg border px-3 py-2 ${rawGold.profitOrLoss < 0 ? "border-danger-line bg-danger-soft/50" : "border-emerald-200 bg-emerald-50"}`}>
+                  <span className={`text-[11px] font-bold uppercase tracking-[0.07em] ${rawGold.profitOrLoss < 0 ? "text-danger" : "text-emerald-700"}`}>
+                    {rawGold.profitOrLoss < 0 ? "Loss" : "Profit"}
+                  </span>
+                  <span className={`num text-[12px] font-bold ${rawGold.profitOrLoss < 0 ? "text-danger" : "text-emerald-700"}`}>
+                    {money(Math.abs(rawGold.profitOrLoss))} <span className="font-semibold opacity-70">over the {money(rawGold.purchaseCost)} it cost</span>
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">Payment method *</span>
+                <Select value={rawGoldMethod} onValueChange={setRawGoldMethod} options={["CASH", "UPI", "CARD", "BANK_TRANSFER"]} />
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">Amount collected (₹)</span>
+                <Input type="number" step="0.01" min="0" value={rawGoldPaid} onChange={(e) => setRawGoldPaid(e.target.value)} placeholder="0" />
+                <span className="text-[11px] text-muted">Leave 0 to bill it as outstanding.</span>
+              </label>
+            </div>
+
+            <div className="flex justify-end">
+              <Button size="sm" disabled={rawGoldBusy} onClick={createRawGoldSale}>
+                {rawGoldBusy ? "Creating…" : `Create bill · ${money(rawGold.finalAmount)}`}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!product && !rawGold && !lookupError && !loading && (
           <div className="mt-5 border-t border-line-soft pt-4">
             <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">How a bill is made</div>
             <ol className="mt-2 space-y-1.5">

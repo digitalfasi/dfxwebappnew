@@ -50,3 +50,36 @@ describe("a wallet enrollment is not counted in installments", () => {
     expect(sm).toMatch(/isWalletScheme\(r\.schemeType\)\r?\n\s*\? <span className="font-bold">\{money\(r\.totalPaid\)\}/);
   });
 });
+
+describe("a bar sells as a bar, in the same search box", () => {
+  it("the service has both halves of the raw-gold path", () => {
+    expect(svc).toMatch(/async getRawGoldQuote\(serialNumber/);
+    expect(svc).toMatch(/apiClient\.post\("\/billing\/sell\/raw-gold"/);
+  });
+
+  it("the sale body carries no charge a bar does not have", () => {
+    const body = svc.slice(svc.indexOf("async sellRawGold"), svc.indexOf("listVendors"));
+    for (const absent of ["making_charge", "wastage", "discount", "stone_charge", "scheme"]) {
+      expect(body).not.toContain(absent);
+    }
+  });
+
+  it("a serial scanned in the HUID box switches the screen to raw gold", () => {
+    expect(ns).toMatch(/err\?\.status === 409 && \/raw gold\/i\.test/);
+    expect(ns).toMatch(/billingService\.getRawGoldQuote\(key\)/);
+  });
+
+  it("the panel prices metal and GST and nothing else", () => {
+    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("{!product && !rawGold"));
+    expect(panel).toMatch(/Gold value/);
+    expect(panel).toMatch(/GST \{rawGold\.taxRatePercent\}%/);
+    expect(panel).toMatch(/Bill total/);
+    for (const absent of ["Making Charge", "Wastage", "Discount", "scheme", "Scheme"]) {
+      expect(panel).not.toContain(absent);
+    }
+  });
+
+  it("finding a new item clears any bar that was loaded", () => {
+    expect(ns).toMatch(/setRawGold\(null\); setRawGoldRate\(""\);/);
+  });
+});
