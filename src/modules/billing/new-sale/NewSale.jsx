@@ -116,7 +116,9 @@ export default function NewSale() {
   const [rate, setRate] = useState("");
   const [makingVal, setMakingVal] = useState("");
   const [wastageVal, setWastageVal] = useState("");
-  const [discount, setDiscount] = useState("");
+  // Not the discount itself - only what is being typed into that box right now.
+  // null means "show the concession the making charge already represents".
+  const [discountText, setDiscountText] = useState(null);
   const [gst, setGst] = useState(true);
 
   // Sale mode (doc Point 12). ONLINE = live gold rate, engine price, everything
@@ -130,8 +132,8 @@ export default function NewSale() {
   const [quoteError, setQuoteError] = useState("");
   // What the admin has typed into the Customer Price box while they are still
   // typing. null means "show the price the bill actually comes to". There is no
-  // longer a price DRIVER: the concession has exactly one home, the discount
-  // line, and Customer Price is that same concession read from the other end.
+  // longer a price DRIVER: the concession has exactly one home, the making
+  // charge, and Customer Price is that same concession read from the far end.
   // Two drivers - a solved-down making charge on one path and a discount line
   // on the other - is what made the two halves of this screen describe
   // different bills.
@@ -204,15 +206,6 @@ export default function NewSale() {
     return () => { alive = false; };
   }, []);
 
-  const discountNum = num(discount);
-  // The store's margin now lives in the MAKING CHARGE. A discount is given by
-  // letting that percentage fall, so the making charge is what a discount may
-  // eat. Gold profit stays in the pool because every bill raised before this
-  // change carries one; on a new bill it is 0 and the pool is making alone.
-  const marginCeiling =
-    product && (product.makingChargeAmount != null || product.goldProfitAmount != null)
-      ? round2((product.makingChargeAmount || 0) + (product.goldProfitAmount || 0))
-      : null;
 
   // Scheme (gold-savings) credit the admin wants to redeem, in rupees. Declared
   // ABOVE the re-quote effect so the effect can send it to the backend and carve
@@ -231,28 +224,6 @@ export default function NewSale() {
   // tax out again gives the cost in pre-tax rupees - the same units a discount
   // is now expressed in.
   const taxFactor = 1 + (product?.gstApplied ? (product?.taxRatePercent || 0) : 0) / 100;
-  const costFloorCeiling =
-    product?.safePrice?.minimumSafePrice != null && product?.subtotalBeforeTax != null
-      ? round2(product.subtotalBeforeTax - product.safePrice.minimumSafePrice / taxFactor)
-      : null;
-  const discountCeiling =
-    marginCeiling == null
-      ? costFloorCeiling
-      : costFloorCeiling == null
-        ? marginCeiling
-        : Math.min(marginCeiling, costFloorCeiling);
-  const ceilingReason =
-    discountCeiling == null
-      ? null
-      : discountCeiling === costFloorCeiling && (marginCeiling == null || costFloorCeiling <= marginCeiling)
-        ? "beyond that the bill starts eating the gold profit"
-        : "beyond that it is giving away more than this bill's making charge";
-  const discountExceedsProfit = discountCeiling != null && discountNum > discountCeiling + 1e-6;
-  // A discount is absorbed from the making charge and nothing else, so what the
-  // bill really earns is the charge less the discount. Stating it is what makes
-  // "the discount ate the margin" visible instead of implied.
-  const effectiveProfitAmount =
-    marginCeiling != null ? Math.max(0, marginCeiling - discountNum) : null;
   const profitBaseGoldValue = Math.max(
     0,
     (product?.goldValueAmount || 0) - (Number(product?.schemeApplied) || 0)
@@ -277,6 +248,74 @@ export default function NewSale() {
   const listPct = bands?.listPercent ?? MAKING_LIST_FALLBACK_PCT;
   const breakEvenPct = bands?.breakEvenFloorPercent ?? 11;
   const profitFloorPct = bands?.profitFloorPercent ?? 14;
+
+  // ===========================================================================
+  // ONE concession, three boxes.
+  //
+  // Customer Price, Discount and Making Charge are not three quantities. They
+  // are three readings of the SAME giving-away, and it lives in the making
+  // charge: coming down from a 14% list to 10% IS the concession, it is not a
+  // concession on top of one. Holding a separate discount alongside the charge
+  // is what made this screen contradict itself - drop the making charge and the
+  // discount typed earlier stayed put, the two together overshot the floor, the
+  // backend refused the quote, and the panel sat on a stale breakdown printing
+  // a 1% making charge beside the rupees for 14%. It is also where the negative
+  // "Max discount -2,036.82" came from.
+  //
+  // The making charge is now the only state. The other two are derived from it,
+  // and typing into either sets it. Nothing can disagree, because there is only
+  // one number to disagree about.
+  // ===========================================================================
+  const agreedPct = makingVal !== "" ? num(makingVal) : listPct;
+  // The gold the making charge is actually levied on - scheme-covered grams
+  // carry no charge, so they are no part of it.
+  const chargeableGold = product
+    ? Math.max(0, (product.goldValueAmount || 0) - (Number(product.schemeApplied) || 0))
+    : 0;
+  const pctToRupees = (pct) => round2((pct / 100) * chargeableGold);
+  const rupeesToPct = (rs) => (chargeableGold > 0 ? (rs / chargeableGold) * 100 : 0);
+  // Given away, before tax: the distance from list down to what was agreed.
+  const concession = product ? Math.max(0, pctToRupees(listPct - agreedPct)) : 0;
+  // The bill at the full list charge. Built from the backend's own figures -
+  // its pre-tax subtotal with the quoted making charge taken out and the list
+  // charge put back - so this anchor cannot drift from what the server bills.
+  const askingPretax = product
+    ? round2((product.subtotalBeforeTax || 0) - (product.makingChargeAmount || 0) + pctToRupees(listPct))
+    : 0;
+  const askingPrice = round2(askingPretax * taxFactor);
+  const minSafe = product?.safePrice?.minimumSafePrice;
+  // What may still be given, down to whichever floor binds - and never below
+  // zero. The old ceiling mixed two unrelated quantities and could go negative.
+  const discountCeiling = !product
+    ? null
+    : minSafe != null
+      ? Math.max(0, round2(askingPretax - minSafe / taxFactor))
+      : Math.max(0, pctToRupees(listPct - profitFloorPct));
+  const discountExceedsProfit = discountCeiling != null && concession > discountCeiling + 1e-6;
+  const ceilingReason = "beyond that the bill starts eating the gold profit";
+
+  /** The three setters. Each writes the ONE number and releases the other two
+   *  boxes back to being derived, so no box can hold a figure typed against an
+   *  older asking price. */
+  const setAgreedPct = (pct) => {
+    const clamped = Math.max(0, round2(pct));
+    setMakingVal(String(clamped));
+  };
+  const onMakingInput = (v) => { setMakingVal(v); setDiscountText(null); setPriceText(null); };
+  const onDiscountInput = (v) => {
+    setDiscountText(v);
+    setPriceText(null);
+    if (!product) return;
+    setAgreedPct(v === "" ? listPct : listPct - rupeesToPct(num(v)));
+  };
+  const onCustomerPriceInput = (v) => {
+    setPriceText(v);
+    setDiscountText(null);
+    if (!product) return;
+    if (v === "" || v == null) { setAgreedPct(listPct); return; }
+    const off = Math.max(0, (askingPrice - toBillTotal(num(v))) / taxFactor);
+    setAgreedPct(listPct - rupeesToPct(off));
+  };
   // The backend solves a typed price into the making charge and echoes the
   // value back, so this is read from the quote and never recomputed here -
   // two places deriving the same percentage is how they come to disagree.
@@ -312,7 +351,7 @@ export default function NewSale() {
     setLoading(true); setLookupError("");
     setProduct(null); setProductCode("");
     setRawGold(null); setRawGoldRate("");
-    setDiscount(""); setGst(true);
+    setDiscountText(null); setGst(true);
     setPriceText(null); setQuoteError("");
     setSaleMode(null); // a fresh product always starts at the Online/Offline choice
     try {
@@ -380,7 +419,10 @@ export default function NewSale() {
           // it. Omitted only when a negotiated customer price is driving the
           // bill — there the backend derives the discount itself, so sending
           // ours as well would double-count it.
-          discountAmount: discountNum,
+          // Always 0. The concession is the making charge coming down, and it
+          // is already inside makingChargeValue below - sending it again as a
+          // discount line would take it off the bill twice.
+          discountAmount: 0,
           gstApplied: gst,
           // ONLINE quotes the metal tax-inclusive, and that rate has to REACH
           // the backend or the mode is decoration: the field read Rs 14,548.75
@@ -414,7 +456,7 @@ export default function NewSale() {
     }, 450);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productCode, saleMode, rate, makingVal, wastageVal, discountNum, gst, schemeSelected, schemeRedeemRequested, allowBelowCost]);
+  }, [productCode, saleMode, rate, makingVal, wastageVal, gst, schemeSelected, schemeRedeemRequested, allowBelowCost]);
 
   // There is deliberately NO effect writing back into the making charge. One
   // used to mirror the backend's solved value into this field, and because a
@@ -553,7 +595,7 @@ export default function NewSale() {
       customerPhone: customerMode === "walkin" ? (walkinPhone.trim() || undefined) : undefined,
       // Carried through on a scheme bill as well — the redemption's recompute
       // replays the sale's own discount, so it survives the carve-out.
-      discountAmount: discountNum,
+      discountAmount: 0,   // in the making charge already - see the quote effect
       gstApplied: gst,
       appliedRatePerGram: offline && rate !== "" ? num(rate) : undefined,
       makingChargeValue: makingVal !== "" ? num(makingVal) : undefined,
@@ -617,11 +659,6 @@ export default function NewSale() {
   // The asking price before any discount. The discount is pre-tax now, so
   // adding it back has to include the GST that came off with it - otherwise
   // this read 7,29,751.36 against a true asking price of 7,30,021.36.
-  // The price before any discount. Invariant under the discount itself, which
-  // is what makes it safe to solve a typed Customer Price back into a discount.
-  const askingPrice = product
-    ? round2((product.finalAmount || 0) + (product.discountAmount || 0) * (1 + (product.gstApplied ? (product.taxRatePercent || 0) : 0) / 100))
-    : 0;
   // Selling Price is what the bill COMES TO. It used to add the discount back
   // so it never moved, and the owner read that - correctly - as the discount
   // not reaching the price. The asking price is still stated, underneath,
@@ -637,26 +674,6 @@ export default function NewSale() {
   // price, because the bill records the concession as a lower making charge
   // rather than as a discount.
   const comeDown = product ? Math.max(0, round2(askingPrice - sellingPrice)) : 0;
-
-  /** Customer Price and Discount are the same concession from either end.
-   *  A price typed here becomes the pre-tax discount that produces it, and the
-   *  quote does the rest: the bill summary, the selling price and the making
-   *  charge's effective percentage all follow from that one number. Nothing is
-   *  recomputed locally - this only decides WHAT to ask the backend for. */
-  const applyCustomerPrice = (v) => {
-    setPriceText(v);
-    if (!product) return;
-    if (v === "" || v == null) { setDiscount(""); return; }
-    const wanted = toBillTotal(num(v));
-    const off = Math.max(0, round2((askingPrice - wanted) / taxFactor));
-    setDiscount(off > 0 ? String(off) : "");
-  };
-
-  /** Editing a charge or the discount hands the Customer Price box back to the
-   *  bill, so it stops showing a figure the admin typed against an older
-   *  asking price. */
-  const releasePriceText = () => setPriceText(null);
-  const minSafe = product?.safePrice?.minimumSafePrice;
   const maxDiscount = minSafe != null ? Math.max(0, round2(askingPrice - minSafe)) : null;
 
   // Today's gold worth of the piece at the PUBLISHED rate for its purity — the
@@ -676,7 +693,7 @@ export default function NewSale() {
 
   const resetAll = () => {
     setProduct(null); setProductCode(""); setCode("");
-    setRate(""); setMakingVal(""); setWastageVal(""); setDiscount(""); setGst(true);
+    setRate(""); setMakingVal(""); setWastageVal(""); setDiscountText(null); setGst(true);
     setAllowBelowCost(false); setBelowCostReason(""); setPublishedRate(null);
     setPayMethod(""); setPayStatus(""); setPartialAmount(""); setPayRef("");
     setSaleMode(null); setPriceText(null); setQuoteError("");
@@ -843,7 +860,7 @@ export default function NewSale() {
         making_charge_value: makingVal !== "" ? num(makingVal) : undefined,
         wastage_value: wastageVal !== "" ? num(wastageVal) : undefined,
         gold_profit_percent: 0,
-        discount_amount: discountNum || 0,
+        discount_amount: 0,
         payment_method: payMethod || "CASH",
         payment_status: payStatus || "PAID",
       };
@@ -882,7 +899,10 @@ export default function NewSale() {
       setGst(d.gst_applied !== false);
       setMakingVal(d.making_charge_value != null ? String(d.making_charge_value) : "");
       setWastageVal(d.wastage_value != null ? String(d.wastage_value) : "");
-      setDiscount(d.discount_amount ? String(d.discount_amount) : "");
+      // A draft's concession is replayed through the making charge, which is
+      // where it lives now; the percentage is resolved once the product is
+      // found and the list is known.
+      setDiscountText(null);
       setPayMethod(d.payment_method || "");
       setPayStatus(d.payment_status || "");
       toast(`Resumed draft — ${d.product_code}. Find the product to reprice it.`);
@@ -1365,8 +1385,8 @@ export default function NewSale() {
                             ? String(round2(product.finalAmount - quotedScheme))
                             : ""
                       }
-                      onValueChange={applyCustomerPrice}
-                      onBlur={releasePriceText}
+                      onValueChange={onCustomerPriceInput}
+                      onBlur={() => setPriceText(null)}
                       aria-label="Customer price in rupees" />
                     {quoteHasScheme && !quoteError && (
                       /* The box above is the money changing hands. This states
@@ -1423,7 +1443,7 @@ export default function NewSale() {
                             different cards. */}
                         {comeDown > 0 && (
                           <div className="mt-2 flex items-baseline justify-between gap-3 rounded-xl border border-line-soft bg-canvas/60 px-3 py-2">
-                            <span className="text-[11px] font-semibold text-muted">Come down from {money(sellingPrice)}</span>
+                            <span className="text-[11px] font-semibold text-muted">Come down from {money(askingPrice)}</span>
                             <span className="num text-[12px] font-bold tabular-nums text-ink">−{money(comeDown)}</span>
                           </div>
                         )}
@@ -1486,7 +1506,7 @@ export default function NewSale() {
                     </label>
                     <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">Making Charge {chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}</span>
-                      <Input type="number" step="0.01" min="0" value={makingVal} onChange={(e) => { setMakingVal(e.target.value); releasePriceText(); }} />
+                      <Input type="number" step="0.01" min="0" value={makingVal} onChange={(e) => onMakingInput(e.target.value)} />
                       <span className="text-[11px] text-muted">= {money(product.makingChargeAmount)}{schemeSelected ? " — on the un-covered grams only" : ""}</span>
                       {/* The bands are THIS piece's, from the backend: the
                           store's 6% base plus its running cost plus the tunch
@@ -1521,35 +1541,23 @@ export default function NewSale() {
                           value, so the bill falls by the discount plus the GST
                           that is no longer due on it. */}
                       <span className="text-xs font-bold">Discount (₹) <span className="font-normal text-muted">— off the taxable value</span></span>
-                      {/* While the Customer Price box is steering, the quote
-                          sends no discount (the backend solves the making
-                          charge to hit the typed price instead) and the effect
-                          above clears this field on the next quote. It used to
-                          accept a number, wipe it, and change nothing - the
-                          admin typing 15,000 here saw it vanish with no reason
-                          given. The two controls are exclusive, so this now
-                          says which one has the wheel and how to take it back. */}
-                      {/* Two editors, one concession. Type a price and the
-                          making charge moves to meet it - and the rupees that
-                          move now appear HERE, so "how much did I give?" is
-                          readable instead of a subtraction between two cards.
-                          Type a discount instead and the price and charges
-                          follow. The box is read-only while the price box has
-                          the wheel because the number is derived then, not
-                          entered: it used to accept a figure, wipe it, and
-                          change nothing. */}
+                      {/* The same concession the Making Charge box is showing,
+                          in rupees. Type here and the percentage above moves to
+                          match; type there and this follows. Neither is a
+                          separate giving-away, so they cannot add up to more
+                          than the piece has to give. */}
                       <Input
                         type="number" step="0.01" min="0"
-                        value={discount}
-                        onChange={(e) => { setDiscount(e.target.value); releasePriceText(); }}
+                        value={discountText != null ? discountText : (concession > 0 ? String(concession) : "")}
+                        onChange={(e) => onDiscountInput(e.target.value)}
+                        onBlur={() => setDiscountText(null)}
                         error={discountExceedsProfit ? "Exceeds making charge" : undefined}
                         placeholder="0" />
-                      {discountNum > 0 && product.gstApplied && (product.taxRatePercent || 0) > 0 && (
-                        <span className="text-[11px] text-muted">Bill falls by {money(round2(discountNum * taxFactor))} — the discount plus the {product.taxRatePercent}% GST no longer due on it.</span>
-                      )}
-                      {comeDown > 0 && (
+                      {concession > 0 && (
                         <span className="text-[11px] text-muted">
-                          <b className="num">{money(comeDown)}</b> off the {money(askingPrice)} asking price.
+                          Given as a lower making charge — {round2(listPct)}% down to {round2(agreedPct)}%.
+                          The bill falls by <b className="num">{money(round2(concession * taxFactor))}</b>, off the {money(askingPrice)} asking price
+                          {product.gstApplied && (product.taxRatePercent || 0) > 0 ? ` — the ${money(concession)} plus the ${product.taxRatePercent}% GST no longer due on it` : ""}.
                         </span>
                       )}
                       {discountCeiling != null ? (
@@ -1557,10 +1565,10 @@ export default function NewSale() {
                           {discountExceedsProfit
                             ? `Max discount ${money(discountCeiling)} — ${ceilingReason}.`
                             : schemeSelected
-                              ? `Up to ${money(discountCeiling)} can be given — the Gold Profit on the grams the scheme has not covered.`
+                              ? `Up to ${money(discountCeiling)} can be given — the negotiable extra on the grams the scheme has not covered.`
                               : `Up to ${money(discountCeiling)} can be given — the negotiable extra on this piece. Past it the gold profit starts going.`}
                         </span>
-                      ) : <span className="text-[11px] text-muted">A discount may only reduce Gold Profit.</span>}
+                      ) : <span className="text-[11px] text-muted">A discount is the making charge coming down, and nothing else.</span>}
                     </label>
                   </div>
                 </Card>
@@ -1809,7 +1817,13 @@ export default function NewSale() {
                     <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                       <div><div className="text-[10px] font-bold uppercase text-muted">Current Price</div><div className="num text-sm font-extrabold">{money(product.finalAmount)}</div></div>
                       <div><div className="text-[10px] font-bold uppercase text-muted">Min Safe Price</div><div className="num text-sm font-extrabold">{minSafe != null ? money(minSafe) : "—"}</div></div>
-                      <div><div className="text-[10px] font-bold uppercase text-muted">Max Discount</div><div className="num text-sm font-extrabold">{maxDiscount != null ? money(maxDiscount) : "—"}</div></div>
+                      {/* NOT "max discount": this is how far the PRICE may come down, which is
+                          the discount plus the GST that comes off with it. Printing it
+                          under the same name as the pre-tax figure in the Discount box
+                          put two different rupee amounts called "max discount" on one
+                          screen - 6,293.79 here against 6,110.47 there. Same limit,
+                          different units, now said so. */}
+                      <div><div className="text-[10px] font-bold uppercase text-muted">Price Can Drop</div><div className="num text-sm font-extrabold">{maxDiscount != null ? money(maxDiscount) : "—"}</div></div>
                     </div>
                     <div className="mt-2 text-[10px] leading-snug text-emerald-800/80">The lowest price that still keeps the gold profit whole, and how much is cuttable to reach it.</div>
                     {product.safePrice.message && <div className={`mt-2 text-[11px] ${product.safePrice.isLoss ? "font-semibold text-danger" : "text-emerald-800"}`}>{product.safePrice.message}</div>}

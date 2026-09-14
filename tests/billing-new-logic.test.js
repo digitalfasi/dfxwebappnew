@@ -38,37 +38,67 @@ describe("the making charge is this lot's, not a hard-coded 14", () => {
 });
 
 describe("one concession, three boxes that agree", () => {
-  // There used to be two money models under this screen: a typed price solved
-  // the making charge down and carried no discount line, while a typed
-  // discount left the charge alone and added one. The two halves of the screen
-  // then described different bills - a discount box reading 14,708 beside a
-  // summary reading 5,000. There is now ONE: the discount line.
+  // Three stages of the same mistake. First two money models (a typed price
+  // solved the making charge down with no discount line; a typed discount left
+  // the charge alone and added one) - the two halves of the screen described
+  // different bills. Then one model but two numbers: the charge and a separate
+  // discount, which together could overshoot the floor, get the quote refused,
+  // and leave a 1% making charge printed beside the rupees for 14% - and a
+  // "Max discount" that went NEGATIVE. Now one number.
   it("there is no second driver left", () => {
     expect(ns).not.toMatch(/priceDriver/);
     expect(ns).not.toMatch(/customerPrice:/);
   });
-  it("the quote always sends the discount, and never a customer price", () => {
-    expect(ns).toMatch(/discountAmount: discountNum,/);
+
+  it("the making charge is the only state; the other two are derived", () => {
+    // No useState for the discount - only a buffer for what is being typed.
+    expect(ns).not.toMatch(/const \[discount, setDiscount\]/);
+    expect(ns).toMatch(/const \[discountText, setDiscountText\] = useState\(null\);/);
+    expect(ns).toMatch(/const concession = product \? Math\.max\(0, pctToRupees\(listPct - agreedPct\)\) : 0;/);
+  });
+
+  it("the concession is never sent twice", () => {
+    // It is inside makingChargeValue already; a discount line as well would
+    // take it off the bill a second time.
+    expect(ns).toMatch(/discountAmount: 0,/);
+    expect(ns).not.toMatch(/discountAmount: discountNum/);
     expect(ns).not.toMatch(/customerPrice: .*toBillTotal/);
   });
-  it("a typed price becomes the discount that produces it", () => {
-    expect(ns).toMatch(/const applyCustomerPrice = \(v\) => \{/);
-    expect(ns).toMatch(/const off = Math\.max\(0, round2\(\(askingPrice - wanted\) \/ taxFactor\)\);/);
-    expect(ns).toMatch(/setDiscount\(off > 0 \? String\(off\) : ""\);/);
+
+  it("each of the three boxes writes that one number", () => {
+    expect(ns).toMatch(/const onMakingInput = \(v\) => \{ setMakingVal\(v\);/);
+    expect(ns).toMatch(/const onDiscountInput = \(v\) => \{/);
+    expect(ns).toMatch(/setAgreedPct\(v === "" \? listPct : listPct - rupeesToPct\(num\(v\)\)\);/);
+    expect(ns).toMatch(/const onCustomerPriceInput = \(v\) => \{/);
+    expect(ns).toMatch(/setAgreedPct\(listPct - rupeesToPct\(off\)\);/);
   });
-  it("the discount box is always editable, and always live", () => {
-    expect(ns).toMatch(/value=\{discount\}/);
-    expect(ns).toMatch(/onChange=\{\(e\) => \{ setDiscount\(e\.target\.value\); releasePriceText\(\); \}\}/);
+
+  it("all three inputs are bound to it", () => {
+    expect(ns).toMatch(/onChange=\{\(e\) => onMakingInput\(e\.target\.value\)\}/);
+    expect(ns).toMatch(/onChange=\{\(e\) => onDiscountInput\(e\.target\.value\)\}/);
+    expect(ns).toMatch(/onValueChange=\{onCustomerPriceInput\}/);
   });
-  it("the making charge is the admin's field and nothing writes back to it", () => {
-    // An effect used to mirror the backend's solved value in after every
-    // quote, which snapped the number back the instant it was typed.
+
+  it("the making charge field is the admin's and nothing writes back to it", () => {
+    // An effect used to mirror the backend's solved value in after every quote,
+    // which snapped the number back the instant it was typed.
     expect(ns).not.toMatch(/setMakingVal\(\(prev\)/);
-    expect(ns).toMatch(/setMakingVal\(e\.target\.value\); releasePriceText\(\);/);
   });
-  it("selling price is what the bill comes to, not the price before the discount", () => {
+
+  it("the headroom can never go negative", () => {
+    expect(ns).toMatch(/\? Math\.max\(0, round2\(askingPretax - minSafe \/ taxFactor\)\)/);
+    expect(ns).toMatch(/: Math\.max\(0, pctToRupees\(listPct - profitFloorPct\)\);/);
+  });
+
+  it("the asking price is the bill at LIST, built from the backend's figures", () => {
+    expect(ns).toMatch(/const askingPretax = product/);
+    expect(ns).toMatch(/\(product\.subtotalBeforeTax \|\| 0\) - \(product\.makingChargeAmount \|\| 0\) \+ pctToRupees\(listPct\)/);
+    // and the come-down is measured from THAT, not from the current price
+    expect(ns).toMatch(/Come down from \{money\(askingPrice\)\}/);
+  });
+
+  it("selling price is what the bill comes to", () => {
     expect(ns).toMatch(/const sellingPrice = product \? round2\(product\.finalAmount \|\| 0\) : 0;/);
-    expect(ns).toMatch(/const askingPrice = product/);
   });
 });
 
