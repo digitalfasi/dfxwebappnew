@@ -67,6 +67,10 @@ export default function NewSale() {
   const [rawGoldGst, setRawGoldGst] = useState(true);
   const [rawGoldPaid, setRawGoldPaid] = useState("");
   const [rawGoldMethod, setRawGoldMethod] = useState("CASH");
+  // How the bar is being settled, in the same three words a jewellery bill
+  // uses. It was a bare "Amount collected, leave 0 to bill it as outstanding",
+  // which made the counter translate their intent into a number.
+  const [rawGoldStatus, setRawGoldStatus] = useState("");
   const [rawGoldBusy, setRawGoldBusy] = useState(false);
 
   // Re-price the bar whenever the counter changes the rate or the GST switch.
@@ -100,10 +104,12 @@ export default function NewSale() {
         appliedRatePerGram: Number(rawGoldRate) || undefined,
         gstApplied: rawGoldGst,
         paymentMethod: rawGoldMethod,
-        amountPaid: Number(rawGoldPaid) || 0,
+        // Derived from the status, never typed alongside it: PAID settles the
+        // whole bill, PARTIAL takes what was handed over, PENDING takes none.
+        amountPaid: rawGoldPaidNow,
       });
       toast(`Bill ${sale?.invoice_number || ""} created`);
-      setRawGold(null); setRawGoldRate(""); setRawGoldPaid(""); setCode("");
+      setRawGold(null); setRawGoldRate(""); setRawGoldPaid(""); setRawGoldStatus(""); setCode("");
     } catch (err) {
       toast(err?.message || "Could not create the bill");
     } finally {
@@ -578,6 +584,22 @@ export default function NewSale() {
   const customerIdentified =
     (customerMode === "existing" ? !!selectedCustomer?.id : walkinName.trim().length >= 2) && !walkinPhoneInvalid;
 
+  // The buyer's name as the bar's summary prints it. Declared with the rest of
+  // the buyer reads, below the state they depend on - see rawGoldBuyerReady.
+  const rawGoldBuyerName =
+    customerMode === "existing" ? (selectedCustomer?.name || "") : walkinName.trim();
+
+  // The bar's settlement, derived from the chosen status so the two can never
+  // disagree: paid in full settles the bill, partial takes what was handed
+  // over, pending takes nothing and the whole bill stands outstanding.
+  const rawGoldTotal = rawGold ? round2(rawGold.finalAmount || 0) : 0;
+  const rawGoldPaidNum = num(rawGoldPaid);
+  const rawGoldPartialInvalid =
+    rawGoldStatus === "PARTIAL" && !(rawGoldPaidNum > 0 && rawGoldPaidNum < rawGoldTotal);
+  const rawGoldPaidNow =
+    rawGoldStatus === "PAID" ? rawGoldTotal : rawGoldStatus === "PARTIAL" ? rawGoldPaidNum : 0;
+  const rawGoldOutstanding = round2(Math.max(0, rawGoldTotal - rawGoldPaidNow));
+
   const baseInputs = () => {
     const offline = saleMode === "OFFLINE";
     return {
@@ -937,7 +959,7 @@ export default function NewSale() {
     <div ref={scope} className="mx-auto max-w-[1240px] pb-32 lg:pb-14">
       <div data-motion="page-head" className="mb-6">
         <h2 className="text-2xl font-extrabold tracking-tight">New Sale</h2>
-        <p className="mt-1 max-w-[64ch] text-sm text-muted">Enter the item's HUID, adjust the applicable rate and charges if needed, identify the buyer, then confirm the bill. Every amount is calculated by the backend.</p>
+        <p className="mt-1 max-w-[64ch] text-sm text-muted">Enter the item&rsquo;s HUID, or the serial number of a gold bar, then set the rate and charges, identify the buyer and confirm. Every amount is calculated by the backend.</p>
       </div>
 
       {/* Lookup, and — until an item is loaded — the same two-column skeleton the
@@ -945,11 +967,15 @@ export default function NewSale() {
           halfway through the task. */}
       <div className={product ? "" : "grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]"}>
       <Card data-motion="reveal" className="p-5 sm:p-6">
-        <SectionHead title="Find product by HUID" />
+        {/* One box for both trades. The shop holds finished jewellery, which
+            is found by HUID, and bullion, which is found by serial number -
+            naming only the HUID told the counter the bar could not be sold
+            here, when in fact typing its serial has always worked. */}
+        <SectionHead title="Find product" />
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1.5 flex-1 min-w-[220px]">
-            <span className="text-xs font-bold">HUID *</span>
-            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter HUID" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
+            <span className="text-xs font-bold">HUID or Serial No. *</span>
+            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="HUID for jewellery, serial number for a gold bar" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
           </label>
           <Button size="sm" className="bg-accent hover:bg-accent-strong h-10 px-6" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
           <Button size="sm" variant="outline" className="h-10 px-5" onClick={openDrafts}>Unfinished bills</Button>
@@ -1003,31 +1029,17 @@ export default function NewSale() {
                 </span>
               </label>
               <label className="grid gap-1.5">
-                <span className="text-xs font-bold">GST</span>
-                <Select value={rawGoldGst ? "ON" : "OFF"} onValueChange={(v) => setRawGoldGst(v === "ON")} options={["ON", "OFF"]} />
+                {/* No "GST" caption, per the owner - the control is the switch
+                    and the line beneath already says what it switches. */}
+                <span className="text-xs font-bold">Tax</span>
+                <div className="flex h-10 items-center gap-1 rounded-xl border border-line bg-canvas/60 p-1">
+                  {[["On", true], ["Off", false]].map(([label, val]) => (
+                    <button key={label} type="button" onClick={() => setRawGoldGst(val)}
+                      className={`h-full flex-1 rounded-lg text-xs font-bold transition-colors ${rawGoldGst === val ? "bg-accent text-white shadow-sm" : "text-ink-soft hover:bg-surface"}`}>{label}</button>
+                  ))}
+                </div>
                 <span className="text-[11px] text-muted">{rawGold.taxRatePercent}% on the metal. A bar carries no other charge.</span>
               </label>
-            </div>
-
-            <div className="rounded-xl border border-line bg-canvas/40 p-4">
-              <div className="grid grid-cols-2 gap-y-1.5 text-sm">
-                <span className="text-muted">Gold value ({Number(rawGold.netGoldWeightGrams).toFixed(3)} g × {money(rawGold.appliedRatePerGram)})</span>
-                <span className="num text-right font-semibold">{money(rawGold.goldValueAmount)}</span>
-                <span className="text-muted">GST {rawGold.taxRatePercent}%</span>
-                <span className="num text-right font-semibold">{money(rawGold.taxAmount)}</span>
-                <span className="mt-1 border-t border-line pt-1 font-extrabold">Bill total</span>
-                <span className="num mt-1 border-t border-line pt-1 text-right font-extrabold">{money(rawGold.finalAmount)}</span>
-              </div>
-              {rawGold.profitOrLoss != null && (
-                <div className={`mt-3 flex items-baseline justify-between rounded-lg border px-3 py-2 ${rawGold.profitOrLoss < 0 ? "border-danger-line bg-danger-soft/50" : "border-emerald-200 bg-emerald-50"}`}>
-                  <span className={`text-[11px] font-bold uppercase tracking-[0.07em] ${rawGold.profitOrLoss < 0 ? "text-danger" : "text-emerald-700"}`}>
-                    {rawGold.profitOrLoss < 0 ? "Loss" : "Profit"}
-                  </span>
-                  <span className={`num text-[12px] font-bold ${rawGold.profitOrLoss < 0 ? "text-danger" : "text-emerald-700"}`}>
-                    {money(Math.abs(rawGold.profitOrLoss))} <span className="font-semibold opacity-70">over the {money(rawGold.purchaseCost)} it cost</span>
-                  </span>
-                </div>
-              )}
             </div>
 
             {/* The buyer. An existing customer can be chosen exactly as on a
@@ -1080,23 +1092,6 @@ export default function NewSale() {
               <p className="text-[11px] text-muted">Scheme redemption does not apply to bullion — a scheme buys jewellery gold at its contracted rate.</p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5">
-                <span className="text-xs font-bold">Payment method *</span>
-                <Select value={rawGoldMethod} onValueChange={setRawGoldMethod} options={["CASH", "UPI", "CARD", "BANK_TRANSFER"]} />
-              </label>
-              <label className="grid gap-1.5">
-                <span className="text-xs font-bold">Amount collected (₹)</span>
-                <Input type="number" step="0.01" min="0" value={rawGoldPaid} onChange={(e) => setRawGoldPaid(e.target.value)} placeholder="0" />
-                <span className="text-[11px] text-muted">Leave 0 to bill it as outstanding.</span>
-              </label>
-            </div>
-
-            <div className="flex justify-end">
-              <Button size="sm" disabled={rawGoldBusy || !rawGoldBuyerReady} onClick={createRawGoldSale}>
-                {rawGoldBusy ? "Creating…" : `Create bill · ${money(rawGold.finalAmount)}`}
-              </Button>
-            </div>
           </div>
         )}
 
@@ -1105,7 +1100,7 @@ export default function NewSale() {
             <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">How a bill is made</div>
             <ol className="mt-2 space-y-1.5">
               {[
-                "Find the item by its HUID.",
+                "Find the piece by its HUID, or a bar by its serial number.",
                 "Choose Online (live rate) or Offline (editable rate).",
                 "Adjust rate, profit % and charges — or type the customer's price.",
                 "Identify the buyer and redeem any schemes they hold.",
@@ -1121,9 +1116,84 @@ export default function NewSale() {
         )}
       </Card>
 
+      {/* A bar's summary and its payment live HERE, in the column that stood
+          empty and white while the whole short trade was stacked down the left
+          and made the page scroll for no reason. Same shape as the jewellery
+          summary, so the screen reads the same whichever is being sold. */}
+      {!product && rawGold && (
+        <Card data-motion="reveal" className="p-5 lg:sticky lg:top-4 lg:self-start">
+          <h3 className="text-sm font-extrabold">Bill summary</h3>
+          <div className="mt-3 rounded-xl border border-line bg-canvas/40 p-3">
+            <div className="text-[13px] font-bold">{rawGold.productName}</div>
+            <div className="mt-0.5 font-mono text-[11px] text-muted">{rawGold.serialNumber} · {rawGold.purity} · {Number(rawGold.netGoldWeightGrams).toFixed(3)} g</div>
+            <div className="mt-1 text-[11px] text-muted">Buyer: <b className="text-ink">{rawGoldBuyerName || "Not selected"}</b></div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-y-1.5 text-sm">
+            <span className="text-muted">Gold value ({Number(rawGold.netGoldWeightGrams).toFixed(3)} g × {money(rawGold.appliedRatePerGram)})</span>
+            <span className="num text-right font-semibold">{money(rawGold.goldValueAmount)}</span>
+            <span className="text-muted">GST {rawGold.taxRatePercent}%</span>
+            <span className="num text-right font-semibold">{money(rawGold.taxAmount)}</span>
+          </div>
+          <div className="mt-2 flex items-baseline justify-between rounded-xl border border-accent-line bg-accent-soft px-3 py-2.5">
+            <span className="text-xs font-extrabold uppercase tracking-[0.06em] text-accent-strong">Bill total</span>
+            <span className="num text-lg font-extrabold text-accent-strong">{money(rawGold.finalAmount)}</span>
+          </div>
+
+          {/* How it is being settled - the same three states a jewellery bill
+              offers. "Amount collected, leave 0 to bill it as outstanding" left
+              the counter to work out which of the three they meant. */}
+          <div className="mt-4 space-y-3 border-t border-line-soft pt-4">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Payment method *</span>
+              <Select value={rawGoldMethod} onValueChange={setRawGoldMethod} options={["CASH", "UPI", "CARD", "BANK_TRANSFER"]} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Status *</span>
+              <Select value={rawGoldStatus} onValueChange={setRawGoldStatus} placeholder="Select status"
+                options={PAYMENT_STATUSES.map((v) => ({ value: v, label: PAYMENT_STATUS_LABEL[v] }))} />
+            </label>
+            {rawGoldStatus === "PARTIAL" && (
+              <label className="grid gap-1.5">
+                <span className="text-xs font-bold">Paid now (₹)</span>
+                <Input type="number" step="0.01" min="0" value={rawGoldPaid} onChange={(e) => setRawGoldPaid(e.target.value)}
+                  error={rawGoldPartialInvalid ? "Must be more than 0 and less than the bill" : undefined} placeholder="0" />
+              </label>
+            )}
+            {rawGoldStatus && (
+              <div className="grid grid-cols-2 gap-y-1 border-t border-line-soft pt-2.5 text-sm">
+                <span className="text-muted">{rawGoldStatus === "PARTIAL" ? "Paid now" : "Amount paid"}</span>
+                <span className="num text-right font-semibold">{money(rawGoldPaidNow)}</span>
+                <span className={rawGoldOutstanding > 0 ? "font-bold text-danger" : "text-muted"}>Outstanding</span>
+                <span className={`num text-right font-bold ${rawGoldOutstanding > 0 ? "text-danger" : ""}`}>{money(rawGoldOutstanding)}</span>
+              </div>
+            )}
+          </div>
+
+          {rawGold.profitOrLoss != null && (
+            <div className={`mt-3 flex items-baseline justify-between rounded-lg border px-3 py-2 ${rawGold.profitOrLoss < 0 ? "border-danger-line bg-danger-soft/50" : "border-emerald-200 bg-emerald-50"}`}>
+              <span className={`text-[11px] font-bold uppercase tracking-[0.07em] ${rawGold.profitOrLoss < 0 ? "text-danger" : "text-emerald-700"}`}>
+                {rawGold.profitOrLoss < 0 ? "Loss" : "Profit"}
+              </span>
+              <span className={`num text-[12px] font-bold ${rawGold.profitOrLoss < 0 ? "text-danger" : "text-emerald-700"}`}>
+                {money(Math.abs(rawGold.profitOrLoss))} <span className="font-semibold opacity-70">over the {money(rawGold.purchaseCost)} it cost</span>
+              </span>
+            </div>
+          )}
+
+          <Button className="mt-4 w-full" disabled={rawGoldBusy || !rawGoldBuyerReady || !rawGoldStatus || rawGoldPartialInvalid} onClick={createRawGoldSale}>
+            {rawGoldBusy ? "Creating…" : `Create bill · ${money(rawGold.finalAmount)}`}
+          </Button>
+          {!rawGoldBuyerReady
+            ? <p className="mt-2 text-center text-[11px] text-muted">Identify the buyer to enable billing.</p>
+            : !rawGoldStatus
+              ? <p className="mt-2 text-center text-[11px] text-muted">Choose how it is being paid.</p>
+              : null}
+        </Card>
+      )}
+
       {/* Placeholder for the pinned summary: keeps the right column occupied so
           the page reads as a billing screen rather than an empty form. */}
-      {!product && (
+      {!product && !rawGold && (
         <div className="hidden rounded-2xl border border-dashed border-line bg-canvas/40 p-6 lg:block">
           <div className="text-sm font-extrabold text-faint">Bill summary</div>
           <p className="mt-1 text-xs text-muted">Appears here once an item is loaded, and stays pinned while you work down the form.</p>
@@ -1606,7 +1676,7 @@ export default function NewSale() {
                 <div className="flex items-center gap-2">
                   {requoting && <span className="text-[11px] text-muted">…</span>}
                   <div className="inline-flex rounded-lg border border-line p-0.5">
-                    {[["GST On", true], ["GST Off", false]].map(([label, val]) => (
+                    {[["On", true], ["Off", false]].map(([label, val]) => (
                       <button key={label} type="button" onClick={() => setGst(val)} className={`rounded-md px-2.5 py-1 text-[10px] font-bold transition-colors ${gst === val ? "bg-accent text-white" : "text-muted hover:text-ink"}`}>{label}</button>
                     ))}
                   </div>

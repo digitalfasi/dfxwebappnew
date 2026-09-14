@@ -165,7 +165,7 @@ describe("a bar sells as a bar, in the same search box", () => {
   });
 
   it("the panel prices metal and GST and nothing else", () => {
-    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("{!product && !rawGold"));
+    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("Placeholder for the pinned summary"));
     expect(panel).toMatch(/Gold value/);
     expect(panel).toMatch(/GST \{rawGold\.taxRatePercent\}%/);
     expect(panel).toMatch(/Bill total/);
@@ -185,21 +185,55 @@ describe("a bar sells as a bar, in the same search box", () => {
 
 describe("a bullion bill has a buyer, but never a scheme", () => {
   it("the panel offers an existing customer or a walk-in", () => {
-    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("{!product && !rawGold"));
+    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("Placeholder for the pinned summary"));
     expect(panel).toMatch(/Existing customer/);
     expect(panel).toMatch(/Walk-in/);
     expect(panel).toMatch(/setSelectedCustomer\(c\)/);
   });
 
   it("it says plainly that a scheme does not apply, and offers none", () => {
-    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("{!product && !rawGold"));
+    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("Placeholder for the pinned summary"));
     expect(panel).toMatch(/Scheme redemption does not apply to bullion/);
     expect(panel).not.toMatch(/schemeOptions|schemeRedeem|Redeem/);
   });
 
   it("the bill cannot be raised without a buyer", () => {
     expect(ns).toMatch(/const rawGoldBuyerReady =/);
-    expect(ns).toMatch(/disabled=\{rawGoldBusy \|\| !rawGoldBuyerReady\}/);
+    expect(ns).toMatch(/disabled=\{rawGoldBusy \|\| !rawGoldBuyerReady \|\| !rawGoldStatus \|\| rawGoldPartialInvalid\}/);
+  });
+
+  it("a bar is settled in the same three words as a jewellery bill", () => {
+    // It was a bare "Amount collected - leave 0 to bill it as outstanding",
+    // which left the counter to translate their intent into a number.
+    expect(ns).toMatch(/const \[rawGoldStatus, setRawGoldStatus\] = useState\(""\);/);
+    expect(ns).toMatch(/options=\{PAYMENT_STATUSES\.map\(\(v\) => \(\{ value: v, label: PAYMENT_STATUS_LABEL\[v\] \}\)\)\}/);
+    // and what is collected FOLLOWS from the status, never typed beside it
+    expect(ns).toMatch(/rawGoldStatus === "PAID" \? rawGoldTotal : rawGoldStatus === "PARTIAL" \? rawGoldPaidNum : 0;/);
+    expect(ns).toMatch(/amountPaid: rawGoldPaidNow,/);
+  });
+
+  it("the bar's summary fills the right column instead of leaving it blank", () => {
+    // The whole short trade used to stack down the left while the right column
+    // sat empty and white, and the page scrolled for no reason.
+    expect(ns).toMatch(/\{!product && rawGold && \(/);
+    expect(ns).toMatch(/\{!product && !rawGold && \(/);
+  });
+});
+
+describe("one lookup box for both trades", () => {
+  it("the field names both identifiers", () => {
+    // The shop holds jewellery, found by HUID, and bullion, found by serial
+    // number. Naming only the HUID told the counter a bar could not be sold
+    // here, when typing its serial has always worked.
+    expect(ns).toMatch(/HUID or Serial No\. \*/);
+    expect(ns).toMatch(/placeholder="HUID for jewellery, serial number for a gold bar"/);
+    expect(ns).not.toMatch(/placeholder="Enter HUID"/);
+  });
+
+  it("the tax switch carries no GST caption", () => {
+    expect(ns).not.toMatch(/"GST On"/);
+    expect(ns).not.toMatch(/"GST Off"/);
+    expect(ns).toMatch(/\[\["On", true\], \["Off", false\]\]/);
   });
 });
 
