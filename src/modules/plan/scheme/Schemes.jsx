@@ -7,6 +7,7 @@ import { toast } from "@/_shared/toast";
 import { Select } from "@/_shared/ui/select";
 import { formatINR, money } from "@/_shared/utils";
 import { schemeService, SCHEME_TYPES } from "@/modules/plan/scheme/schemeService";
+import { planHeadline } from "@/modules/plan/scheme/schemeCapabilities";
 
 // Business limits, mirrored from app/modules/plan/scheme/schema.py. Every
 // scheme runs 12 months. Monthly Gold Saving is sold at the five instalments
@@ -285,10 +286,21 @@ export default function Schemes() {
               <Badge tone={s.status === "Active" ? "success" : "warning"} dot={s.status === "Active"}>{s.status}</Badge>
             </div>
             <h3 className="mt-1 text-[15px] font-bold tracking-tight">{s.name}</h3>
-            <div className="num mt-3 text-2xl font-extrabold tracking-tight">
-              {formatINR(s.amount)}
-              <span className="ml-1 text-xs font-semibold text-muted">/ mo</span>
-            </div>
+            {/* Quote the plan on ITS OWN terms. Every card used to print the
+                scheme's stored amount as "Rs 1,000 / mo", so a Flexible Digi
+                Gold wallet - which has no monthly amount, only a Rs 500 to
+                Rs 1,00,000 deposit range - advertised an instalment it does
+                not have, and a Fixed Gold Rate plan led with an amount when
+                what it is sold on is the purity. */}
+            {(() => {
+              const h = planHeadline(s);
+              return (
+                <div className={`num mt-3 font-extrabold tracking-tight ${h.small ? "text-lg" : "text-2xl"}`}>
+                  {h.value}
+                  <span className="ml-1 text-xs font-semibold text-muted">{h.suffix}</span>
+                </div>
+              );
+            })()}
             <div className="mt-auto border-t border-dashed border-line pt-3 text-xs text-muted">
               <div>{s.perk} · {s.tenure}</div>
               {s.enrolled !== null && (

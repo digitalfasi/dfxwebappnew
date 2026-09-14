@@ -5,6 +5,7 @@
  * names only. No business rules recomputed, no fields invented.
  */
 import { apiClient } from "@/_shared/apiClient";
+import { tenureLabel } from "@/modules/plan/scheme/schemeCapabilities";
 
 // The three (and only three) backend scheme types and their display labels.
 export const SCHEME_TYPES = [
@@ -27,7 +28,10 @@ function mapCard(raw) {
     schemeType,
     name: raw.name,
     amount: raw.monthly_amount,
-    tenure: `${raw.duration_months} installments`,
+    // A wallet has no instalment COUNT to quote - the customer deposits when
+    // he likes. tenureLabel says "12 months" for one and "12 installments"
+    // for a plan that really is paid in instalments.
+    tenure: tenureLabel({ schemeType }, raw.duration_months),
     perk: raw.bonus_description || raw.description || "Gold savings plan",
     // Enrollments referencing this scheme, any status — the server sends it so
     // the grid knows whether a permanent delete is possible at all. Null on an

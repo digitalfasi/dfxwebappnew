@@ -29,6 +29,46 @@ export const isWalletScheme = (schemeType) =>
 
 /** Capabilities of a scheme type. Unknown/missing type is treated as an
  *  instalment plan, which is what every pre-existing scheme is. */
+/**
+ * How a plan is SOLD, in the words that belong to its own type. One answer,
+ * used by the scheme card, both enrollment dialogs and the payment modal, so
+ * those four can never again quote a plan on terms it does not have.
+ *
+ *   MONTHLY            an instalment: "Rs 1,000 / mo".
+ *   FLEXIBLE_DIGI_GOLD a wallet: a RANGE per deposit, no monthly figure at all.
+ *   FIXED_GOLD_RATE    sold on the purity, whose rate that day is locked.
+ *
+ * `amount` is only ever read for MONTHLY. On the other two the scheme's stored
+ * amount is a guide, not a commitment, and printing it as "/mo" is what made a
+ * wallet look like a Rs 1,000 instalment plan on every screen it appeared on.
+ */
+export function planHeadline(scheme) {
+  const type = scheme?.schemeType || scheme?.scheme_type;
+  if (isWalletScheme(type)) {
+    return { value: `${fmt(DIGI_MIN)} – ${fmt(DIGI_MAX)}`, suffix: "per deposit", small: true };
+  }
+  if (type === SCHEME_TYPE.FIXED_GOLD_RATE) {
+    const purity = scheme?.goldPurity || scheme?.gold_purity;
+    return { value: purity || "Gold", suffix: "rate locked on the day of enrollment", small: true };
+  }
+  const amt = Number(scheme?.amount ?? scheme?.monthly_amount ?? 0);
+  return { value: fmt(amt), suffix: "/ mo", small: false };
+}
+
+/** Whole rupees, Indian grouping — the card has no room for paise. */
+function fmt(n) {
+  return `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
+/** A wallet is not paid in instalments, so it has no instalment COUNT to
+ *  quote. Its duration is still real - it is when the wallet matures. */
+export function tenureLabel(scheme, durationMonths) {
+  const months = Number(durationMonths ?? scheme?.durationMonths ?? scheme?.duration_months ?? 0);
+  if (!months) return "";
+  const type = scheme?.schemeType || scheme?.scheme_type;
+  return isWalletScheme(type) ? `${months} months` : `${months} installments`;
+}
+
 export function schemeCapabilities(schemeType) {
   const wallet = isWalletScheme(schemeType);
   return {
