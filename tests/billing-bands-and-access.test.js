@@ -18,7 +18,7 @@ describe("running cost is a field the shop owns", () => {
   });
   it("the dialog offers it, and says what it is for", () => {
     expect(inv).toMatch(/Running Cost %/);
-    expect(inv).toMatch(/Break-even is this plus the lot&apos;s tunch/);
+    expect(inv).toMatch(/Rent, wages, power\. Default 4%\./);
   });
 });
 

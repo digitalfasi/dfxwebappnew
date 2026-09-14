@@ -108,8 +108,18 @@ export default function NewSale() {
         // whole bill, PARTIAL takes what was handed over, PENDING takes none.
         amountPaid: rawGoldPaidNow,
       });
-      toast(`Bill ${sale?.invoice_number || ""} created`);
       setRawGold(null); setRawGoldRate(""); setRawGoldPaid(""); setRawGoldStatus(""); setCode("");
+      if (sale?.id) {
+        setInvoice({
+          id: sale.id,
+          invoiceNumber: sale.invoice_number,
+          finalAmount: sale.final_amount,
+        });
+      } else {
+        // No id back means no PDF to offer; say what happened rather than
+        // opening a dialog whose buttons cannot work.
+        toast(`Bill ${sale?.invoice_number || ""} created`);
+      }
     } catch (err) {
       toast(err?.message || "Could not create the bill");
     } finally {
@@ -1031,7 +1041,7 @@ export default function NewSale() {
               <label className="grid gap-1.5">
                 {/* No "GST" caption, per the owner - the control is the switch
                     and the line beneath already says what it switches. */}
-                <span className="text-xs font-bold">Tax</span>
+                <span className="text-xs font-bold">&nbsp;</span>
                 <div className="flex h-10 items-center gap-1 rounded-xl border border-line bg-canvas/60 p-1">
                   {[["On", true], ["Off", false]].map(([label, val]) => (
                     <button key={label} type="button" onClick={() => setRawGoldGst(val)}

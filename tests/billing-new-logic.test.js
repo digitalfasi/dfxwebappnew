@@ -311,7 +311,45 @@ describe("the verdict states this piece's own floors", () => {
     // that make it are set.
     expect(ns).not.toMatch(/% list = /);
     expect(ns).not.toMatch(/% tunch \+ /);
-    expect(inv).toMatch(/How a bill is priced/);
-    expect(inv).toMatch(/this Making Value \+ Running Cost \+ that piece/);
+    expect(inv).toMatch(/Making Value \+ Running Cost \+ the lot/);
+  });
+});
+
+
+describe("the screens stay small enough to use", () => {
+  const pay = read("../src/modules/payments/Payments.jsx");
+
+  it("Store Defaults explains the rule in one line, not three paragraphs", () => {
+    // It grew until Save sat below the fold of the dialog.
+    expect(inv).not.toMatch(/How a bill is priced/);
+    expect(inv).toMatch(/Making Value \+ Running Cost \+ the lot/);
+    expect(inv).not.toMatch(/3% gold profit \+ 3% negotiable extra/);
+  });
+
+  it("Payments shows both types at once instead of behind a dropdown", () => {
+    expect(pay).toMatch(/\[\["business", "Business Payment"\], \["scheme", "Scheme Payment"\]\]/);
+    expect(pay).toMatch(/onClick=\{\(\) => setTab\(val\)\}/);
+    // the state and everything reading it are untouched
+    expect(pay).toMatch(/tab === "business"/);
+  });
+
+  it("bulk receiving can add a vendor without losing the rows already typed", () => {
+    // The control existed only on the single-item Add Purchase form, so a lot
+    // from a vendor not yet on file could not be received at all.
+    // Both forms now carry it: the single-item Add Purchase, and bulk receiving.
+    expect(inv.match(/\+ Add new vendor/g) || []).toHaveLength(2);
+    expect(inv).toMatch(/setBulkHeader\(h => \(\{ \.\.\.h, vendor: v\.name \}\)\);/);
+  });
+
+  it("a bar's bill ends in the same dialog a piece's does", () => {
+    // It ended in a toast with an invoice number, so printing it meant going
+    // to find the sale in Sales History.
+    expect(ns).toMatch(/setInvoice\(\{\r?\n\s*id: sale\.id,/);
+    expect(ns).toMatch(/invoiceNumber: sale\.invoice_number,/);
+  });
+
+  it("nothing on the bar panel is captioned Tax or GST", () => {
+    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("Placeholder for the pinned summary"));
+    expect(panel).not.toMatch(/className="text-xs font-bold">Tax</);
   });
 });

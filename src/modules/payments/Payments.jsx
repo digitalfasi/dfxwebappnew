@@ -333,15 +333,23 @@ export default function Payments() {
 
       {/* Top navigation / toggle */}
       <div className="flex items-center justify-between mb-4">
-        <div data-motion="toolbar" className="flex items-center gap-2.5">
-          <span className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Payment type</span>
-          <Select
-            value={tab}
-            onValueChange={setTab}
-            options={[{ value: "business", label: "Business Payment" }, { value: "scheme", label: "Scheme Payment" }]}
-            variant="accent"
-            className="w-52"
-          />
+        {/* Two of them, so they sit side by side instead of hiding behind a
+            dropdown that has to be opened to see what the other one even is.
+            Same `tab` state, same handler - nothing below this line changes. */}
+        <div data-motion="toolbar" className="inline-flex items-center gap-1 rounded-xl border border-line bg-canvas/60 p-1">
+          {[["business", "Business Payment"], ["scheme", "Scheme Payment"]].map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              onClick={() => setTab(val)}
+              aria-pressed={tab === val}
+              className={`rounded-lg px-4 py-2 text-xs font-bold transition-colors ${
+                tab === val ? "bg-accent text-white shadow-sm" : "text-ink-soft hover:bg-surface"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         {/* Primary action — Record Manual Payment on upper-right, blue filled with plus */}
         <Button size="sm" variant="default" onClick={() => (tab === "business" ? setShowBizManual(true) : setShowManual(true))} className="bg-accent hover:bg-accent-strong">

@@ -677,6 +677,7 @@ export default function Inventory({ onNavigate }) {
       const v = await billingService.createVendor({ name, phone: newVendor.phone.trim() || undefined });
       setVendorList(prev => [...prev, v]);
       setAddForm(f => ({ ...f, vendor: v.name }));
+      setBulkHeader(h => ({ ...h, vendor: v.name }));
       setNewVendor({ name: "", phone: "" });
       setShowAddVendor(false);
       toast(`Vendor added — ${v.name}`);
@@ -1064,7 +1065,34 @@ export default function Inventory({ onNavigate }) {
 
               {/* Shared header */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Vendor *</span><Select value={bulkHeader.vendor} onValueChange={v=>setBulkHeader({...bulkHeader, vendor:v})} options={vendorNames} placeholder={vendorNames.length ? "Select vendor…" : "No vendors — add one"} /></label>
+                <div className="grid gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold">Vendor *</span>
+                    {!showAddVendor && (
+                      <button type="button" onClick={()=>setShowAddVendor(true)} className="text-[11px] font-bold text-accent underline">+ Add new vendor</button>
+                    )}
+                  </div>
+                  <Select value={bulkHeader.vendor} onValueChange={v=>setBulkHeader({...bulkHeader, vendor:v})} options={vendorNames} placeholder={vendorNames.length ? "Select vendor…" : "No vendors — add one"} />
+                  {showAddVendor && (
+                    <div className="mt-1 grid gap-3 rounded-xl border border-line bg-surface p-4">
+                      <label className="grid gap-1.5"><span className="text-xs font-bold">New vendor name<span className="text-danger">*</span></span><Input value={newVendor.name} onChange={e=>setNewVendor({...newVendor, name:e.target.value})} placeholder="e.g. Sri Balaji Gold" /></label>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-bold">Phone <span className="font-normal text-muted">— 10 digits</span></span>
+                        <div className="flex h-10 items-stretch overflow-hidden rounded-xl border border-line bg-surface transition focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]">
+                          <span className="grid w-11 shrink-0 place-items-center border-r border-line-soft bg-canvas/60 text-sm font-bold text-muted" aria-hidden="true">+91</span>
+                          <DigitsInput value={newVendor.phone} onValueChange={v=>setNewVendor({...newVendor, phone:v})} maxDigits={10} placeholder="98765 43210" aria-label="Vendor mobile number" className="min-w-0 flex-1 rounded-none border-0 bg-transparent shadow-none focus:shadow-none" />
+                        </div>
+                        {newVendor.phone && !/^[6-9]\d{9}$/.test(newVendor.phone) && (
+                          <span className="text-[11px] font-semibold text-danger">Enter a 10-digit number starting 6-9.</span>
+                        )}
+                      </label>
+                      <div className="flex justify-end gap-2.5">
+                        <Button variant="outline" size="sm" disabled={vendorSaving} onClick={()=>{setShowAddVendor(false);setNewVendor({ name: "", phone: "" });}}>Cancel</Button>
+                        <Button size="sm" disabled={vendorSaving} onClick={addVendorInline}>{vendorSaving ? "Adding…" : "Add vendor"}</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date *</span><Input type="date" value={bulkHeader.date} onChange={e=>setBulkHeader({...bulkHeader, date:e.target.value})} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Invoice Number</span><Input value={bulkHeader.invoice} onChange={e=>setBulkHeader({...bulkHeader, invoice:e.target.value})} placeholder="INV-..." /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Payment Type</span><Select value={bulkHeader.paymentMode} onValueChange={v=>setBulkHeader({...bulkHeader, paymentMode:v})} options={PAYMENT_MODES} /></label>
@@ -1288,7 +1316,7 @@ export default function Inventory({ onNavigate }) {
           <div className="relative w-full max-w-[560px] rounded-2xl border border-line bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">Store Pricing Defaults</h3><button onClick={()=>setShowDefaults(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
             <div className="px-6 py-5">
-              <p className="mb-4 text-xs text-muted">Pre-fill source only — used to resolve making/wastage/profit/tax for new items. Never changes any saved inventory or sale.</p>
+              <p className="mb-4 text-xs text-muted">Pre-fill for new items only. Never changes saved inventory or a raised bill.</p>
               {defaultsLoading || !defaults ? (
                 <div className="py-10 text-center text-sm font-bold text-muted">Loading…</div>
               ) : (
@@ -1298,7 +1326,7 @@ export default function Inventory({ onNavigate }) {
                       rupees and needs real room (a Rs 500 flat making charge is an
                       ordinary figure). The cap follows the unit, exactly as the
                       server validates it. */}
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Making Value {defaults.makingType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.makingValue} onValueChange={v=>setDefaults({...defaults, makingValue:v})} maxDigits={defaults.makingType === "PERCENTAGE" ? 2 : 7} />{defaults.makingType === "PERCENTAGE" && <span className="text-[11px] text-muted">The shop&rsquo;s base making charge &mdash; 3% gold profit + 3% negotiable extra. Billing adds the running cost below and the lot&rsquo;s own tunch on top, so a 6% base on a 6% tunch lot bills at 16%.</span>}</label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Making Value {defaults.makingType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.makingValue} onValueChange={v=>setDefaults({...defaults, makingValue:v})} maxDigits={defaults.makingType === "PERCENTAGE" ? 2 : 7} />{defaults.makingType === "PERCENTAGE" && <span className="text-[11px] text-muted">Half gold profit, half negotiable. Default 6%.</span>}</label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Type</span><Select value={defaults.wastageType} onValueChange={v=>setDefaults({...defaults, wastageType:v})} options={["PERCENTAGE","FIXED","PER_GRAM"]} /></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Value {defaults.wastageType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.wastageValue} onValueChange={v=>setDefaults({...defaults, wastageValue:v})} maxDigits={defaults.wastageType === "PERCENTAGE" ? 2 : 7} /></label>
                   {/* Gold Profit is gone from the counter: the store's margin
@@ -1311,35 +1339,22 @@ export default function Inventory({ onNavigate }) {
                       that was never visible. break-even = tunch + running cost,
                       and the tunch comes from the lot the piece was bought on,
                       so this is the only part of it the shop sets. */}
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Running Cost % <span className="font-normal text-muted">— 0-99</span></span><DigitsInput value={defaults.runningCost} onValueChange={v=>setDefaults({...defaults, runningCost:v})} maxDigits={2} /><span className="text-[11px] text-muted">Rent, wages, electricity — as a share of the metal. Blank uses 4%. Break-even is this plus the lot&apos;s tunch.</span></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Tax / GST % <span className="font-normal text-muted">— 0-9</span></span><DigitsInput value={defaults.tax} onValueChange={v=>setDefaults({...defaults, tax:v})} maxDigits={1} /><span className="text-[11px] text-muted">GST on jewellery is 3%.</span></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Running Cost % <span className="font-normal text-muted">— 0-99</span></span><DigitsInput value={defaults.runningCost} onValueChange={v=>setDefaults({...defaults, runningCost:v})} maxDigits={2} /><span className="text-[11px] text-muted">Rent, wages, power. Default 4%.</span></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Tax / GST % <span className="font-normal text-muted">— 0-9</span></span><DigitsInput value={defaults.tax} onValueChange={v=>setDefaults({...defaults, tax:v})} maxDigits={1} /><span className="text-[11px] text-muted">Jewellery is 3%.</span></label>
                   {/* One mode exists, so this was a dropdown that could only ever
                       pick what it already showed. Read-only until a second mode is
                       a real product decision. */}
-                  {/* The whole rule, stated once, where the numbers that make
-                      it are set. New Sale prints the verdict only - the counter
-                      needs the decision, not the derivation. */}
-                  <div className="grid gap-1.5 sm:col-span-2 rounded-xl border border-line bg-canvas/60 p-3.5">
-                    <span className="text-xs font-bold">How a bill is priced</span>
-                    <p className="text-[11px] leading-relaxed text-muted">
-                      Making charge at billing = <b className="text-ink">this Making Value + Running Cost + that piece&rsquo;s own tunch</b>.
-                      {" "}The tunch comes from the lot the piece was bought on, so a dearer lot bills higher on its own.
-                    </p>
-                    <p className="text-[11px] leading-relaxed text-muted">
-                      Of the Making Value, half is gold profit and half is negotiable extra &mdash; at 6% that is 3% + 3%.
-                      {" "}Only the extra may be given away: below it the gold profit starts going, and below
-                      {" "}<b className="text-ink">running cost + tunch</b> the bill loses money.
-                    </p>
-                    <p className="text-[11px] leading-relaxed text-muted">
-                      Example &mdash; 6% here, 4% running cost, a 6% tunch lot: <b className="text-ink">16% list</b>,
-                      {" "}13% keeps the gold profit whole, 10% is a loss.
-                    </p>
-                  </div>
+                  {/* The rule in one line. It was three paragraphs, which grew
+                      the dialog until Save sat below the fold - a settings box
+                      should be readable at a glance, not studied. */}
+                  <p className="sm:col-span-2 rounded-xl border border-line bg-canvas/60 px-3.5 py-2.5 text-[11px] text-muted">
+                    Billing charges <b className="text-ink">Making Value + Running Cost + the lot&rsquo;s tunch</b>. Only half the Making Value is discountable.
+                  </p>
                   <div className="grid gap-1.5 sm:col-span-2">
                     <span className="text-xs font-bold">Pricing Mode</span>
                     <div className="flex h-10 items-center gap-2 rounded-xl border border-line bg-canvas/60 px-3.5">
                       <span className="text-sm font-bold text-ink">Auto</span>
-                      <span className="text-[11px] text-muted">— the server prices every item from the live rate and these defaults.</span>
+                      <span className="text-[11px] text-muted">— priced from the live rate and these defaults.</span>
                     </div>
                   </div>
                 </div>
