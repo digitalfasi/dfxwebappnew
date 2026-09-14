@@ -272,7 +272,13 @@ export default function SchemeManagement() {
       <div data-motion="reveal" className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard label="Active Enrollments" value={loading || !kpis ? "—" : String(kpis.active_enrollments)} />
         <KpiCard label="Total Paid" value={loading || !kpis ? "—" : money(kpis.total_paid)} />
-        <KpiCard label="Outstanding" value={loading || !kpis ? "—" : money(kpis.outstanding)} />
+        {/* NOT "Outstanding". This is the contract value still to be
+            collected over the remaining term - on a 12-month plan with one
+            instalment paid it is eleven months' worth, and none of it is late.
+            Sitting beside an Overdue filter, the old word read as "owed now"
+            and made a perfectly healthy enrollment look delinquent. The
+            arithmetic is unchanged; only the label was wrong. */}
+        <KpiCard label="Remaining to collect" value={loading || !kpis ? "—" : money(kpis.outstanding)} />
         <KpiCard label="Completed" value={loading || !kpis ? "—" : String(kpis.completed)} />
       </div>
 
@@ -303,7 +309,7 @@ export default function SchemeManagement() {
           <table className="w-full min-w-[1160px] border-collapse text-sm">
             <thead>
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3 text-right">Installment</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Outstanding</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
+                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3 text-right">Installment</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Remaining</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -418,7 +424,7 @@ export default function SchemeManagement() {
                       {/* Overdue and Next Due only mean something while the
                           enrollment is still running. On a closed/completed
                           record they read Nil rather than a stale figure. */}
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Outstanding</td><td className={`px-4 py-2.5 ${isWalletScheme(manage.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(manage.schemeType) ? NOT_APPLICABLE : (isClosed ? "Nil" : money(outstanding(manage)))}</td></tr>
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Remaining to pay</td><td className={`px-4 py-2.5 ${isWalletScheme(manage.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(manage.schemeType) ? NOT_APPLICABLE : (isClosed ? "Nil" : money(outstanding(manage)))}</td></tr>
                       {/* The customer's own terms, frozen when he joined: a
                           Monthly plan redeems the rupees he paid; the two gold
                           schemes redeem what his grams are worth today, which

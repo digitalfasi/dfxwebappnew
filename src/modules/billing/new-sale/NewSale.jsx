@@ -88,6 +88,11 @@ export default function NewSale() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawGoldRate, rawGoldGst, rawGold?.serialNumber]);
 
+  // A bill needs a buyer, the same as any other. Either a real customer is
+  // chosen, or a walk-in is named with a phone that is either blank or whole.
+  const rawGoldBuyerReady =
+    (customerMode === "existing" ? !!selectedCustomer?.id : walkinName.trim().length >= 2) && !walkinPhoneInvalid;
+
   async function createRawGoldSale() {
     if (!rawGold) return;
     setRawGoldBusy(true);
@@ -943,6 +948,56 @@ export default function NewSale() {
               )}
             </div>
 
+            {/* The buyer. An existing customer can be chosen exactly as on a
+                jewellery bill - what is absent is the SCHEME section, because a
+                scheme buys jewellery gold at a contracted rate and spending it
+                on bullion at the market rate is a different promise. */}
+            <div className="space-y-3 rounded-xl border border-line bg-canvas/30 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold">Customer</span>
+                <div className="flex gap-2">
+                  {[["existing", "Existing customer"], ["walkin", "Walk-in"]].map(([m, label]) => (
+                    <button key={m} type="button" onClick={() => setCustomerMode(m)}
+                      className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-colors ${customerMode === m ? "border-accent bg-accent-soft text-accent-strong" : "border-line text-ink-soft hover:bg-canvas"}`}>{label}</button>
+                  ))}
+                </div>
+              </div>
+
+              {customerMode === "existing" ? (
+                selectedCustomer ? (
+                  <div className="flex items-center justify-between rounded-lg border border-line bg-surface px-3 py-2.5">
+                    <div>
+                      <div className="text-sm font-bold">{selectedCustomer.name}</div>
+                      <div className="text-[11px] text-muted">{selectedCustomer.phone && selectedCustomer.phone !== "—" ? selectedCustomer.phone : "No phone on file"}</div>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => setSelectedCustomer(null)}>Change</Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <SearchInput value={custQuery} onChange={(e) => setCustQuery(e.target.value)} placeholder="Search name, phone or customer code…" />
+                    {custSearching && <div className="text-[11px] text-muted">Searching…</div>}
+                    {custResults.slice(0, 5).map((c) => (
+                      <button key={c.id} type="button" onClick={() => setSelectedCustomer(c)}
+                        className="flex w-full items-center justify-between rounded-lg border border-line bg-surface px-3 py-2 text-left hover:border-accent-line hover:bg-accent-soft/40">
+                        <span className="text-sm font-semibold">{c.name}</span>
+                        <span className="font-mono text-[11px] text-muted">{c.code || c.phone}</span>
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Name *</span><Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Walk-in buyer name" /></label>
+                  <label className="grid min-w-0 gap-1.5">
+                    <span className="text-xs font-bold">Phone <span className="font-normal text-muted">— 10 digits</span></span>
+                    <PhoneInput value={walkinPhone} onValueChange={setWalkinPhone} error={walkinPhoneInvalid} />
+                    {walkinPhoneInvalid && <span className="text-[11px] font-semibold text-danger">Enter all 10 digits</span>}
+                  </label>
+                </div>
+              )}
+              <p className="text-[11px] text-muted">Scheme redemption does not apply to bullion — a scheme buys jewellery gold at its contracted rate.</p>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Payment method *</span>
@@ -956,7 +1011,7 @@ export default function NewSale() {
             </div>
 
             <div className="flex justify-end">
-              <Button size="sm" disabled={rawGoldBusy} onClick={createRawGoldSale}>
+              <Button size="sm" disabled={rawGoldBusy || !rawGoldBuyerReady} onClick={createRawGoldSale}>
                 {rawGoldBusy ? "Creating…" : `Create bill · ${money(rawGold.finalAmount)}`}
               </Button>
             </div>

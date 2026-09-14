@@ -74,12 +74,48 @@ describe("a bar sells as a bar, in the same search box", () => {
     expect(panel).toMatch(/Gold value/);
     expect(panel).toMatch(/GST \{rawGold\.taxRatePercent\}%/);
     expect(panel).toMatch(/Bill total/);
-    for (const absent of ["Making Charge", "Wastage", "Discount", "scheme", "Scheme"]) {
+    // The CONTROLS must be absent, not the word: the panel deliberately says
+    // that a scheme does not apply to bullion, which is the opposite of
+    // offering one. Asserting on the bare word made explaining the rule
+    // impossible without failing the test.
+    for (const absent of ["Making Charge", "Wastage", "Discount (", "schemeOptions", "setSchemeRedeem"]) {
       expect(panel).not.toContain(absent);
     }
   });
 
   it("finding a new item clears any bar that was loaded", () => {
     expect(ns).toMatch(/setRawGold\(null\); setRawGoldRate\(""\);/);
+  });
+});
+
+describe("a bullion bill has a buyer, but never a scheme", () => {
+  it("the panel offers an existing customer or a walk-in", () => {
+    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("{!product && !rawGold"));
+    expect(panel).toMatch(/Existing customer/);
+    expect(panel).toMatch(/Walk-in/);
+    expect(panel).toMatch(/setSelectedCustomer\(c\)/);
+  });
+
+  it("it says plainly that a scheme does not apply, and offers none", () => {
+    const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("{!product && !rawGold"));
+    expect(panel).toMatch(/Scheme redemption does not apply to bullion/);
+    expect(panel).not.toMatch(/schemeOptions|schemeRedeem|Redeem/);
+  });
+
+  it("the bill cannot be raised without a buyer", () => {
+    expect(ns).toMatch(/const rawGoldBuyerReady =/);
+    expect(ns).toMatch(/disabled=\{rawGoldBusy \|\| !rawGoldBuyerReady\}/);
+  });
+});
+
+describe("remaining is not overdue", () => {
+  it("the enrollment screen says what the figure actually is", () => {
+    expect(sm).toMatch(/Remaining to collect/);
+    expect(sm).toMatch(/>Remaining</);
+    expect(sm).toMatch(/Remaining to pay/);
+  });
+  it("and no longer calls it Outstanding beside an Overdue filter", () => {
+    expect(sm).not.toMatch(/label="Outstanding"/);
+    expect(sm).not.toMatch(/>Outstanding</);
   });
 });
