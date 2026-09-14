@@ -197,6 +197,12 @@ export const billingService = {
       wastageType: d.wastage_type ?? "PERCENTAGE",
       wastageValue: d.wastage_value ?? "",
       goldProfit: d.gold_profit_percent ?? "",
+      // The shop's own cost of being open, as a percentage of the metal. It
+      // was welded into the break-even rule at 4% where nobody could see or
+      // change it; a shop whose real running cost is 6% was being told an 11%
+      // bill broke even when it did not. Blank means "use the 4% the rule has
+      // always assumed".
+      runningCost: d.running_cost_percent ?? "",
       tax: d.tax_rate_percent ?? "",
       pricingMode: d.default_pricing_mode ?? "AUTO",
     };
@@ -214,6 +220,7 @@ export const billingService = {
       // default - margin lives in the making charge - so whatever the store had
       // is sent back untouched rather than being wiped to null on the next save.
       gold_profit_percent: f.goldProfit !== "" && f.goldProfit != null ? Number(f.goldProfit) : null,
+      running_cost_percent: f.runningCost !== "" && f.runningCost != null ? Number(f.runningCost) : null,
       tax_rate_percent: f.tax !== "" ? Number(f.tax) : null,
       default_pricing_mode: f.pricingMode,
     };

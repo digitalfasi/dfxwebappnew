@@ -10,6 +10,7 @@ import { billingService } from "@/modules/billing/billingService";
 import { money, istToday } from "@/_shared/utils";
 import { goldRateService } from "@/modules/gold-rate/goldRateService";
 import { masterInventoryService } from "@/modules/procurement/master-inventory/masterInventoryService";
+import { useAuth } from "@/_shared/AuthContext";
 
 // A purchase is ALWAYS priced at the 24K (pure gold) rate — the purity only
 // converts the net weight into the pure gold it contains, it never changes the
@@ -57,6 +58,10 @@ const EMPTY_PURCHASE = {
 
 export default function Inventory({ onNavigate }) {
   const scope = useRef(null);
+  // Store pricing defaults are Admin-only server-side; mirror that here so the
+  // button is not offered to someone the API will refuse.
+  const { backendRole } = useAuth();
+  const seesStoreDefaults = backendRole === "Admin" || backendRole === "SuperAdmin";
   usePressFeedback(scope);
 
   const [items, setItems] = useState([]);
@@ -664,7 +669,14 @@ export default function Inventory({ onNavigate }) {
           <p className="mt-1 text-sm text-muted">Receive finished jewellery / artefacts into stock — <span className="font-mono text-xs">HUID</span> tracked per piece.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={openDefaults}>Store Pricing Defaults</Button>
+          {/* The store's pricing defaults are its costs and its margin - what
+              the shop pays and what it intends to earn. The server has always
+              refused Staff here (403 on read and on write); the button was
+              offered to them anyway, so clicking it produced a red error for
+              something they were never meant to see. */}
+          {seesStoreDefaults && (
+            <Button variant="outline" size="sm" onClick={openDefaults}>Store Pricing Defaults</Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>Bulk Purchase</Button>
           <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => setShowAdd(true)}>Add Purchase</Button>
         </div>
@@ -1211,6 +1223,11 @@ export default function Inventory({ onNavigate }) {
                       every bill on top of the one the counter sets. The stored
                       value is preserved for invoices already raised against it
                       and sent back unchanged - it is simply no longer edited. */}
+                  {/* Running cost — the shop's own, and the half of break-even
+                      that was never visible. break-even = tunch + running cost,
+                      and the tunch comes from the lot the piece was bought on,
+                      so this is the only part of it the shop sets. */}
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Running Cost % <span className="font-normal text-muted">— 0-99</span></span><DigitsInput value={defaults.runningCost} onValueChange={v=>setDefaults({...defaults, runningCost:v})} maxDigits={2} /><span className="text-[11px] text-muted">Rent, wages, electricity — as a share of the metal. Blank uses 4%. Break-even is this plus the lot&apos;s tunch.</span></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Tax / GST % <span className="font-normal text-muted">— 0-9</span></span><DigitsInput value={defaults.tax} onValueChange={v=>setDefaults({...defaults, tax:v})} maxDigits={1} /><span className="text-[11px] text-muted">GST on jewellery is 3%.</span></label>
                   {/* One mode exists, so this was a dropdown that could only ever
                       pick what it already showed. Read-only until a second mode is
