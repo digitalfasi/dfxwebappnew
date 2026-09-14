@@ -584,7 +584,7 @@ export const billingService = {
    * statuses are backend authoritative. Returns already-mapped rows plus the
    * real total count for the footer.
    */
-  async listSales({ search = "", limit = 100, page = 1, customerId = "", paymentStatus = "", saleStatus = "", dateFrom = "", dateTo = "", period = "", category = "", subcategory = "", purity = "" } = {}) {
+  async listSales({ search = "", limit = 100, page = 1, customerId = "", paymentStatus = "", saleStatus = "", dateFrom = "", dateTo = "", period = "", category = "", subcategory = "", purity = "", timeoutMs } = {}) {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (search) params.set("search", search);
     if (customerId) params.set("customer_id", customerId);

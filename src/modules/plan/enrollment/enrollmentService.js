@@ -79,9 +79,9 @@ export const enrollmentService = {
    * GET /api/v1/enrollments — admin list. Pass customerId to scope to one
    * customer's enrollments (backend customer_id filter); omit for the full list.
    */
-  async getEnrollments(customerId = "") {
+  async getEnrollments(customerId = "", { timeoutMs } = {}) {
     const q = customerId ? `?customer_id=${encodeURIComponent(customerId)}` : "";
-    const res = await apiClient.get(`/enrollments${q}`, { auth: true });
+    const res = await apiClient.get(`/enrollments${q}`, { auth: true, timeoutMs });
     return (res.data?.enrollments ?? []).map(mapRow);
   },
 

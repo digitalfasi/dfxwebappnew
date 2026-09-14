@@ -51,7 +51,7 @@ describe("an unknown figure is not a zero", () => {
   it("the failure is stated on screen, with a way to retry it", () => {
     expect(src).toMatch(/setBizFailed\(rows === null\)/);
     expect(src).toMatch(/they are not zero, they are unknown/);
-    expect(src).toMatch(/\{bizFailed && \(/);
+    expect(src).toMatch(/bizFailed \|\| coreFailed/);
   });
 
   it("today is still scoped by the SERVER, never by the viewer's clock", () => {

@@ -334,10 +334,16 @@ export function refreshAccessToken() {
 }
 
 export async function apiRequest(path, options = {}) {
-  const { method = "GET", body, auth = false, signal } = options;
+  // timeoutMs was accepted by rawRequest and silently dropped here, so every
+  // AUTHENTICATED call - which is all of them - ran on the 45s default no
+  // matter what the caller asked for. A per-call ceiling that never applies is
+  // worse than none: it reads as a bound in the code and is not one at
+  // runtime, which is exactly how a dashboard came to sit blank for a minute
+  // and a half while the code said twelve seconds.
+  const { method = "GET", body, auth = false, signal, timeoutMs } = options;
 
   if (!auth) {
-    return rawRequest(path, { method, body, signal });
+    return rawRequest(path, { method, body, signal, timeoutMs });
   }
 
   const token = tokenStore.getAccessToken();
@@ -349,7 +355,7 @@ export async function apiRequest(path, options = {}) {
   }
 
   try {
-    return await rawRequest(path, { method, body, token, signal });
+    return await rawRequest(path, { method, body, token, signal, timeoutMs });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       const newToken = await refreshAccessToken();
@@ -370,7 +376,7 @@ export async function apiRequest(path, options = {}) {
       // empty data with 401s piling up in the console and nothing said. The
       // second 401 is the answer: stop, and drop to login.
       try {
-        return await rawRequest(path, { method, body, token: newToken, signal });
+        return await rawRequest(path, { method, body, token: newToken, signal, timeoutMs });
       } catch (retryError) {
         if (retryError instanceof ApiError && retryError.status === 401) {
           tokenStore.clear();

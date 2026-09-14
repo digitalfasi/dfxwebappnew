@@ -92,7 +92,7 @@ describe("no panel may silently show dashes", () => {
   it("Schemes has the same three states as Store Business", () => {
     expect(dash).toMatch(/const \[schemeLoading, setSchemeLoading\] = useState\(true\)/);
     expect(dash).toMatch(/const \[schemeFailed, setSchemeFailed\] = useState\(false\)/);
-    expect(dash).toMatch(/\{schemeFailed && \(/);
+    expect(dash).toMatch(/schemeFailed \|\| coreFailed/);
   });
 
   it("its KPIs show the skeleton while in flight", () => {
@@ -108,5 +108,46 @@ describe("no panel may silently show dashes", () => {
     const ms = Number(dash.match(/const DASHBOARD_TIMEOUT_MS = (\d+)/)[1]);
     expect(ms).toBeGreaterThanOrEqual(20000);
     expect(ms).toBeLessThan(45000);
+  });
+});
+
+describe("the per-call timeout actually applies", () => {
+  const api = readFileSync(new URL("../src/_shared/apiClient.js", import.meta.url), "utf8");
+
+  // rawRequest accepted timeoutMs; apiRequest destructured only
+  // {method, body, auth, signal} and dropped it. Every AUTHENTICATED call -
+  // which is all of them - therefore ran on the 45s default however short a
+  // ceiling the caller asked for. A bound that reads as a bound and is not one
+  // at runtime is worse than no bound at all.
+  it("apiRequest takes timeoutMs from its caller", () => {
+    expect(api).toMatch(/const \{ method = "GET", body, auth = false, signal, timeoutMs \} = options/);
+  });
+
+  it("and passes it on every path it can take", () => {
+    const fn = api.slice(api.indexOf("export async function apiRequest"), api.indexOf("export async function downloadFile"));
+    const calls = [...fn.matchAll(/rawRequest\(path, \{[^}]*\}/g)].map((m) => m[0]);
+    expect(calls.length).toBeGreaterThanOrEqual(3); // unauthed, first try, retry
+    for (const c of calls) expect(c).toMatch(/timeoutMs/);
+  });
+});
+
+describe("Outstanding Amount and Pending Dues cannot dash silently", () => {
+  it("both show the skeleton while their call is in flight", () => {
+    expect(dash).toMatch(/Outstanding Amount" value=\{fmtCurrency\(outstanding\)\} loading=\{coreLoading\}/);
+    expect(dash).toMatch(/Pending Dues" value=\{fmtCurrency\(pendingDues\)\} loading=\{coreLoading\}/);
+  });
+
+  it("a failure there raises the banner in both panels", () => {
+    expect(dash).toMatch(/\{\(bizFailed \|\| coreFailed\) && \(/);
+    expect(dash).toMatch(/\{\(schemeFailed \|\| coreFailed\) && \(/);
+  });
+
+  it("they carry the dashboard ceiling instead of the 45s default", () => {
+    expect(dash).toMatch(/listSales\(\{ limit: 5, timeoutMs: DASHBOARD_TIMEOUT_MS \}\)/);
+    expect(dash).toMatch(/getEnrollments\("", \{ timeoutMs: DASHBOARD_TIMEOUT_MS \}\)/);
+  });
+
+  it("a refused all-time summary is not read as zero dues", () => {
+    expect(dash).toMatch(/const payAllOk = payAll && !payAll\.__refused && !payAll\.__failed/);
   });
 });

@@ -457,6 +457,14 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const [schemeLoading, setSchemeLoading] = useState(true);
   const [schemeFailed, setSchemeFailed] = useState(false);
   const [schemeReason, setSchemeReason] = useState("");
+  // Outstanding Amount and Pending Dues come from the FIRST effect, not from
+  // the period effects, and they had neither a skeleton nor a banner - so when
+  // one of those two calls failed they simply sat at an em dash with the three
+  // cards beside them showing real money. That is the narrowest and most
+  // confusing form of this bug: a dashboard that is plainly working, with one
+  // silent hole in it.
+  const [coreLoading, setCoreLoading] = useState(true);
+  const [coreFailed, setCoreFailed] = useState(false);
 
   // Scheme period (KPIs + Collections Trend chart share it)
   const [schemePeriod, setSchemePeriod] = useState("today");
@@ -515,8 +523,10 @@ export default function Dashboard({ onNavigate, search = "" }) {
     (async () => {
       const [payAll, billing, enr, cds] = await Promise.all([
         getSummary(`/reports/payment-summary${allTime}`),
-        retryOnce(() => billingService.listSales({ limit: 5 }), null),
-        retryOnce(() => enrollmentService.getEnrollments(), []),
+        // Both now carry the dashboard's own ceiling. They were running on the
+        // 45s default - twice - which is a minute and a half of em dash.
+        retryOnce(() => billingService.listSales({ limit: 5, timeoutMs: DASHBOARD_TIMEOUT_MS }), null),
+        retryOnce(() => enrollmentService.getEnrollments("", { timeoutMs: DASHBOARD_TIMEOUT_MS }), []),
         // Today's KPI cards go through the same retry as every other
         // dashboard fetch. A single failed first call - a token refresh still
         // in flight straight after login - used to leave the cards dead for
@@ -529,11 +539,16 @@ export default function Dashboard({ onNavigate, search = "" }) {
       if (!alive) return;
       // Bullion rate now lives in the global TopBar (fetched once in App), so the
       // Dashboard no longer fetches or renders it here.
-      setPendingDues(payAll?.outstanding_dues ?? null);
+      const payAllOk = payAll && !payAll.__refused && !payAll.__failed;
+      setPendingDues(payAllOk ? payAll.outstanding_dues ?? null : null);
       setInvoices(billing?.sales ?? []);
       setOutstanding(billing ? billing.totalOutstanding : null);
       setEnrollList((enr ?? []).slice(0, 5));
       setCards(cds ?? CARDS_FAILED);
+      setCoreLoading(false);
+      // billing === null means both attempts failed. Say so rather than
+      // leaving one card dashed among four that worked.
+      setCoreFailed(billing === null || !payAllOk);
       setLoading(false);
     })();
     return () => { alive = false; };
@@ -698,7 +713,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
               Rs 0.00 when the request had actually failed, so there was nothing
               on screen to tell an owner that what he was reading was not his
               shop's day. */}
-          {bizFailed && (
+          {(bizFailed || coreFailed) && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft/40 px-3 py-2">
               {/* A 401 is not a loading problem, it is a signed-out problem,
                   and saying "could not be loaded" for it sends people hunting
@@ -724,7 +739,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             {seesProfit && (
               <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} loading={bizLoading} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
             )}
-            <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} danger onClick={() => nav("sales-history")} />
+            <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} loading={coreLoading} danger onClick={() => nav("sales-history")} />
           </div>
 
           {/* Sales Trend */}
@@ -798,7 +813,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <div><h3 className="text-sm font-extrabold text-ink">Schemes</h3><p className="text-[10px] font-medium text-muted">Scheme collections, enrollments &amp; performance</p>{periodWindowLabel(schemePeriod, schemeCustom) && <p className="text-[10px] font-semibold text-accent-strong">{periodWindowLabel(schemePeriod, schemeCustom)}</p>}</div>
           </div>
 
-          {schemeFailed && (
+          {(schemeFailed || coreFailed) && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft/40 px-3 py-2">
               <span className="text-[11px] font-semibold text-danger">
                 {schemeReason === "HTTP 401"
@@ -814,7 +829,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} loading={schemeLoading} growth={paySummary?.total_revenue_growth_percent} growthOf={paySummary?.total_revenue} onClick={() => nav("payments")} />
             <KpiCard title={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} loading={schemeLoading} onClick={() => nav("scheme-management")} />
             <KpiCard title={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} loading={schemeLoading} onClick={() => nav("scheme-management")} />
-            <KpiCard title="Pending Dues" value={fmtCurrency(pendingDues)} danger onClick={() => nav("payments")} />
+            <KpiCard title="Pending Dues" value={fmtCurrency(pendingDues)} loading={coreLoading} danger onClick={() => nav("payments")} />
           </div>
 
           {/* Collections Trend */}
