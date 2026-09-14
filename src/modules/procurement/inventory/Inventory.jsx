@@ -65,6 +65,11 @@ export default function Inventory({ onNavigate }) {
   usePressFeedback(scope);
 
   const [items, setItems] = useState([]);
+  // Raw gold / bullion. Its own table, keyed by serial number rather than
+  // HUID, because a bar is not a hallmarked piece. Bulk receiving has been
+  // writing these rows since it shipped and the screen never read them back,
+  // so a recorded purchase left the vendor owed and the bars nowhere.
+  const [rawGold, setRawGold] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -150,6 +155,8 @@ export default function Inventory({ onNavigate }) {
       ]);
       setItems(inv.items);
       setVendorList(vendors);
+      // Never let raw gold failing blank the jewellery table beside it.
+      billingService.listRawGold().then(setRawGold).catch(() => setRawGold([]));
       if (master) setMaster(master.categories);
       if (sd && sd.tax !== "" && sd.tax != null) setStoreTax(Number(sd.tax) || 0);
       // Neither the single Purchase nor the bulk header preselects a vendor —
@@ -767,6 +774,58 @@ export default function Inventory({ onNavigate }) {
           )}
         </div>
       </div>
+
+      {/* Raw gold / bullion. Received by the same Bulk Purchase dialog and
+          then invisible until now: nothing in the API ever returned this
+          table, and /billing/inventory only selects hallmarked pieces. Shown
+          as its own list because a bar has a serial number where a piece has a
+          HUID, and none of the making/wastage columns beside it apply. */}
+      {rawGold.length > 0 && (
+        <Card data-motion="reveal" className="mb-4 overflow-hidden">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-6 py-3">
+            <h3 className="text-sm font-extrabold">Raw gold &amp; bullion</h3>
+            <span className="text-[11px] text-muted">
+              {rawGold.length} bar{rawGold.length === 1 ? "" : "s"} ·{" "}
+              <span className="num font-semibold">
+                {rawGold.reduce((s, r) => s + (Number(r.netGoldWeightGrams) || 0), 0).toFixed(3)} g
+              </span>{" "}
+              net · tracked by serial number
+            </span>
+          </div>
+          <CardContent className="overflow-x-auto px-0 pb-0">
+            <table className="w-full min-w-[820px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-line bg-canvas/40 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
+                  <th className="px-4 py-2.5">Serial No.</th>
+                  <th className="px-4 py-2.5">Name</th>
+                  <th className="px-4 py-2.5">Purity</th>
+                  <th className="px-4 py-2.5 text-right">Gross</th>
+                  <th className="px-4 py-2.5 text-right">Net</th>
+                  <th className="px-4 py-2.5">Vendor</th>
+                  <th className="px-4 py-2.5 text-right">Cost</th>
+                  <th className="px-4 py-2.5">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rawGold.map((r) => (
+                  <tr key={r.id} className="border-b border-line-soft last:border-0">
+                    <td className="px-4 py-2.5 font-mono text-xs font-semibold">{r.serialNumber}</td>
+                    <td className="px-4 py-2.5 font-semibold">{r.productName}</td>
+                    <td className="px-4 py-2.5"><Badge tone="neutral">{r.purity}</Badge></td>
+                    <td className="num px-4 py-2.5 text-right">{Number(r.grossWeightGrams).toFixed(3)} g</td>
+                    <td className="num px-4 py-2.5 text-right font-semibold">{Number(r.netGoldWeightGrams).toFixed(3)} g</td>
+                    <td className="px-4 py-2.5 text-muted">{r.vendorName || "—"}</td>
+                    <td className="num px-4 py-2.5 text-right">{r.purchaseCost != null ? money(r.purchaseCost) : "—"}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={r.stockStatus === "IN_STOCK" ? "success" : "neutral"}>{r.stockStatus}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card data-motion="reveal" className="overflow-hidden">
         <div className="border-b border-line px-6 py-3"><h3 className="text-sm font-extrabold">Product list</h3></div>

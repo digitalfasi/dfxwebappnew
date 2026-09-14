@@ -42,3 +42,29 @@ describe("store pricing defaults are Admin-only on screen, as they are on the se
     }
   });
 });
+
+describe("raw gold is visible where it was bought", () => {
+  const svc = readFileSync(new URL("../src/modules/billing/billingService.js", import.meta.url), "utf8");
+
+  it("the service reads the endpoint that returns it", () => {
+    expect(svc).toMatch(/apiClient\.get\(`\/billing\/inventory\/raw-gold/);
+  });
+
+  // Scoped to listRawGold's own body: the file also maps hallmarked pieces,
+  // which legitimately carry a HUID, so asking this of the whole file asks the
+  // wrong question.
+  it("a bar is keyed by serial number, not HUID", () => {
+    const body = svc.slice(svc.indexOf("async listRawGold"), svc.indexOf("listVendors"));
+    expect(body).toMatch(/serialNumber: r\.serial_number/);
+    expect(body).not.toMatch(/huid/i);
+  });
+
+  it("Inventory renders it, and a failure there cannot blank the jewellery table", () => {
+    expect(inv).toMatch(/Raw gold &amp; bullion/);
+    expect(inv).toMatch(/listRawGold\(\)\.then\(setRawGold\)\.catch\(\(\) => setRawGold\(\[\]\)\)/);
+  });
+
+  it("the section is absent rather than empty when the shop holds no bars", () => {
+    expect(inv).toMatch(/\{rawGold\.length > 0 && \(/);
+  });
+});

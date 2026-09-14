@@ -50,6 +50,39 @@ export const billingService = {
     };
   },
 
+  /**
+   * GET /api/v1/billing/inventory/raw-gold — the shop's raw gold / bullion.
+   *
+   * Raw gold lives in its own table keyed by SERIAL NUMBER, not HUID, because
+   * a bar is not a hallmarked piece. Bulk receiving has been writing these
+   * rows since it shipped and nothing read them back, so a recorded purchase
+   * was invisible afterwards - the money owed to the vendor was real and the
+   * bars were nowhere.
+   */
+  async listRawGold({ search = "", stockStatus = "" } = {}) {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (stockStatus) params.set("stock_status", stockStatus);
+    const qs = params.toString();
+    const res = await apiClient.get(`/billing/inventory/raw-gold${qs ? `?${qs}` : ""}`, { auth: true });
+    return (res.data?.items ?? []).map((r) => ({
+      id: r.id,
+      serialNumber: r.serial_number,
+      productName: r.product_name,
+      category: r.category ?? "",
+      subcategory: r.subcategory ?? "",
+      purity: r.purity,
+      grossWeightGrams: r.gross_weight_grams ?? 0,
+      netGoldWeightGrams: r.net_gold_weight_grams ?? 0,
+      vendorName: r.vendor_name ?? "",
+      purchaseDate: r.purchase_date ?? null,
+      purchaseInvoiceRef: r.purchase_invoice_ref ?? "",
+      purchaseRatePerGram: r.purchase_rate_per_gram ?? null,
+      purchaseCost: r.purchase_cost ?? null,
+      stockStatus: r.stock_status,
+    }));
+  },
+
   /** GET /api/v1/billing/vendors — real vendor list (full vendor master rows). */
   async listVendors(search = "") {
     const params = search ? `?search=${encodeURIComponent(search)}` : "";
