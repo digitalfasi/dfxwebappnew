@@ -45,6 +45,9 @@ const scope = useRef(null);
   const [managing, setManaging] = useState(null); // an existing staff row
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", access: [] });
   const [errors, setErrors] = useState({});
+  // Removal is two deliberate steps. It cannot be undone from this screen, so
+  // the first click only arms it and states what will and will not happen.
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   usePageMotion(scope, [loading]);
 
@@ -84,6 +87,8 @@ const scope = useRef(null);
 
   const openManage = (u) => {
     setManaging(u);
+    // Never open a dialog with removal already armed from the last person.
+    setConfirmRemove(false);
     setForm({ name: u.name, email: u.email, phone: u.phone, password: "", access: [...u.permissions] });
     setErrors({});
     setShowForm(true);
@@ -153,6 +158,28 @@ const scope = useRef(null);
       toast(form.access.length ? "Module access updated" : "All module access removed");
     } catch (err) {
       toast(err?.message || "Could not update access");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Removes the staff member for good. Their past bills are untouched - the
+  // backend keeps the user row precisely so every document keeps its author -
+  // but the account leaves this list, loses every permission and can no longer
+  // sign in.
+  const handleRemove = async () => {
+    if (!managing) return;
+    setSaving(true);
+    try {
+      await staffService.deleteStaff(managing.id);
+      const nm = managing.name;
+      setUsers((prev) => prev.filter((u) => u.id !== managing.id));
+      setShowForm(false);
+      setManaging(null);
+      setConfirmRemove(false);
+      toast(`${nm} removed`);
+    } catch (err) {
+      toast(err?.message || "Could not remove the staff member");
     } finally {
       setSaving(false);
     }
@@ -374,6 +401,32 @@ const scope = useRef(null);
                   >
                     <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${managing.isActive ? "translate-x-5" : "translate-x-0.5"}`} />
                   </button>
+                </div>
+              )}
+
+              {managing && (
+                <div className="rounded-xl border border-danger/30 bg-danger/5 px-4 py-3">
+                  <div className="text-xs font-bold text-danger">Remove this staff member</div>
+                  <div className="mt-1 text-xs leading-relaxed text-muted">
+                    {managing.name} leaves this list for good, loses every module and can no longer sign in. Every bill, payment and purchase they recorded is kept exactly as it is, still in their name. This cannot be undone here.
+                  </div>
+                  {confirmRemove ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                      <Button size="sm" variant="outline" disabled={saving} onClick={() => setConfirmRemove(false)}>Keep</Button>
+                      <Button
+                        size="sm"
+                        className="bg-danger text-white hover:bg-danger/90"
+                        disabled={saving}
+                        onClick={handleRemove}
+                      >
+                        {saving ? "Removing…" : `Yes, remove ${managing.name}`}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" variant="outline" className="mt-3 border-danger/40 text-danger hover:bg-danger/10" disabled={saving} onClick={() => setConfirmRemove(true)}>
+                      Remove staff
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

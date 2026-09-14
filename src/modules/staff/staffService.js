@@ -11,6 +11,7 @@ import { apiClient } from "@/_shared/apiClient";
  *   POST /admin/staff                     -> create staff (always Staff role)
  *   PUT  /admin/staff/{id}/status         -> activate / deactivate
  *   PUT  /admin/staff/{id}/permissions    -> replace the whole grant set
+ *   DELETE /admin/staff/{id}              -> remove the staff member
  *
  * There is deliberately NO endpoint to change an existing staff member's name,
  * email, phone or password, so this service exposes none — the UI shows those
@@ -79,6 +80,21 @@ export const staffService = {
   async setStaffStatus(id, isActive) {
     const res = await apiClient.put(`/admin/staff/${id}/status`, { is_active: !!isActive }, { auth: true });
     return mapStaff(res.data?.staff ?? {});
+  },
+
+  /**
+   * DELETE /api/v1/admin/staff/{id} — removes a staff member. The account
+   * leaves this screen, is deactivated and loses every permission, so it can
+   * never sign in again.
+   *
+   * The backend retains the user ROW on purpose: ten billing tables reference
+   * users.id with ondelete=CASCADE, so a true row delete would take every
+   * sale, payment and vendor purchase that person recorded with it. Nothing on
+   * any past document changes — each one keeps the name of whoever raised it.
+   */
+  async deleteStaff(id) {
+    await apiClient.delete(`/admin/staff/${id}`, { auth: true });
+    return true;
   },
 
   /**
