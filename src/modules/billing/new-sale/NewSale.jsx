@@ -344,7 +344,7 @@ export default function NewSale() {
   // First HUID lookup — confirm a real sellable item and seed edit fields.
   const handleFind = useCallback(async () => {
     const key = code.trim();
-    if (!key) { toast("Enter HUID"); return; }
+    if (!key) { toast("Enter a HUID or serial number"); return; }
     if (loading) return;
     setLoading(true); setLookupError("");
     setProduct(null); setProductCode("");

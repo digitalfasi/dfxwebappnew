@@ -228,6 +228,9 @@ describe("one lookup box for both trades", () => {
     expect(ns).toMatch(/HUID or Serial No\. \*/);
     expect(ns).toMatch(/placeholder="HUID for jewellery, serial number for a gold bar"/);
     expect(ns).not.toMatch(/placeholder="Enter HUID"/);
+    // including the empty-field toast, which is the one place the old wording
+    // survived a bundle check
+    expect(ns).not.toMatch(/toast\("Enter HUID"\)/);
   });
 
   it("the tax switch carries no GST caption", () => {
