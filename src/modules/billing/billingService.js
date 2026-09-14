@@ -920,6 +920,23 @@ function mapSaleQuote(data = {}, productCode = "", gstApplied = true) {
     currentGoldValueMarginPct: data.current_gold_value_margin_percent ?? null,
     historicalPnl: data.historical_profit_or_loss ?? null,
     profitLabel: data.profit_or_loss_label ?? null,
+    // What this item's making charge is made of, and the two floors under it.
+    // list = base + running cost + THIS LOT's tunch, so a piece bought at 6%
+    // tunch bills at 16% where one bought at 4% bills at 14%. Admin-only
+    // server-side (tunch and running cost are what the shop pays), so null for
+    // a Staff caller - who still gets profitLabel, the decision without the
+    // costs behind it.
+    makingBands: data.making_bands
+      ? {
+          tunchPercent: data.making_bands.tunch_percent,
+          runningCostPercent: data.making_bands.running_cost_percent,
+          goldProfitPercent: data.making_bands.gold_profit_percent,
+          extraPercent: data.making_bands.extra_percent,
+          breakEvenFloorPercent: data.making_bands.break_even_floor_percent,
+          profitFloorPercent: data.making_bands.profit_floor_percent,
+          listPercent: data.making_bands.list_percent,
+        }
+      : null,
     // Safe-price guidance (Admin sees minimum_safe_price). Null when the item has
     // no purchase cost to judge against.
     safePrice: data.safe_price

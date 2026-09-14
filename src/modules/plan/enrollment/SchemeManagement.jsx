@@ -318,7 +318,17 @@ export default function SchemeManagement() {
                       instalment and nothing outstanding. Dash stays on the
                       column's own right-aligned rule. */}
                   <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${isWalletScheme(r.schemeType) ? "font-semibold text-muted" : "font-semibold"}`}>{isWalletScheme(r.schemeType) ? NOT_APPLICABLE : money(r.installment)}</td>
-                  <td className="num px-4 py-3.5 text-right whitespace-nowrap"><span className="font-bold">{r.paid}/{r.total}</span></td>
+                  {/* A wallet has no instalments to count, so "0/12" was a lie
+                      told beside a funded enrollment: Raiyan Abbas had paid
+                      Rs 40,000 in and this column read 0/12. months_paid is
+                      NULL on a wallet by design (payments/service.py never
+                      advances it), so the figure to show is what the wallet
+                      actually holds. */}
+                  <td className="num px-4 py-3.5 text-right whitespace-nowrap">
+                    {isWalletScheme(r.schemeType)
+                      ? <span className="font-bold">{money(r.totalPaid)}<span className="ml-1 text-[11px] font-semibold text-muted">in</span></span>
+                      : <span className="font-bold">{r.paid}/{r.total}</span>}
+                  </td>
                   <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${isWalletScheme(r.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(r.schemeType) ? NOT_APPLICABLE : money(outstanding(r))}</td>
                   <td className="px-4 py-3.5"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></td>
                   <td className="px-4 py-3.5 pr-6 text-right">

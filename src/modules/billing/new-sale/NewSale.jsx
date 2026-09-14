@@ -248,11 +248,17 @@ export default function NewSale() {
       setProductCode(q.productCode);
       setRate(q.goldRateApplied != null ? String(q.goldRateApplied) : "");
       setPublishedRate(q.goldRateApplied != null ? q.goldRateApplied : null);
-      // 14% list unless the item carries its own making charge. Only for a
-      // PERCENTAGE charge - seeding 14 into a FIXED field would bill 14 rupees.
+      // The list percentage for THIS piece: the shop's base plus its running
+      // cost plus the tunch of the lot this piece was received on. It was a
+      // hard-coded 14, which is only right when the lot happened to be bought
+      // at 4% tunch - every dearer lot was billed as if it had been cheap.
+      // Only for a PERCENTAGE charge: seeding a percentage into a FIXED field
+      // would bill that many rupees.
       setMakingVal(
         q.makingChargeValue ? String(q.makingChargeValue)
-          : (q.makingChargeType || "PERCENTAGE") === "PERCENTAGE" ? "14" : ""
+          : (q.makingChargeType || "PERCENTAGE") !== "PERCENTAGE" ? ""
+          : q.makingBands?.listPercent != null ? String(round2(q.makingBands.listPercent))
+          : "14"
       );
       setWastageVal(q.wastageValue != null ? String(q.wastageValue) : "");
       toast(`Found ${q.huid || key}`);
@@ -1246,13 +1252,33 @@ export default function NewSale() {
                           admin typing 15,000 here saw it vanish with no reason
                           given. The two controls are exclusive, so this now
                           says which one has the wheel and how to take it back. */}
-                      <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={priceDriver === "PRICE"} className={priceDriver === "PRICE" ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds making charge" : undefined} placeholder="0" />
+                      {/* Two editors, one concession. Type a price and the
+                          making charge moves to meet it - and the rupees that
+                          move now appear HERE, so "how much did I give?" is
+                          readable instead of a subtraction between two cards.
+                          Type a discount instead and the price and charges
+                          follow. The box is read-only while the price box has
+                          the wheel because the number is derived then, not
+                          entered: it used to accept a figure, wipe it, and
+                          change nothing. */}
+                      <Input
+                        type="number" step="0.01" min="0"
+                        value={priceDriver === "PRICE" ? (comeDown ? String(round2(comeDown / taxFactor)) : "") : discount}
+                        onChange={(e) => setDiscount(e.target.value)}
+                        readOnly={priceDriver === "PRICE"}
+                        disabled={priceDriver === "PRICE"}
+                        className={priceDriver === "PRICE" ? "opacity-70" : ""}
+                        error={discountExceedsProfit ? "Exceeds making charge" : undefined}
+                        placeholder="0" />
                       {discountNum > 0 && product.gstApplied && (product.taxRatePercent || 0) > 0 && (
                         <span className="text-[11px] text-muted">Bill falls by {money(round2(discountNum * taxFactor))} — the discount plus the {product.taxRatePercent}% GST no longer due on it.</span>
                       )}
                       {priceDriver === "PRICE" ? (
                         <span className="text-[11px] text-muted">
-                          The Customer Price box is setting this bill{comeDown > 0 ? <> — you have come down <b className="num">{money(comeDown)}</b> from the {money(sellingPrice)} asking price</> : null}. Clear it to give a rupee discount instead.
+                          {comeDown > 0
+                            ? <>Given as a lower making charge — <b className="num">{money(comeDown)}</b> off the {money(sellingPrice)} asking price, which is {money(round2(comeDown / taxFactor))} before GST.</>
+                            : <>The Customer Price box is setting this bill.</>}{" "}
+                          Clear the price to type a rupee discount instead.
                         </span>
                       ) : discountCeiling != null ? (
                         <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>

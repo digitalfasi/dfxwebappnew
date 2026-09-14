@@ -216,7 +216,18 @@ export default function Inventory({ onNavigate }) {
   const rateIsCarriedForward = !!rateEffectiveLabel &&
     rateEffectiveLabel !== istToday();
 
-  const totalGold = useMemo(() => items.filter(i=>i.status==="In Stock").reduce((s,i)=>s+i.net,0), [items]);
+  // Gold is gold. A bar in the safe is as much of this shop's metal as a bangle
+  // in the case, so "Total gold in inventory" counts both - it read 23.00 g
+  // while 15.000 g of 24K bullion sat in the same room, unaccounted.
+  const rawGoldInStock = useMemo(
+    () => rawGold.filter((r) => r.stockStatus === "IN_STOCK"),
+    [rawGold]
+  );
+  const totalGold = useMemo(
+    () => items.filter(i=>i.status==="In Stock").reduce((s,i)=>s+i.net,0)
+       + rawGoldInStock.reduce((s,r)=>s+(Number(r.netGoldWeightGrams)||0),0),
+    [items, rawGoldInStock]
+  );
   const vendorNames = useMemo(() => vendorList.map((v) => v.name), [vendorList]);
 
   const filtered = useMemo(() => {
@@ -242,12 +253,20 @@ export default function Inventory({ onNavigate }) {
       const key = compByCategory ? `${i.category || "Uncategorised"}|${i.purity}` : (i.purity || "—");
       map.set(key, (map.get(key) || 0) + (i.net || 0));
     });
+    // Bullion belongs in the purity breakdown too. Left out, the composition
+    // read "22K 100%" for a shop also holding 24K bars - a true statement about
+    // the jewellery case presented as the whole inventory. Grouped by category
+    // it lands under its own heading, because a bar has no jewellery category.
+    rawGoldInStock.forEach((r) => {
+      const key = compByCategory ? `Raw gold & bullion|${r.purity}` : (r.purity || "—");
+      map.set(key, (map.get(key) || 0) + (Number(r.netGoldWeightGrams) || 0));
+    });
     return [...map.entries()]
       .map(([k, g]) => compByCategory
         ? (() => { const [cat, pur] = k.split("|"); return { cat, pur, g }; })()
         : { cat: null, pur: k, g })
       .sort((a, b) => b.g - a.g);
-  }, [filtered, compByCategory]);
+  }, [filtered, compByCategory, rawGoldInStock]);
 
   // Filter options = the master's ACTIVE names merged with the values actually
   // present on stock, de-duplicated. A label already on an item never vanishes
