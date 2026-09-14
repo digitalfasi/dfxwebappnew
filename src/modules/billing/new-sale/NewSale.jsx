@@ -496,6 +496,14 @@ export default function NewSale() {
   // Max discount the admin may give before crossing break-even = current asking
   // price − minimum safe price. (safe_price.residual_discount is only the sliver
   // beyond all-charges-zero, not the real headroom — so it read ₹0 and confused.)
+  // How far the admin has come down from the asking price. Display only - it
+  // moves no money and is not a discount LINE on the bill; it is the answer to
+  // "how much have I given away?", which was impossible to see while typing a
+  // price, because the bill records the concession as a lower making charge
+  // rather than as a discount.
+  const comeDown = product && priceDriver === "PRICE" && customerPrice !== ""
+    ? Math.max(0, round2(sellingPrice - toBillTotal(num(customerPrice))))
+    : 0;
   const minSafe = product?.safePrice?.minimumSafePrice;
   const maxDiscount = minSafe != null ? Math.max(0, round2(sellingPrice - minSafe)) : null;
 
@@ -1134,6 +1142,17 @@ export default function NewSale() {
                             </span>
                           </div>
                         )}
+                        {/* What the admin has actually given away. The bill
+                            records the concession as a lower making charge, so
+                            without this the only way to know how far you had
+                            come down was to subtract two numbers off two
+                            different cards. */}
+                        {comeDown > 0 && (
+                          <div className="mt-2 flex items-baseline justify-between gap-3 rounded-xl border border-line-soft bg-canvas/60 px-3 py-2">
+                            <span className="text-[11px] font-semibold text-muted">Come down from {money(sellingPrice)}</span>
+                            <span className="num text-[12px] font-bold tabular-nums text-ink">−{money(comeDown)}</span>
+                          </div>
+                        )}
                         <p className="mt-1 text-[11px] text-muted">
                           {schemeSelected
                             ? <>What the customer hands over today. Raise or lower it and the making charge moves to match — the scheme credit of {money(quotedScheme)} is already taken off.</>
@@ -1219,12 +1238,22 @@ export default function NewSale() {
                           value, so the bill falls by the discount plus the GST
                           that is no longer due on it. */}
                       <span className="text-xs font-bold">Discount (₹) <span className="font-normal text-muted">— off the taxable value</span></span>
-                      <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={schemeSelected && priceDriver === "PRICE"} className={schemeSelected && priceDriver === "PRICE" ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds making charge" : undefined} placeholder="0" />
+                      {/* While the Customer Price box is steering, the quote
+                          sends no discount (the backend solves the making
+                          charge to hit the typed price instead) and the effect
+                          above clears this field on the next quote. It used to
+                          accept a number, wipe it, and change nothing - the
+                          admin typing 15,000 here saw it vanish with no reason
+                          given. The two controls are exclusive, so this now
+                          says which one has the wheel and how to take it back. */}
+                      <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={priceDriver === "PRICE"} className={priceDriver === "PRICE" ? "opacity-60" : ""} error={discountExceedsProfit ? "Exceeds making charge" : undefined} placeholder="0" />
                       {discountNum > 0 && product.gstApplied && (product.taxRatePercent || 0) > 0 && (
                         <span className="text-[11px] text-muted">Bill falls by {money(round2(discountNum * taxFactor))} — the discount plus the {product.taxRatePercent}% GST no longer due on it.</span>
                       )}
-                      {schemeSelected && priceDriver === "PRICE" ? (
-                        <span className="text-[11px] text-muted">A scheme bill takes one or the other — clear the Customer Price above to give a rupee discount instead.</span>
+                      {priceDriver === "PRICE" ? (
+                        <span className="text-[11px] text-muted">
+                          The Customer Price box is setting this bill{comeDown > 0 ? <> — you have come down <b className="num">{money(comeDown)}</b> from the {money(sellingPrice)} asking price</> : null}. Clear it to give a rupee discount instead.
+                        </span>
                       ) : discountCeiling != null ? (
                         <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
                           {discountExceedsProfit
@@ -1783,11 +1812,22 @@ const PnlCard = ({ label, amount, pct, sub, detail }) => {
   // The verdict lives in exactly one place on this screen: the strip under the
   // price box. Here the figure is stated plainly, in the neutral tone of a
   // measurement, and says what it is measured against.
-  const negative = (amount || 0) < 0;
+  // Coloured by its OWN sign, never by the 11% verdict. Those are different
+  // questions - a bill can sit above the metal and still be under break-even -
+  // and painting this card with the verdict is what once made it read LOSS
+  // beside +24,576.45. Above the metal is green, below it is red, exactly level
+  // is neutral. That is what this number measures, and nothing else.
+  const value = amount || 0;
+  const negative = value < 0;
+  const tone = negative
+    ? { box: "border-danger-line bg-danger-soft/50", label: "text-danger/80", value: "text-danger" }
+    : value > 0
+      ? { box: "border-emerald-200 bg-emerald-50", label: "text-emerald-800/75", value: "text-emerald-700" }
+      : { box: "border-line-soft bg-canvas/60", label: "text-muted", value: "text-ink" };
   return (
-    <div className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-center">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-muted">{label}</div>
-      <div className={`num mt-0.5 text-base font-extrabold ${negative ? "text-danger" : "text-ink"}`}>
+    <div className={`rounded-xl border p-3 text-center ${tone.box}`}>
+      <div className={`text-[10px] font-bold uppercase tracking-wider ${tone.label}`}>{label}</div>
+      <div className={`num mt-0.5 text-base font-extrabold ${tone.value}`}>
         {negative ? "-" : ""}{money(Math.abs(amount || 0))}
       </div>
       <div className="text-[10px] font-semibold text-muted">

@@ -165,6 +165,24 @@ export default function Payments() {
   const f = filters[tab];
   const patch = (p) => setFilters((prev) => ({ ...prev, [tab]: { ...prev[tab], ...p } }));
   const [selected, setSelected] = useState(null);
+  // The opened bill's payment ledger. Fetched from the SAME endpoint the Sales
+  // History invoice panel uses (GET /billing/sales/{id}/payments), so the two
+  // screens cannot disagree about how a bill was collected.
+  const [ledger, setLedger] = useState(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerError, setLedgerError] = useState("");
+  useEffect(() => {
+    // Business bills only: a scheme row is an enrollment, not a sale.
+    const saleId = selected && !selected.enrollment ? selected.paymentId : null;
+    if (!saleId) { setLedger(null); setLedgerError(""); return; }
+    let alive = true;
+    setLedgerLoading(true); setLedgerError(""); setLedger(null);
+    billingService.getSalePayments(saleId)
+      .then((l) => { if (alive) setLedger(l); })
+      .catch((err) => { if (alive) setLedgerError(err?.message || "Could not load the payment ledger"); })
+      .finally(() => { if (alive) setLedgerLoading(false); });
+    return () => { alive = false; };
+  }, [selected]);
   const [showManual, setShowManual] = useState(false); // scheme manual payment
   const [showBizManual, setShowBizManual] = useState(false); // business sale payment
   const [bizClear, setBizClear] = useState(null); // row-level clear-outstanding pre-fill
@@ -734,6 +752,12 @@ export default function Payments() {
                 <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="font-extrabold">Payment Details — {selected.id}</h3><button onClick={() => setSelected(null)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
                 <div className="px-6 py-5 space-y-3 text-sm">
                   <div><span className="text-muted">Customer:</span> <span className="font-bold">{selected.customer}</span></div>
+                  {/* The LEDGER, not just the total. This panel showed a single
+                      Paid figure, so a bill collected as Rs 2,50,000 at the
+                      counter and Rs 50,000 later looked like one Rs 3,00,000
+                      payment - the same invoice the Sales History panel already
+                      itemised correctly. Same endpoint, same rows, so the two
+                      screens cannot tell different stories about one bill. */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Amount</div><div className="font-bold">₹{selected.amount.toLocaleString()}</div></div>
                     <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Paid</div><div className="font-bold">₹{selected.paid.toLocaleString()}</div></div>
@@ -741,6 +765,31 @@ export default function Payments() {
                     <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Method</div><div className="mt-1">{selected.method ? <MethodBadge method={selected.method} /> : <span className="text-sm text-muted">—</span>}</div></div>
                   </div>
                   <div className="flex gap-2"><Badge tone={TONE[selected.status] || "neutral"}>{selected.status}</Badge><span className="text-xs text-muted self-center">{selected.date}</span></div>
+                  <div className="border-t border-line pt-3">
+                    <div className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Payments</div>
+                    {ledgerLoading && <div className="mt-2 text-xs text-muted">Loading the payment ledger…</div>}
+                    {ledgerError && <div className="mt-2 text-xs font-semibold text-danger">{ledgerError}</div>}
+                    {!ledgerLoading && !ledgerError && ledger && ledger.payments.length === 0 && (
+                      <div className="mt-2 text-xs text-muted">Nothing collected against this bill yet.</div>
+                    )}
+                    {!ledgerLoading && !ledgerError && ledger && ledger.payments.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {ledger.payments.map((p) => (
+                          <div key={p.id} className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span className="num text-sm font-bold">₹{Number(p.amount).toLocaleString("en-IN")}</span>
+                              <span className="text-[11px] text-muted">{p.recordedByName || ""}</span>
+                            </div>
+                            <div className="mt-0.5 text-[11px] text-muted">
+                              {p.methodLabel}{p.paymentDate ? ` · ${p.paymentDate}` : ""}{p.referenceNo ? ` · ${p.referenceNo}` : ""}
+                            </div>
+                            {p.source && <div className="text-[11px] text-muted">{p.source === "SALE" ? "Collected at sale" : p.source}</div>}
+                            {p.remarks && <div className="mt-0.5 text-[11px] text-muted">{p.remarks}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="border-t border-line p-4 flex justify-end"><Button size="sm" variant="outline" onClick={() => setSelected(null)}>Close</Button></div>
               </>
