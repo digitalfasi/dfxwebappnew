@@ -253,11 +253,19 @@ export default function Customers() {
   // builder and the same scheme list - one implementation, two screens.
   const addScheme = schemeList.find((sc) => sc.id === form.schemeId) || null;
   const addPlanOptions = planOptionsFor(addScheme);
-  // A wallet has no instalment to choose. planOptionsFor() already returns an
-  // empty ladder for one, so the amount field simply never renders; this flag
-  // is what lets the dialog SAY so rather than leave a silent gap.
-  const addIsWallet = isWalletScheme(addScheme?.schemeType);
-  const enrollIsWallet = isWalletScheme(enrollScheme?.schemeType);
+  // Only a Monthly plan is sold on an amount. planOptionsFor() already returns
+  // an empty ladder for the other two, so the field simply never renders -
+  // this is what lets the dialog SAY why, instead of leaving a silent gap
+  // where a required-looking field used to be.
+  const noAmountNote = (scheme) => {
+    if (isWalletScheme(scheme?.schemeType)) {
+      return `No monthly amount: this is a wallet. The customer pays whatever he likes, ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, as often as he likes, and each payment converts to gold at that day's rate the moment it is made. What is fixed here is the purity below.`;
+    }
+    if (scheme?.schemeType === "FIXED_GOLD_RATE") {
+      return "No monthly amount to choose: this plan is sold on the purity. The rate published today for the purity below is frozen for the whole term — whether the market rises or falls, every contribution buys gold at the rate on the day of enrollment.";
+    }
+    return "";
+  };
   const addIsFixedRate = addScheme?.schemeType === "FIXED_GOLD_RATE";
   const addIsGold = addIsFixedRate || addScheme?.schemeType === "FLEXIBLE_DIGI_GOLD";
   const enrollIsFixedRate = enrollScheme?.schemeType === "FIXED_GOLD_RATE";
@@ -803,9 +811,9 @@ export default function Customers() {
                 </label>
               )}
 
-              {addScheme && addIsWallet && (
+              {addScheme && addPlanOptions.length === 0 && noAmountNote(addScheme) && (
                 <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">
-                  No monthly amount: this is a wallet. The customer deposits {money(DIGI_MIN)} to {money(DIGI_MAX)} whenever they choose, any number of times. What is fixed here is the purity below.
+                  {noAmountNote(addScheme)}
                 </p>
               )}
 
@@ -828,8 +836,11 @@ export default function Customers() {
                   />
                   <span className="text-[11px] text-muted">
                     {addIsFixedRate
-                      ? "The rate published today for the chosen purity is locked for the whole term."
+                      ? (form.goldPurity && rateFor(form.goldPurity) != null
+                          ? `${money(rateFor(form.goldPurity))}/g is locked for the whole term. Every contribution buys gold at this rate, whether the market rises or falls.`
+                          : "The rate published today for the chosen purity is locked for the whole term.")
                       : "Contributions buy gold in this purity at the rate on the day each payment is made."}
+                    {todayRate?.effective_date ? ` Rates as published ${todayRate.effective_date}.` : ""}
                   </span>
                 </label>
               )}
@@ -1020,9 +1031,9 @@ export default function Customers() {
                   what every contribution buys. On a Fixed Gold Rate plan the
                   chosen purity's rate today is frozen for the whole term, so
                   the rate is shown beside each option before it is committed. */}
-              {enrollIsWallet && (
+              {enrollScheme && planOptions.length === 0 && noAmountNote(enrollScheme) && (
                 <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">
-                  No monthly amount: this is a wallet. The customer deposits {money(DIGI_MIN)} to {money(DIGI_MAX)} whenever they choose, any number of times. What is fixed here is the purity below.
+                  {noAmountNote(enrollScheme)}
                 </p>
               )}
 

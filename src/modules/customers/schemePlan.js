@@ -1,4 +1,4 @@
-import { isWalletScheme } from "../plan/scheme/schemeCapabilities";
+import { SCHEME_TYPE } from "../plan/scheme/schemeCapabilities";
 
 /**
  * Every monthly amount a scheme is actually sold at.
@@ -18,15 +18,29 @@ export const BASE_PLAN = "__base__";
  *  used by the Enroll modal and by Add Customer, so the two cannot drift. */
 export function planOptionsFor(scheme) {
   if (!scheme) return [];
-  // A Flexible Digi Gold enrollment is a WALLET, not an instalment plan. The
-  // scheme's "amount" is the per-deposit GUIDE - Rs 500 to Rs 1,00,000, any
-  // number of times - which app/modules/plan/scheme/schema.py states in those
-  // words and enforces as a RANGE, not as an instalment. Asking "which monthly
-  // amount?" when enrolling therefore invented a commitment the plan does not
-  // have, and froze a tier onto a wallet. What actually decides a wallet
-  // enrollment is the PURITY: each deposit buys grams of that purity at the
-  // rate published on the day the money is paid. So a wallet sells no ladder.
-  if (isWalletScheme(scheme.schemeType)) return [];
+  // The ladder belongs to MONTHLY GOLD SAVING and to nothing else. The three
+  // scheme types are sold on three different things, and only one of them is
+  // sold on an amount:
+  //
+  //   MONTHLY          - the tier ladder IS the product. No purity.
+  //   FLEXIBLE_DIGI_GOLD - a wallet. The customer pays what he likes, Rs 500 to
+  //                      Rs 1,00,000, as often as he likes; the money converts
+  //                      to grams of the chosen PURITY at that day's rate, at
+  //                      the moment it is paid. The scheme's "amount" is the
+  //                      per-deposit guide, which
+  //                      app/modules/plan/scheme/schema.py says in those words
+  //                      and enforces as a RANGE, not as an instalment.
+  //   FIXED_GOLD_RATE  - the customer picks a PURITY, and that purity's LIVE
+  //                      rate on the day he enrolls is frozen for the whole
+  //                      term. Up or down, he pays at the rate he walked in
+  //                      on. The purity is what is being chosen; the amount is
+  //                      the scheme's own.
+  //
+  // Offering "Monthly amount*" on the other two asked the customer to commit to
+  // something the plan does not have, and froze a tier onto it. An unknown or
+  // missing type is treated as MONTHLY, which is what every legacy scheme is.
+  if (scheme.schemeType === SCHEME_TYPE.FLEXIBLE_DIGI_GOLD) return [];
+  if (scheme.schemeType === SCHEME_TYPE.FIXED_GOLD_RATE) return [];
   const tiers = (scheme.tiers || []).filter((t) => t.isActive);
   const base = {
     value: BASE_PLAN,

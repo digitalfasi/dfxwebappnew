@@ -36,22 +36,47 @@ const MONTHLY = {
   ],
 };
 
-describe("a Flexible Digi Gold enrollment has no monthly amount", () => {
-  // The wallet's Rs 500 - Rs 1,00,000 is a RANGE per deposit, not an
-  // instalment (app/modules/plan/scheme/schema.py says so and enforces it as a
-  // range). Offering "Monthly amount" at enrollment invented a commitment the
-  // plan does not have, and froze a tier onto a wallet.
-  it("offers no plan ladder at all", () => {
+// Fixed Gold Rate is sold on the PURITY: the live rate for the purity chosen on
+// the day of enrollment is frozen for the whole term, up or down. The amount is
+// the scheme's own, not something the customer picks off a ladder.
+const FIXED = {
+  id: "sch_fixed",
+  name: "FIXED GOLD PLAN",
+  schemeType: "FIXED_GOLD_RATE",
+  amount: 2000,
+  durationMonths: 12,
+  goldPurity: "22K",
+  tiers: [{ id: "t1", isActive: true, monthlyAmount: 5000, durationMonths: 12 }],
+};
+
+describe("only a Monthly plan is sold on an amount", () => {
+  // MONTHLY: the tier ladder IS the product, and there is no purity.
+  it("offers the ladder on a Monthly plan, base amount included", () => {
+    expect(planOptionsFor(MONTHLY).map((o) => o.amount)).toEqual([1000, 5000, 10000]);
+  });
+
+  // FLEXIBLE_DIGI_GOLD: a wallet. Rs 500 - Rs 1,00,000 is a RANGE per deposit,
+  // not an instalment - app/modules/plan/scheme/schema.py says so in those
+  // words and enforces it as a range.
+  it("offers no ladder on a Digi Gold wallet", () => {
     expect(planOptionsFor(WALLET)).toEqual([]);
   });
 
-  it("still offers the ladder on an instalment plan", () => {
-    const opts = planOptionsFor(MONTHLY);
-    expect(opts.map((o) => o.amount)).toEqual([1000, 5000, 10000]);
+  // FIXED_GOLD_RATE: the purity decides the plan, and its rate that day is
+  // locked for the term.
+  it("offers no ladder on a Fixed Gold Rate plan", () => {
+    expect(planOptionsFor(FIXED)).toEqual([]);
   });
 
-  it("ignores tier rows on a wallet even when the shop defined some", () => {
+  it("ignores tier rows on both, even when the shop defined some", () => {
     expect(planOptionsFor({ ...WALLET, tiers: MONTHLY.tiers })).toEqual([]);
+    expect(planOptionsFor({ ...FIXED, tiers: MONTHLY.tiers })).toEqual([]);
+  });
+
+  // Every scheme that predates the type column is a Monthly plan.
+  it("treats a scheme with no type as Monthly and keeps its ladder", () => {
+    const { schemeType, ...legacy } = MONTHLY;
+    expect(planOptionsFor(legacy).map((o) => o.amount)).toEqual([1000, 5000, 10000]);
   });
 });
 
@@ -69,9 +94,18 @@ describe("the scheme picker names the scheme and states no terms", () => {
     expect(src).toMatch(/schemeId: v, schemeTierId: "", goldPurity: ""/);
   });
 
-  it("says why a wallet has no amount field instead of leaving a gap", () => {
-    expect(src).toMatch(/addIsWallet &&/);
-    expect(src).toMatch(/enrollIsWallet &&/);
+  it("says why there is no amount field instead of leaving a gap", () => {
+    expect(src).toMatch(/addPlanOptions\.length === 0 && noAmountNote\(addScheme\)/);
+    expect(src).toMatch(/planOptions\.length === 0 && noAmountNote\(enrollScheme\)/);
+  });
+
+  it("the explainer says the right thing for each of the two", () => {
+    expect(src).toMatch(/this is a wallet/);
+    expect(src).toMatch(/frozen for the whole term/);
+  });
+
+  it("Add Customer states the locked rate once a purity is chosen", () => {
+    expect(src).toMatch(/is locked for the whole term\. Every contribution buys gold at this rate/);
   });
 });
 
