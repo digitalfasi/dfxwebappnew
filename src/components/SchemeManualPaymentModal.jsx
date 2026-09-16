@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input, SearchInput } from "./ui/input";
@@ -8,6 +8,8 @@ import { formatINR } from "../lib/utils";
 import { customerService } from "../services/customerService";
 import { enrollmentService } from "../services/enrollmentService";
 import { paymentService } from "../services/paymentService";
+import { schemeService } from "../services/schemeService";
+import { isWalletScheme, DIGI_MIN, DIGI_MAX } from "../services/schemeCapabilities";
 
 // Scheme manual-payment method enum (backend PaymentMethod for /payments/manual).
 const PAY_METHODS = [
@@ -62,6 +64,21 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
   const [form, setForm] = useState({ months: 1, method: "CASH", date: todayIso(), remarks: "" });
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // FLEXIBLE_DIGI_GOLD is a wallet, not an instalment plan — the customer types
+  // a free amount instead of picking a months count. Kept as separate state
+  // from `form.months` so the existing Monthly/Fixed instalment form (and its
+  // validation) is untouched.
+  const [digiAmount, setDigiAmount] = useState("");
+  // GET /enrollments doesn't carry scheme_type itself (only scheme_id/scheme_name),
+  // so the reliable, backend-authoritative type comes from cross-referencing
+  // scheme_id against the existing GET /schemes catalog — fetched once here,
+  // reused for every enrollment in this modal, never inferred from a name.
+  const [schemeTypeById, setSchemeTypeById] = useState({});
+  useEffect(() => {
+    schemeService.getSchemes()
+      .then((list) => setSchemeTypeById(Object.fromEntries(list.map((sc) => [sc.id, sc.schemeType]))))
+      .catch(() => {}); // best-effort; falls back to the installment UI if unavailable
+  }, []);
 
   const searchCustomers = async (e) => {
     e?.preventDefault?.();
@@ -119,8 +136,15 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
     setBalanceError("");
     setFormError("");
     setForm({ months: 1, method: "CASH", date: todayIso(), remarks: "" });
+    setDigiAmount("");
     loadBalance(e.id);
   };
+
+  // Reliable scheme-type detection: cross-reference the enrollment's scheme_id
+  // against the GET /schemes catalog (schemeTypeById), falling back to a
+  // scheme_type the caller already attached directly. Never inferred from the
+  // scheme's display name.
+  const isDigi = isWalletScheme(schemeTypeById[enrollment?.schemeId] ?? enrollment?.schemeType);
 
   // Backend-derived coverage numbers (never recomputed here).
   const monthly = balance?.monthly_amount ?? 0;
@@ -172,6 +196,63 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
     } catch (err) {
       setFormError(err?.message || "Could not record payment");
       // Refresh the balance so the UI reflects true backend state after a failure.
+      try { setBalance(await enrollmentService.getBalance(balance.enrollment_id)); } catch { /* keep prior */ }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Digi Gold: a per-payment amount check only — ₹500-₹1,00,000, no monthly
+  // multiple, no lifetime cap. This is a UX hint; the backend re-validates the
+  // same band and remains authoritative.
+  const digiAmountNumber = (() => {
+    const cleaned = String(digiAmount).trim().replace(/,/g, "");
+    if (cleaned === "") return null;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  })();
+  const digiAmountError =
+    digiAmountNumber === null
+      ? null // empty/non-numeric — caught on submit, not shown while typing
+      : digiAmountNumber < DIGI_MIN || digiAmountNumber > DIGI_MAX
+      ? `Enter an amount between ${formatINR(DIGI_MIN)} and ${formatINR(DIGI_MAX)}.`
+      : null;
+
+  const submitDigi = async (e) => {
+    e.preventDefault();
+    if (submitting || !balance) return;
+    setFormError("");
+    if (digiAmountNumber === null) {
+      setFormError("Enter a payment amount.");
+      return;
+    }
+    if (digiAmountNumber < DIGI_MIN || digiAmountNumber > DIGI_MAX) {
+      setFormError(`Amount must be between ${formatINR(DIGI_MIN)} and ${formatINR(DIGI_MAX)}.`);
+      return;
+    }
+    if (!form.date) {
+      setFormError("Select a payment date.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // Same existing scheme-payment endpoint as Monthly/Fixed. monthsCovered
+      // is intentionally omitted — Digi has no instalment schedule, and the
+      // backend derives/ignores it for this scheme type on its own; the market
+      // rate for the enrollment's locked purity, on this payment's date, is
+      // resolved server-side. Nothing financial is computed here.
+      await paymentService.recordManualPayment({
+        enrollmentId: balance.enrollment_id,
+        amount: digiAmountNumber,
+        method: form.method,
+        paymentDate: form.date,
+        remarks: form.remarks.trim() || undefined,
+      });
+      toast(`Payment of ${formatINR(digiAmountNumber)} recorded for ${balance.enrollment_number}`);
+      onRecorded?.();
+      onClose();
+    } catch (err) {
+      setFormError(err?.message || "Could not record payment");
       try { setBalance(await enrollmentService.getBalance(balance.enrollment_id)); } catch { /* keep prior */ }
     } finally {
       setSubmitting(false);
@@ -263,8 +344,15 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
                       >
                         <span>
                           <span className="block text-sm font-bold">{e.scheme}</span>
+                          {/* A wallet has no per-month figure to quote — the
+                              customer deposits what he likes, and e.paid/e.total
+                              (months) never move for it, so quoting them here
+                              was simply false. State what the wallet holds
+                              instead. */}
                           <span className="block text-xs text-muted">
-                            {formatINR(e.installment)}/mo · {e.paid}/{e.total} paid
+                            {isWalletScheme(schemeTypeById[e.schemeId] ?? e.schemeType)
+                              ? (e.totalPaid != null ? `${formatINR(e.totalPaid)} paid in` : "Wallet")
+                              : `${formatINR(e.installment)}/mo · ${e.paid}/${e.total} paid`}
                           </span>
                           <span className="block font-mono text-[11px] text-muted">{e.enrollment}</span>
                         </span>
@@ -296,18 +384,70 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded }) {
                       <Badge tone="success" dot>{balance.status}</Badge>
                     </div>
                     <div className="mt-0.5 font-mono text-[11px] text-muted">{balance.enrollment_number}</div>
-                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                      <span className="text-muted">Monthly</span><span className="num text-right font-bold">{formatINR(monthly)}</span>
-                      <span className="text-muted">Duration</span><span className="num text-right font-bold">{balance.duration_months} mo</span>
-                      <span className="text-muted">Months paid</span><span className="num text-right font-bold">{balance.months_paid}/{balance.duration_months}</span>
-                      <span className="text-muted">Remaining months</span><span className="num text-right font-bold">{remainingMonths}</span>
-                      <span className="text-muted">Total paid</span><span className="num text-right font-bold">{formatINR(balance.total_paid ?? 0)}</span>
-                      <span className="text-muted">Available balance</span><span className="num text-right font-bold">{formatINR(balance.available_balance ?? 0)}</span>
-                      <span className="text-muted">Next due</span><span className="text-right font-bold">{fmtDate(balance.next_due_date)}</span>
-                    </div>
+                    {isDigi ? (
+                      // Wallet scheme: no monthly amount, no duration, no due dates —
+                      // just the locked purity and the ledger totals so far.
+                      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                        <span className="text-muted">Purity</span>
+                        <span className="num text-right font-bold">{enrollment?.goldPurity || "—"}</span>
+                        <span className="text-muted">Total paid</span><span className="num text-right font-bold">{formatINR(balance.total_paid ?? 0)}</span>
+                        <span className="text-muted">Available balance</span><span className="num text-right font-bold">{formatINR(balance.available_balance ?? 0)}</span>
+                      </div>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                        <span className="text-muted">Monthly</span><span className="num text-right font-bold">{formatINR(monthly)}</span>
+                        <span className="text-muted">Duration</span><span className="num text-right font-bold">{balance.duration_months} mo</span>
+                        <span className="text-muted">Months paid</span><span className="num text-right font-bold">{balance.months_paid}/{balance.duration_months}</span>
+                        <span className="text-muted">Remaining months</span><span className="num text-right font-bold">{remainingMonths}</span>
+                        <span className="text-muted">Total paid</span><span className="num text-right font-bold">{formatINR(balance.total_paid ?? 0)}</span>
+                        <span className="text-muted">Available balance</span><span className="num text-right font-bold">{formatINR(balance.available_balance ?? 0)}</span>
+                        <span className="text-muted">Next due</span><span className="text-right font-bold">{fmtDate(balance.next_due_date)}</span>
+                      </div>
+                    )}
                   </div>
 
-                  {canContribute && monthChoices.length > 0 ? (
+                  {isDigi ? (
+                    <form onSubmit={submitDigi} className="space-y-4 border-t border-line pt-5">
+                      <div className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Flexible Digi Gold — record deposit</div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="grid gap-1.5">
+                          <span className="text-xs font-bold">Purity</span>
+                          <Input value={enrollment?.goldPurity || "—"} readOnly disabled />
+                        </label>
+                        <label className="grid gap-1.5">
+                          <span className="text-xs font-bold">Method *</span>
+                          <Select value={form.method} onValueChange={(v) => setForm({ ...form, method: v })} options={PAY_METHODS} />
+                        </label>
+                        <label className="grid gap-1.5">
+                          <span className="text-xs font-bold">Amount (₹) *</span>
+                          <Input
+                            inputMode="decimal"
+                            placeholder={`${DIGI_MIN} – ${DIGI_MAX}`}
+                            value={digiAmount}
+                            onChange={(e) => setDigiAmount(e.target.value)}
+                          />
+                          {digiAmountError && <span className="text-[11px] font-semibold text-danger">{digiAmountError}</span>}
+                        </label>
+                        <label className="grid gap-1.5">
+                          <span className="text-xs font-bold">Payment date *</span>
+                          <Input type="date" value={form.date} max={todayIso()} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                        </label>
+                        <label className="grid gap-1.5 sm:col-span-2">
+                          <span className="text-xs font-bold">Remarks</span>
+                          <Input placeholder="e.g. Counter cash collection — verified by manager" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
+                        </label>
+                      </div>
+                      <p className="text-[11px] text-muted">
+                        Allowed range: {formatINR(DIGI_MIN)} – {formatINR(DIGI_MAX)} per payment. No monthly amount, no lifetime cap —
+                        the backend values this deposit at the current market rate for {enrollment?.goldPurity || "the locked purity"} on today's date.
+                      </p>
+                      {formError && <p role="alert" className="text-xs font-semibold text-danger">{formError}</p>}
+                      <div className="flex justify-end gap-2.5">
+                        <Button type="button" variant="outline" size="sm" onClick={back} disabled={submitting}>Back</Button>
+                        <Button type="submit" size="sm" disabled={submitting}>{submitting ? "Recording…" : "Record payment"}</Button>
+                      </div>
+                    </form>
+                  ) : canContribute && monthChoices.length > 0 ? (
                     <form onSubmit={submit} className="space-y-4 border-t border-line pt-5">
                       <div className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Record contribution</div>
                       <div className="grid gap-4 sm:grid-cols-2">

@@ -28,6 +28,17 @@ function mapRow(raw) {
     // Customer code is not on the enrollment payload; left blank, not faked.
     code: "",
     scheme: raw.scheme_name,
+    // This admin enrollment payload does not carry scheme_type itself (only
+    // scheme_id/scheme_name) — callers that need the canonical type cross-
+    // reference schemeId against GET /schemes (see schemeService.getSchemes),
+    // the same backend-authoritative source Schemes.jsx already uses, rather
+    // than inferring it from the scheme's name.
+    schemeId: raw.scheme_id || null,
+    schemeType: raw.scheme_type || null,
+    // Frozen at joining: the purity a gold scheme buys in. A fact about the
+    // customer's own terms, not about the scheme as it stands now. Wire field
+    // is `selected_purity` (backend's SchemeEnrollment.selected_purity).
+    goldPurity: raw.selected_purity || "",
     joined: raw.joined_date,
     maturity: raw.maturity_date,
     status: labelStatus(raw.status),
@@ -95,8 +106,16 @@ export const enrollmentService = {
    * customer self-enroll rules (active scheme, no duplicate active enrollment in
    * the same scheme; different schemes allowed). scheme_tier_id is optional.
    */
-  async adminEnrollCustomer(customerId, { schemeId, schemeTierId } = {}) {
-    const body = { scheme_id: schemeId, ...(schemeTierId ? { scheme_tier_id: schemeTierId } : {}) };
+  async adminEnrollCustomer(customerId, { schemeId, schemeTierId, goldPurity } = {}) {
+    const body = {
+      scheme_id: schemeId,
+      ...(schemeTierId ? { scheme_tier_id: schemeTierId } : {}),
+      // Chosen with the customer at joining. The backend snapshots it and, on a
+      // Fixed Gold Rate plan, locks THAT purity's published rate. Wire field is
+      // `purity` (backend's EnrollmentCreateRequest.purity) — required for
+      // FIXED_GOLD_RATE/FLEXIBLE_DIGI_GOLD, omitted (undefined) for MONTHLY.
+      ...(goldPurity ? { purity: goldPurity } : {}),
+    };
     const res = await apiClient.post(`/admin/customers/${customerId}/enrollments`, body, { auth: true });
     return res.data?.enrollment;
   },
