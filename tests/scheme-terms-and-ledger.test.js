@@ -40,7 +40,12 @@ describe("a scheme card quotes the plan on its own terms", () => {
 
   it("only a plan paid in instalments counts installments", () => {
     expect(tenureLabel(MONTHLY)).toBe("12 installments");
-    expect(tenureLabel(FIXED)).toBe("12 installments");
+    // Fixed Gold Rate asserted "12 installments" back when the shop still set
+    // a monthly amount on it. It sets none now - the customer pays what he can
+    // against his locked rate - so counting instalments states a commitment
+    // that does not exist. Its 12 months are still real: that is when it
+    // matures. The name of this test is the rule; the plan changed under it.
+    expect(tenureLabel(FIXED)).toBe("12 months");
     expect(tenureLabel(WALLET)).toBe("12 months");
   });
 

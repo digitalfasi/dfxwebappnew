@@ -81,13 +81,15 @@ function fmt(n) {
   return `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
-/** A wallet is not paid in instalments, so it has no instalment COUNT to
- *  quote. Its duration is still real - it is when the wallet matures. */
+/** A plan the shop sets no instalment on has no instalment COUNT to quote.
+ *  Its duration is still real - it is when the plan matures. This read the
+ *  wallet alone, so a Fixed Gold Rate plan was still advertised as "12
+ *  installments" after it stopped having any. */
 export function tenureLabel(scheme, durationMonths) {
   const months = Number(durationMonths ?? scheme?.durationMonths ?? scheme?.duration_months ?? 0);
   if (!months) return "";
   const type = scheme?.schemeType || scheme?.scheme_type;
-  return isWalletScheme(type) ? `${months} months` : `${months} installments`;
+  return isFreeAmountScheme(type) ? `${months} months` : `${months} installments`;
 }
 
 export function schemeCapabilities(schemeType) {
