@@ -10,7 +10,7 @@ import { fmtDate, grams as fmtGrams, money as fmtMoney } from "@/_shared/utils";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { passbookService } from "@/_shared/passbookService";
 import { paymentService } from "@/modules/payments/paymentService";
-import { isWalletScheme, NOT_APPLICABLE } from "@/modules/plan/scheme/schemeCapabilities";
+import { isWalletScheme, isFreeAmountScheme, NOT_APPLICABLE } from "@/modules/plan/scheme/schemeCapabilities";
 
 // Scheme Management — operational customer/enrollment module. Consolidates the
 // former Enrollments + Collections screens. All figures (paid, outstanding,
@@ -383,10 +383,14 @@ export default function SchemeManagement() {
                       ? <GramGoal grams={r.goldGrams} target={r.goldGramsTarget} />
                       : fmtDate(r.maturity)}
                   </td>
-                  {/* Same rule as the Manage Scheme panel: a wallet has no
-                      instalment and nothing outstanding. Dash stays on the
-                      column's own right-aligned rule. */}
-                  <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${isWalletScheme(r.schemeType) ? "font-semibold text-muted" : "font-semibold"}`}>{isWalletScheme(r.schemeType) ? NOT_APPLICABLE : money(r.installment)}</td>
+                  {/* Same rule as the Manage Scheme panel: a plan the shop
+                      sets no instalment on has none to show. This read the
+                      wallet alone, so a Fixed Gold Rate enrollment still
+                      displayed the catalogue's 1,000 as though the customer
+                      had committed to paying it every month - the same figure,
+                      in the same wrong place, that the scheme form used to
+                      show. Dash stays on the column's own right-aligned rule. */}
+                  <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${isFreeAmountScheme(r.schemeType) ? "font-semibold text-muted" : "font-semibold"}`}>{isFreeAmountScheme(r.schemeType) ? NOT_APPLICABLE : money(r.installment)}</td>
                   {/* A wallet has no instalments to count, so "0/12" was a lie
                       told beside a funded enrollment: Raiyan Abbas had paid
                       Rs 40,000 in and this column read 0/12. months_paid is
@@ -394,7 +398,7 @@ export default function SchemeManagement() {
                       advances it), so the figure to show is what the wallet
                       actually holds. */}
                   <td className="num px-4 py-3.5 text-right whitespace-nowrap">
-                    {isWalletScheme(r.schemeType)
+                    {isFreeAmountScheme(r.schemeType)
                       ? <span className="font-bold">{money(r.totalPaid)}<span className="ml-1 text-[11px] font-semibold text-muted">in</span></span>
                       : <span className="font-bold">{r.paid}/{r.total}</span>}
                   </td>
@@ -403,8 +407,8 @@ export default function SchemeManagement() {
                       and shows a dash, not eleven months of future contract.
                       A wallet can never be overdue - nothing is ever due. */}
                   <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${(r.overdueAmount || 0) > 0 ? "font-bold text-danger" : "font-semibold text-muted"}`}>
-                    {isWalletScheme(r.schemeType)
-                      ? (r.quiet
+                    {isFreeAmountScheme(r.schemeType)
+                      ? (isWalletScheme(r.schemeType) && r.quiet
                           ? <QuietNudge days={r.daysQuiet} />
                           : NOT_APPLICABLE)
                       : !(r.overdueAmount > 0)

@@ -164,7 +164,9 @@ describe("gold is gold, wherever it sits", () => {
 
 describe("a wallet enrollment is not counted in installments", () => {
   it("the Paid column shows what the wallet holds", () => {
-    expect(sm).toMatch(/isWalletScheme\(r\.schemeType\)\r?\n\s*\? <span className="font-bold">\{money\(r\.totalPaid\)\}/);
+    // Widened from the wallet to every free-amount plan: Fixed Gold Rate
+    // sets no instalment either, so "0/12 months paid" was equally false.
+    expect(sm).toMatch(/isFreeAmountScheme\(r\.schemeType\)\r?\n\s*\? <span className="font-bold">\{money\(r\.totalPaid\)\}/);
   });
 });
 
@@ -281,7 +283,9 @@ describe("the enrollment list shows overdue, not the rest of the contract", () =
     // A Digi Gold wallet has no duration, no instalment and no due date, so it
     // cannot be in arrears. The wallet branch of this cell must be reached
     // BEFORE any overdue figure is considered.
-    expect(sm).toMatch(/isWalletScheme\(r\.schemeType\)\s*\?\s*\(r\.quiet/);
+    // No free-amount plan can be overdue. The quiet nudge stays wallet-only:
+    // it is the wallet's own courtesy reminder, not an arrears state.
+    expect(sm).toMatch(/isFreeAmountScheme\(r\.schemeType\)\s*\?\s*\(isWalletScheme\(r\.schemeType\) && r\.quiet/);
   });
 
   it("a quiet wallet is a reminder, never an arrear", () => {

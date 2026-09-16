@@ -347,8 +347,10 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
                               (SM-ENR-001). State what the wallet holds instead,
                               and say nothing when that is not loaded. */}
                           <span className="block text-xs text-muted">
-                            {isWalletScheme(e.schemeType)
-                              ? (e.totalPaid != null ? `${formatINR(e.totalPaid)} paid in` : "Wallet")
+                            {isFreeAmountScheme(e.schemeType)
+                              ? (e.totalPaid != null
+                                  ? `${formatINR(e.totalPaid)} paid in`
+                                  : (isWalletScheme(e.schemeType) ? "Wallet" : "Pays any amount"))
                               : `${formatINR(e.installment)}/mo · ${e.paid}/${e.total} months paid`}
                           </span>
                           <span className="block font-mono text-[11px] text-muted">{e.enrollment}</span>
