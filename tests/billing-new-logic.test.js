@@ -13,6 +13,7 @@ const inv = read("../src/modules/procurement/inventory/Inventory.jsx");
 // bill differently.
 const verdict = read("../src/_shared/ui/verdict.jsx");
 const sh = read("../src/modules/billing/sale-history/SalesHistory.jsx");
+const sch = read("../src/modules/plan/scheme/Schemes.jsx");
 const sm = read("../src/modules/plan/enrollment/SchemeManagement.jsx");
 
 describe("the making charge is this lot's, not a hard-coded 14", () => {
@@ -295,6 +296,25 @@ describe("the enrollment list shows overdue, not the rest of the contract", () =
     const nudge = sm.slice(sm.indexOf("function QuietNudge"), sm.indexOf("// KPI card"));
     expect(nudge).not.toMatch(/text-danger|bg-danger|border-danger/);
     expect(nudge).not.toMatch(/overdue|Overdue|arrear|late|Late/);
+  });
+
+  it("Fixed Gold Rate does not inherit another type's instalment", () => {
+    // A pre-filled 1000, carried over from MONTHLY's ladder, read as a decision
+    // somebody had already made. Fixed Gold Rate is the one type where the shop
+    // picks any figure in a range, so it must be picked.
+    expect(sch).toMatch(/t === "FIXED_GOLD_RATE" && f\.type !== "FIXED_GOLD_RATE" \? "" : f\.amount/);
+  });
+
+  it("the instalment field says what the number does, not only what it accepts", () => {
+    expect(sch).toMatch(/Monthly Instalment \(₹\)/);
+    expect(sch).toMatch(/he does not choose it/);
+    expect(sch).toMatch(/chooses only the purity/);
+  });
+
+  it("a scheme cannot be sold in a purity the shop cannot price", () => {
+    // 20K has no published rate column anywhere in the system, so a scheme
+    // saved in it is one nobody can enrol into.
+    expect(sch).toMatch(/const PURITY_CHOICES = \["9K", "14K", "18K", "22K", "24K"\]/);
   });
 
   it("a wallet matures on a gram, not on a date", () => {

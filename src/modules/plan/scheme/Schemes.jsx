@@ -363,7 +363,18 @@ export default function Schemes() {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Title<span className="text-danger">*</span> — e.g. Festival Special Plan</span><input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Festival Special Plan" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.title ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.title && <span className="text-xs font-semibold text-danger">{errors.title}</span>}</label>
               <label className="grid gap-1.5"><span className="text-xs font-bold">Description — Short description shown to customers</span><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short description..." rows={2} className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Type<span className="text-danger">*</span> — how contributions convert to gold</span><Select value={form.type} onValueChange={(t) => setForm(f => ({ ...f, type: t }))} options={SCHEME_TYPES.map(t => ({ value: t.value, label: t.label }))} /><span className="text-[11px] text-muted">{form.type === "FIXED_GOLD_RATE" ? "Gold rate is locked at enrollment; contributions convert at that locked rate." : form.type === "FLEXIBLE_DIGI_GOLD" ? "Contributions convert to gold at the rate on the contribution date." : "Standard monthly savings plan."}</span></label>
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Type<span className="text-danger">*</span> — how contributions convert to gold</span><Select value={form.type} onValueChange={(t) => setForm(f => ({
+                ...f,
+                type: t,
+                // MONTHLY sells at a fixed ladder and a wallet never uses this
+                // figure at all, so switching to Fixed Gold Rate carried the
+                // other type's number across and it LOOKED like a decision
+                // already made. Fixed Gold Rate is the one type where the shop
+                // picks any figure in a range, so it must be picked, not
+                // inherited. Editing an existing scheme keeps its saved amount
+                // (the type is not being changed there).
+                amount: t === "FIXED_GOLD_RATE" && f.type !== "FIXED_GOLD_RATE" ? "" : f.amount,
+              }))} options={SCHEME_TYPES.map(t => ({ value: t.value, label: t.label }))} /><span className="text-[11px] text-muted">{form.type === "FIXED_GOLD_RATE" ? "Gold rate is locked at enrollment; contributions convert at that locked rate." : form.type === "FLEXIBLE_DIGI_GOLD" ? "Contributions convert to gold at the rate on the contribution date." : "Standard monthly savings plan."}</span></label>
               {/* Fixed Gold Rate and Digi Gold are bought IN a purity: it
                   decides what each contribution buys and what those grams are
                   worth against the piece at the counter. A Monthly plan saves
@@ -372,7 +383,7 @@ export default function Schemes() {
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Gold Purity<span className="text-danger">*</span> <span className="font-normal text-muted">— what this scheme buys</span></span><Select value={form.purity} onValueChange={(p) => setForm({ ...form, purity: p })} options={PURITY_CHOICES.map((p) => ({ value: p, label: p }))} />{errors.purity ? <span className="text-xs font-semibold text-danger">{errors.purity}</span> : <span className="text-[11px] text-muted">Contributions buy grams of this purity; at the counter they convert to the piece&rsquo;s own purity.</span>}</label>
               )}
               <label className="grid gap-1.5"><span className="text-xs font-bold">Duration (Months)<span className="text-danger">*</span> <span className="font-normal text-muted">— max {MAX_DURATION_MONTHS}</span></span><input type="number" min={1} max={MAX_DURATION_MONTHS} step={1} value={form.duration} onChange={e => setForm({ ...form, duration: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.duration ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.duration && <span className="text-xs font-semibold text-danger">{errors.duration}</span>}</label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Monthly Amount (₹)<span className="text-danger">*</span> <span className="font-normal text-muted">— {form.type === "FLEXIBLE_DIGI_GOLD" ? `${money(DIGI_MIN)} to ${money(DIGI_MAX)}` : form.type === "MONTHLY" ? "fixed tiers" : `${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}`}</span></span>{/* FDG-004. A Digi Gold wallet has no monthly amount to set: the
+              <label className="grid gap-1.5"><span className="text-xs font-bold">{form.type === "FIXED_GOLD_RATE" ? "Monthly Instalment (₹)" : "Monthly Amount (₹)"}<span className="text-danger">*</span> <span className="font-normal text-muted">— {form.type === "FLEXIBLE_DIGI_GOLD" ? `${money(DIGI_MIN)} to ${money(DIGI_MAX)}` : form.type === "MONTHLY" ? "fixed tiers" : "what every customer on this plan pays"}</span></span>{/* FDG-004. A Digi Gold wallet has no monthly amount to set: the
                     customer deposits what he likes, whenever he likes, within a
                     fixed range. The control states that range and is read-only
                     (not disabled - it stays reachable by keyboard and readable
@@ -385,8 +396,19 @@ export default function Schemes() {
                      not typed. */
                   <Select value={String(form.amount)} onValueChange={(v) => setForm({ ...form, amount: v })} options={MONTHLY_TIER_AMOUNTS.map((a) => ({ value: String(a), label: money(a) }))} />
                 ) : (
-                  <input type="number" step={1} value={form.amount} min={MONTHLY_MIN} max={MONTHLY_MAX} onChange={e => setForm({ ...form, amount: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.amount ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
-                )}{!errors.amount && <span className="text-[11px] text-muted">{form.type === "FLEXIBLE_DIGI_GOLD" ? `A wallet deposit may be ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, any number of times.` : `An instalment must be ${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}.`}</span>}{errors.amount && <span className="text-xs font-semibold text-danger">{errors.amount}</span>}</label>
+                  <input type="number" step={1} value={form.amount} min={MONTHLY_MIN} max={MONTHLY_MAX} placeholder={`e.g. ${MONTHLY_MIN}`} onChange={e => setForm({ ...form, amount: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.amount ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />
+                )}{/* The generic "An instalment must be Rs 1,000 to Rs 15,000" said what
+                    the box would ACCEPT and never what the number DOES. On a
+                    Fixed Gold Rate plan that left a pre-filled 1000 sitting
+                    there looking like a decision somebody had already made, and
+                    no way to tell whether the customer picks it later. He does
+                    not: this is the plan's own instalment and the only thing he
+                    chooses is the purity. */}
+                {!errors.amount && <span className="text-[11px] text-muted">{form.type === "FLEXIBLE_DIGI_GOLD"
+                  ? `A wallet deposit may be ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, any number of times.`
+                  : form.type === "FIXED_GOLD_RATE"
+                  ? `Every customer on this plan pays this same amount each month — he does not choose it. At enrollment he chooses only the purity, and that purity's rate that day is frozen for his whole term. Anything from ${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}.`
+                  : `An instalment must be ${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}.`}</span>}{errors.amount && <span className="text-xs font-semibold text-danger">{errors.amount}</span>}</label>
               {/* The bonus is a PERCENTAGE, so it is captured as a bounded number
                   (0-99) rather than free text that accepted any digits at all.
                   The stored description is composed from it, keeping the existing
