@@ -83,7 +83,7 @@ const isBlank = (v) => v == null || v === "" || v === "—" || v === "-";
 const orNP = (v) => (isBlank(v) ? "Not provided" : v);
 const orNS = (v) => (isBlank(v) ? "Not submitted" : v);
 
-export default function Customers() {
+export default function Customers({ intent, clearIntent } = {}) {
   const scope = useRef(null);
   usePressFeedback(scope);
   const [query, setQuery] = useState("");
@@ -230,6 +230,23 @@ export default function Customers() {
     if (todayRate) return;
     goldRateService.getTodayRate({ carryForward: true }).then(setTodayRate).catch(() => {});
   }
+
+  // One way in, so the header button and the Dashboard's New Enrollment open
+  // the same dialog in the same state - schemes fetched, rate fetched.
+  function openAddCustomer() {
+    setShowAdd(true);
+    loadActiveSchemes();
+    loadTodayRate();
+  }
+
+  // Dashboard -> New Enrollment lands here asking for that dialog. Consumed
+  // once and cleared, so it does not reopen when this screen next renders.
+  useEffect(() => {
+    if (intent !== "add-customer") return;
+    openAddCustomer();
+    clearIntent?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent]);
 
   async function openEnroll() {
     setChosenSchemeId("");
@@ -482,7 +499,7 @@ export default function Customers() {
         </div>
         {/* The scheme list is fetched when the form opens, so the picker is
             already populated by the time the admin scrolls to it. */}
-        <Button size="sm" onClick={() => { setShowAdd(true); loadActiveSchemes(); loadTodayRate(); }}>
+        <Button size="sm" onClick={openAddCustomer}>
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
           Add customer
         </Button>

@@ -36,10 +36,17 @@ export function Select({
   }, [value, options]);
 
   // The list is a fixed-position portal, so it has to be placed against the
-  // VIEWPORT, not the trigger alone. It opens downward by default, flips above
-  // the trigger when there is more room there, and its height is capped to the
-  // space actually available — otherwise a select low on the screen (or low in
-  // a dialog) runs its options off the bottom edge where they cannot be read.
+  // VIEWPORT, not the trigger alone. It opens DOWNWARD, directly under the
+  // field it belongs to, and flips above only when there is genuinely not
+  // enough room below to show a usable list.
+  //
+  // It used to flip whenever the space below was under the preferred 224px and
+  // the space above was larger - which on any laptop-height window is most of
+  // the time. A select sitting mid-dialog with 200px under it, room for five
+  // options, still threw its list upward across the fields above it: in Add
+  // Customer the scheme list covered Date of Birth and Initial Password. The
+  // list is also capped to the room that ACTUALLY exists and scrolls inside
+  // that cap, so the fix holds however many schemes the store adds.
   const updateCoords = () => {
     if (!triggerRef.current) return;
     const GAP = 6;
@@ -49,9 +56,15 @@ export function Select({
     const r = triggerRef.current.getBoundingClientRect();
     const below = window.innerHeight - r.bottom - GAP - EDGE;
     const above = r.top - GAP - EDGE;
-    const openUp = below < Math.min(PREFERRED, above) && above > below;
-    const room = Math.max(openUp ? above : below, MIN);
-    const maxHeight = Math.min(PREFERRED, room);
+    // Down unless down cannot work. Ties go downward, which is where the eye
+    // already is and where every native select puts it.
+    const openUp = below < MIN && above > below;
+    const room = Math.max(0, openUp ? above : below);
+    // MIN is a floor on the BOX, not a claim about the space: a cramped window
+    // gets a short scrollable list rather than a list flattened to nothing. The
+    // top is clamped to the viewport below, so the floor can never push the
+    // list off the screen the way it used to.
+    const maxHeight = Math.max(MIN, Math.min(PREFERRED, room));
     // Keep the list inside the window horizontally too, for a trigger near the
     // right edge whose list is wider than it is.
     // The list is never narrower than 160px, so the clamp and the rendered
@@ -61,12 +74,12 @@ export function Select({
     // pushed off its anchor and sitting to one side of the field it belongs to.
     const width = Math.max(r.width, 160);
     const left = Math.min(Math.max(EDGE, r.left), Math.max(EDGE, window.innerWidth - width - EDGE));
-    setCoords({
-      top: openUp ? Math.max(EDGE, r.top - GAP - maxHeight) : r.bottom + GAP,
-      left,
-      width,
-      maxHeight,
-    });
+    const wanted = openUp ? r.top - GAP - maxHeight : r.bottom + GAP;
+    // Whatever the chosen side, the box stays inside the window. Without this
+    // the MIN floor could hang a list off the bottom edge where its last
+    // options cannot be reached at all.
+    const top = Math.min(Math.max(EDGE, wanted), Math.max(EDGE, window.innerHeight - maxHeight - EDGE));
+    setCoords({ top, left, width, maxHeight });
   };
 
   useEffect(() => {

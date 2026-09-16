@@ -34,7 +34,10 @@ const QUICK_ACTIONS = [
   { title: "New Sale", page: "new-sale", icon: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0" },
   { title: "Add Customer", page: "customers", icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
   { title: "Record Payment", page: "payments", icon: "M1 4h22v16H1zM1 10h22" },
-  { title: "New Enrollment", page: "scheme-management", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6" },
+  // Enrolment happens in the Add Customer dialog on the Customer Directory,
+  // not on Enrollment Management - that screen lists and manages enrolments
+  // that already exist. Sending someone here to CREATE one left them hunting.
+  { title: "New Enrollment", page: "customers", intent: "add-customer", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6" },
   { title: "Add Scheme", page: "schemes", icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
   { title: "Add Catalogue", page: "catalogue", icon: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" },
   { title: "Generate Report", report: true, icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8" },
@@ -421,7 +424,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // a screen that makes sense rather than a KPI permanently reading "—".
   const { backendRole } = useAuth();
   const seesProfit = backendRole === "Admin" || backendRole === "SuperAdmin";
-  const nav = (page) => onNavigate && onNavigate(page);
+  const nav = (page, intent) => onNavigate && onNavigate(page, intent);
 
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);    // Generate Report popup
@@ -688,7 +691,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
         </div>
         <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-7">
           {QUICK_ACTIONS.map((qa) => (
-            <button key={qa.title} onClick={() => (qa.report ? setShowReport(true) : nav(qa.page))}
+            <button key={qa.title} onClick={() => (qa.report ? setShowReport(true) : nav(qa.page, qa.intent))}
               className="flex flex-col items-center gap-1.5 rounded-xl border border-line p-2.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line hover:shadow-sm">
               <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-accent">
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={qa.icon} /></svg>

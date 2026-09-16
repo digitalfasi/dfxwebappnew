@@ -102,8 +102,18 @@ function pageFromHash() {
 export default function App() {
   const { logout, user, permissions } = useAuth();
   const [page, setPageState] = useState(pageFromHash);
+  // What the navigation was FOR, when the destination alone does not say it.
+  // "New Enrollment" on the Dashboard has to land on Customers with the Add
+  // Customer dialog already open, because that dialog is where a scheme is
+  // actually joined. One-shot: any later navigation clears it, and a hash
+  // change (refresh, back, a typed URL) never sets one, so a reopened page is
+  // never haunted by a dialog the user did not ask for.
+  const [intent, setIntent] = useState(null);
   // Navigate = update state AND the URL hash, so refresh/back/forward keep the page.
-  const setPage = (p) => setPageState((prev) => (typeof p === "function" ? p(prev) : p));
+  const setPage = (p, nextIntent = null) => {
+    setIntent(nextIntent);
+    setPageState((prev) => (typeof p === "function" ? p(prev) : p));
+  };
   useEffect(() => {
     if (pageFromHash() !== page) window.location.hash = `/${page}`;
   }, [page]);
@@ -193,7 +203,7 @@ export default function App() {
         />
         <main className="content-shell w-full min-w-0 flex-1 overflow-x-hidden px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
           {Page
-            ? <Page onNavigate={setPage} search={search} promotions={promotions} setPromotions={setPromotions} editingPromo={editingPromo} setEditingPromo={setEditingPromo} />
+            ? <Page onNavigate={setPage} intent={intent} clearIntent={() => setIntent(null)} search={search} promotions={promotions} setPromotions={setPromotions} editingPromo={editingPromo} setEditingPromo={setEditingPromo} />
             : allowed
               ? <ComingSoon name={meta.title} />
               : <NoAccess name={meta.title} />}
