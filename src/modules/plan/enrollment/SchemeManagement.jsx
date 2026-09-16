@@ -397,10 +397,23 @@ export default function SchemeManagement() {
                       NULL on a wallet by design (payments/service.py never
                       advances it), so the figure to show is what the wallet
                       actually holds. */}
+                  {/* One column, two different facts. A free-amount plan has
+                      taken MONEY; an instalment plan has taken a COUNT of
+                      months. Both were crammed onto one line with a trailing
+                      word - "Rs 40,000.00 in" - which read as a sentence
+                      fragment and let the figure collide with the caption. The
+                      number now owns the line and the unit sits under it in
+                      small caps, so the column scans as one column of numbers
+                      whichever kind of plan the row is. */}
                   <td className="num px-4 py-3.5 text-right whitespace-nowrap">
-                    {isFreeAmountScheme(r.schemeType)
-                      ? <span className="font-bold">{money(r.totalPaid)}<span className="ml-1 text-[11px] font-semibold text-muted">in</span></span>
-                      : <span className="font-bold">{r.paid}/{r.total}</span>}
+                    <span className="inline-flex flex-col items-end leading-tight">
+                      <span className="font-bold">
+                        {isFreeAmountScheme(r.schemeType) ? money(r.totalPaid) : `${r.paid}/${r.total}`}
+                      </span>
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                        {isFreeAmountScheme(r.schemeType) ? "deposited" : "installments"}
+                      </span>
+                    </span>
                   </td>
                   {/* Overdue only: an instalment whose due date has passed
                       unpaid. A plan that is simply mid-term owes nothing today

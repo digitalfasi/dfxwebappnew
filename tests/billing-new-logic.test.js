@@ -166,7 +166,10 @@ describe("a wallet enrollment is not counted in installments", () => {
   it("the Paid column shows what the wallet holds", () => {
     // Widened from the wallet to every free-amount plan: Fixed Gold Rate
     // sets no instalment either, so "0/12 months paid" was equally false.
-    expect(sm).toMatch(/isFreeAmountScheme\(r\.schemeType\)\r?\n\s*\? <span className="font-bold">\{money\(r\.totalPaid\)\}/);
+    // Behaviour, not layout: a free-amount plan reports the money it has
+    // taken, never a count of months it never agreed to. Pinning the exact
+    // markup made an ordinary restyle of the cell look like a regression.
+    expect(sm).toMatch(/isFreeAmountScheme\(r\.schemeType\) \? money\(r\.totalPaid\)/);
   });
 });
 

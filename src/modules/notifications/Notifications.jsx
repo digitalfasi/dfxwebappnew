@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/_shared/ui/card";
 import { Button } from "@/_shared/ui/button";
 import { Input } from "@/_shared/ui/input";
@@ -6,24 +6,30 @@ import { Badge } from "@/_shared/ui/badge";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
+import {
+  notificationService, CHANNELS, TARGETS, STATUS_TONE,
+  channelLabel, targetLabel, statusLabel,
+} from "@/modules/notifications/notificationService";
+import { schemeService } from "@/modules/plan/scheme/schemeService";
 
-const TABS = ["All", "Drafts", "Sent", "Failed", "Cancelled"];
-const CHANNELS = ["In-App", "Email", "WhatsApp", "SMS", "Push"];
-const AUDIENCES = ["All customers", "Specific customers", "Customers enrolled in a scheme"];
-
-// Recipient counts are deliberately absent. This screen does not yet call the
-// notification-campaign backend, so there is no real number to show - and a
-// plausible-looking invented one is worse than a blank, because a jeweller
-// would believe it. The column renders an em dash until the wiring lands.
-const INITIAL = [
-  { id: 1, title: "Diwali Gold Offer", channel: "WhatsApp", audience: "All customers", status: "Sent" },
-  { id: 2, title: "Diwali Gold Offer", channel: "Push", audience: "Specific customers", status: "Draft" },
-  { id: 3, title: "Payment Reminder", channel: "SMS", audience: "Customers enrolled in a scheme", status: "Failed" },
-  { id: 4, title: "New Branch Launch", channel: "Email", audience: "All customers", status: "Cancelled" },
-  { id: 5, title: "Diwali Gold Offer", channel: "In-App", audience: "All customers", status: "Draft" },
+// Tabs map onto the backend's own status vocabulary rather than a parallel set
+// of display words, so a tab can never drift from the thing it filters.
+const TABS = [
+  { label: "All", status: null },
+  { label: "Drafts", status: "DRAFT" },
+  { label: "Sent", status: "SENT" },
+  { label: "Failed", status: "FAILED" },
+  { label: "Cancelled", status: "CANCELLED" },
 ];
 
-const STATUS_TONE = { Draft: "neutral", Sent: "success", Failed: "danger", Cancelled: "warning" };
+// "Specific customers" is a real backend audience (target_type=CUSTOMERS) but
+// it needs a list of customer ids, and this screen has no customer picker. An
+// option that cannot be filled in is worse than a missing one, so it is not
+// offered until the picker exists. ALL needs nothing; SCHEME needs one id,
+// which the scheme dropdown below supplies.
+const OFFERED_TARGETS = TARGETS.filter((t) => t.value !== "CUSTOMERS");
+
+const EMPTY_FORM = { title: "", message: "", channel: "IN_APP", targetType: "ALL", schemeId: "" };
 
 export default function Notifications() {
   const scope = useRef(null);
@@ -31,53 +37,136 @@ export default function Notifications() {
   usePressFeedback(scope);
 
   const [activeTab, setActiveTab] = useState("All");
-  const [list, setList] = useState(INITIAL);
+  const [list, setList] = useState([]);
+  const [schemes, setSchemes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: "", message: "", channel: "In-App", audience: "All customers" });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      setList(await notificationService.list());
+    } catch (e) {
+      setLoadError(e?.message || "Could not load notifications");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Only needed to address a scheme audience; a failure here must not stop the
+  // rest of the screen working, so it is silent and leaves the list empty.
+  useEffect(() => {
+    schemeService.getSchemes().then(setSchemes).catch(() => setSchemes([]));
+  }, []);
+
   const filtered = useMemo(() => {
-    if (activeTab === "All") return list;
-    const map = { Drafts: "Draft", Sent: "Sent", Failed: "Failed", Cancelled: "Cancelled" };
-    return list.filter(n => n.status === map[activeTab]);
+    const want = TABS.find((t) => t.label === activeTab)?.status;
+    return want ? list.filter((n) => n.status === want) : list;
   }, [list, activeTab]);
 
   const validate = () => {
     const e = {};
     if (!form.title.trim()) e.title = "Title is required";
     if (!form.message.trim()) e.message = "Message is required";
+    if (form.targetType === "SCHEME" && !form.schemeId) e.schemeId = "Choose which plan's customers to notify";
     return e;
   };
 
-  const handleSaveDraft = () => {
+  const payload = () => ({
+    title: form.title.trim(),
+    body: form.message.trim(),
+    channel: form.channel,
+    targetType: form.targetType,
+    targetIds: form.targetType === "SCHEME" ? [form.schemeId] : [],
+  });
+
+  // The backend answers 200 with status FAILED when a channel has no provider
+  // configured or nothing matched the audience. Reporting "sent" off the HTTP
+  // code alone is exactly the lie this screen used to tell, so the campaign's
+  // own status is what decides the message.
+  const reportSend = (campaign) => {
+    if (campaign.status === "SENT") {
+      const n = campaign.recipientCount;
+      toast(n == null ? "Notification sent" : `Notification sent to ${n} customer${n === 1 ? "" : "s"}`);
+    } else {
+      toast(campaign.error || `Notification ${statusLabel(campaign.status).toLowerCase()}`);
+    }
+  };
+
+  const closeForm = () => { setShowForm(false); setForm(EMPTY_FORM); setErrors({}); };
+
+  const handleSaveDraft = async () => {
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length) { toast("Fix highlighted fields"); return; }
-    setList(prev => [{ id: Date.now(), title: form.title.trim(), channel: form.channel, audience: form.audience, status: "Draft" }, ...prev]);
-    setShowForm(false);
-    setForm({ title: "", message: "", channel: "In-App", audience: "All customers" });
-    toast("Draft saved");
+    setSubmitting(true);
+    try {
+      await notificationService.createDraft(payload());
+      closeForm();
+      toast("Draft saved");
+      await load();
+    } catch (err) {
+      toast(err?.message || "Could not save the draft");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleSendNow = () => {
+  const handleSendNow = async () => {
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length) { toast("Fix highlighted fields"); return; }
-    setList(prev => [{ id: Date.now(), title: form.title.trim(), channel: form.channel, audience: form.audience, status: "Sent" }, ...prev]);
-    setShowForm(false);
-    setForm({ title: "", message: "", channel: "In-App", audience: "All customers" });
-    toast("Notification sent");
+    setSubmitting(true);
+    try {
+      // Create then send: there is no one-shot endpoint, and a draft that
+      // exists is better than a send that vanished if the second call fails.
+      const draft = await notificationService.createDraft(payload());
+      const sent = await notificationService.send(draft.id);
+      closeForm();
+      reportSend(sent);
+      await load();
+    } catch (err) {
+      toast(err?.message || "Could not send the notification");
+      await load();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleSend = (id) => {
-    setList(prev => prev.map(n => n.id === id ? { ...n, status: "Sent" } : n));
-    toast("Notification sent");
+  const handleSend = async (id) => {
+    setBusyId(id);
+    try {
+      reportSend(await notificationService.send(id));
+      await load();
+    } catch (err) {
+      toast(err?.message || "Could not send the notification");
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  const handleCancel = (id) => {
-    setList(prev => prev.map(n => n.id === id ? { ...n, status: "Cancelled" } : n));
-    toast("Notification cancelled");
+  const handleCancel = async (id) => {
+    setBusyId(id);
+    try {
+      await notificationService.cancel(id);
+      toast("Notification cancelled");
+      await load();
+    } catch (err) {
+      toast(err?.message || "Could not cancel the notification");
+    } finally {
+      setBusyId(null);
+    }
   };
+
+  const schemeOptions = schemes.map((s) => ({ value: s.id, label: s.name }));
 
   return (
     <div ref={scope} className="mx-auto max-w-[1100px]">
@@ -94,7 +183,7 @@ export default function Notifications() {
 
       <div data-motion="toolbar" className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.map(t => (
-          <button key={t} onClick={() => setActiveTab(t)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${activeTab === t ? "border-ink bg-ink text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{t}</button>
+          <button key={t.label} onClick={() => setActiveTab(t.label)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${activeTab === t.label ? "border-ink bg-ink text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{t.label}</button>
         ))}
       </div>
 
@@ -103,42 +192,57 @@ export default function Notifications() {
           <table className="w-full min-w-[860px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Title</th><th className="py-3">Channel</th><th className="py-3">Audience</th><th className="py-3">Recipients</th><th className="py-3">Status</th><th className="py-3 text-right pr-6">Actions</th>
+                <th className="px-6 py-3">Title</th><th className="py-3">Channel</th><th className="py-3">Audience</th><th className="py-3 text-right">Recipients</th><th className="py-3">Status</th><th className="py-3 text-right pr-6">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(n => (
                 <tr key={n.id} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
-                  <td className="px-6 py-3.5 font-bold">{n.title}</td>
-                  <td className="py-3.5"><Badge tone="neutral">{n.channel}</Badge></td>
-                  <td className="py-3.5 text-muted text-xs font-medium max-w-[180px]">{n.audience}</td>
-                  <td className="py-3.5 font-mono text-xs text-muted">{n.recipients || "—"}</td>
-                  <td className="py-3.5"><Badge tone={STATUS_TONE[n.status] ?? "neutral"} dot>{n.status}</Badge></td>
+                  <td className="px-6 py-3.5 font-bold">
+                    {n.title}
+                    {/* The reason a send failed belongs beside the thing that
+                        failed, not in a toast the admin already dismissed. */}
+                    {n.status === "FAILED" && n.error && (
+                      <span className="mt-0.5 block text-[11px] font-semibold text-danger">{n.error}</span>
+                    )}
+                  </td>
+                  <td className="py-3.5"><Badge tone="neutral">{channelLabel(n.channel)}</Badge></td>
+                  <td className="py-3.5 text-muted text-xs font-medium max-w-[180px]">{targetLabel(n.targetType)}</td>
+                  {/* Counted by the backend at send time. A dash before that:
+                      "not sent yet" is not the same fact as "nobody". */}
+                  <td className="num py-3.5 text-right font-semibold">{n.recipientCount ?? "—"}</td>
+                  <td className="py-3.5"><Badge tone={STATUS_TONE[n.status] ?? "neutral"} dot>{statusLabel(n.status)}</Badge></td>
                   <td className="py-3.5 pr-6 text-right">
                     <div className="flex justify-end gap-1.5">
-                      {n.status === "Draft" && <><Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => handleSend(n.id)}>Send</Button><Button size="sm" variant="outline" onClick={() => handleCancel(n.id)}>Cancel</Button></>}
-                      {n.status !== "Draft" && <span className="text-xs text-muted">—</span>}
+                      {(n.status === "DRAFT" || n.status === "FAILED") ? (
+                        <>
+                          <Button size="sm" className="bg-accent hover:bg-accent-strong" disabled={busyId === n.id} onClick={() => handleSend(n.id)}>
+                            {busyId === n.id ? "Sending…" : n.status === "FAILED" ? "Retry" : "Send"}
+                          </Button>
+                          {n.status === "DRAFT" && (
+                            <Button size="sm" variant="outline" disabled={busyId === n.id} onClick={() => handleCancel(n.id)}>Cancel</Button>
+                          )}
+                        </>
+                      ) : <span className="text-xs text-muted">—</span>}
                     </div>
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={6} className="px-6 py-10 text-center text-muted">No notifications in {activeTab}</td></tr>}
+              {loading && <tr><td colSpan={6} className="px-6 py-10 text-center text-muted">Loading…</td></tr>}
+              {!loading && loadError && <tr><td colSpan={6} className="px-6 py-10 text-center font-semibold text-danger">{loadError}</td></tr>}
+              {!loading && !loadError && filtered.length === 0 && <tr><td colSpan={6} className="px-6 py-10 text-center text-muted">No notifications in {activeTab}</td></tr>}
             </tbody>
           </table>
         </CardContent>
       </Card>
 
-      <p className="mt-3 text-xs text-muted">
-        Recipient counts are shown once notification delivery is connected to the customer list. Until then this column stays blank rather than showing an estimate.
-      </p>
-
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={() => setShowForm(false)} aria-label="Close" />
+          <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={closeForm} aria-label="Close" />
           <div className="relative w-full max-w-[560px] max-h-[90vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-line px-6 py-4">
               <h3 className="text-base font-extrabold">New Notification</h3>
-              <button onClick={() => setShowForm(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
+              <button onClick={closeForm} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5 grid gap-4">
               <label className="grid gap-1.5">
@@ -160,13 +264,23 @@ export default function Notifications() {
 
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Audience</span>
-                <Select value={form.audience} onValueChange={v => setForm({ ...form, audience: v })} options={AUDIENCES} />
+                <Select value={form.targetType} onValueChange={v => setForm({ ...form, targetType: v, schemeId: "" })} options={OFFERED_TARGETS} />
               </label>
+
+              {form.targetType === "SCHEME" && (
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Scheme *</span>
+                  <Select value={form.schemeId} onValueChange={v => setForm({ ...form, schemeId: v })} options={schemeOptions} />
+                  {errors.schemeId && <span className="text-xs font-semibold text-danger">{errors.schemeId}</span>}
+                </label>
+              )}
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
-              <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button variant="outline" size="sm" onClick={handleSaveDraft}>Save Draft</Button>
-              <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={handleSendNow}>Send Now</Button>
+              <Button variant="outline" size="sm" onClick={closeForm} disabled={submitting}>Cancel</Button>
+              <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={submitting}>Save Draft</Button>
+              <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={handleSendNow} disabled={submitting}>
+                {submitting ? "Working…" : "Send Now"}
+              </Button>
             </div>
           </div>
         </div>
