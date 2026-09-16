@@ -242,7 +242,16 @@ export default function NewSale() {
   // cost. minimumSafePrice is purchase cost grossed up by GST, so backing the
   // tax out again gives the cost in pre-tax rupees - the same units a discount
   // is now expressed in.
-  const taxFactor = 1 + (product?.gstApplied ? (product?.taxRatePercent || 0) : 0) / 100;
+  const taxRate = (product?.gstApplied ? (product?.taxRatePercent || 0) : 0) / 100;
+  const taxFactor = 1 + taxRate;
+  // The gold a scheme has already bought carries NO GST. Converting between a
+  // pre-tax figure and a bill total therefore has to leave that slice out,
+  // which a flat x(1 + rate) does not - it taxed the covered gold as well and
+  // put the asking price 3% of the credit too high. These two are exact
+  // inverses of each other and of what the backend does.
+  const schemeCovered = Number(product?.schemeApplied) || 0;
+  const toFinal = (pre) => round2(pre + Math.max(0, pre - schemeCovered) * taxRate);
+  const toPretax = (final) => round2((final + schemeCovered * taxRate) / taxFactor);
   // The band the counter prices inside, as the owner set it: 14% is list, of
   // which 4% is the tunch paid to the vendor and 4% is running cost - 8% that
   // is already spent and cannot be given away. 11% is break-even. Below that
@@ -290,17 +299,22 @@ export default function NewSale() {
   // The bill at the full list charge. Built from the backend's own figures -
   // its pre-tax subtotal with the quoted making charge taken out and the list
   // charge put back - so this anchor cannot drift from what the server bills.
+  // subtotalBeforeTax is the CARVED subtotal, so the list charge put back has
+  // to be the carved one too - pctToRupees already works off chargeableGold.
+  // Mixing the full gold value with a charge on the chargeable gold produced an
+  // asking price for a bill that does not exist (Rs 3,41,699.66 against a real
+  // Rs 3,10,799.66), and the discount ceiling was measured from it.
   const askingPretax = product
     ? round2((product.subtotalBeforeTax || 0) - (product.makingChargeAmount || 0) + pctToRupees(listPct))
     : 0;
-  const askingPrice = round2(askingPretax * taxFactor);
+  const askingPrice = toFinal(askingPretax);
   const minSafe = product?.safePrice?.minimumSafePrice;
   // What may still be given, down to whichever floor binds - and never below
   // zero. The old ceiling mixed two unrelated quantities and could go negative.
   const discountCeiling = !product
     ? null
     : minSafe != null
-      ? Math.max(0, round2(askingPretax - minSafe / taxFactor))
+      ? Math.max(0, round2(askingPretax - toPretax(minSafe)))
       : Math.max(0, pctToRupees(listPct - profitFloorPct));
   const discountExceedsProfit = discountCeiling != null && concession > discountCeiling + 1e-6;
   const ceilingReason = "beyond that the bill starts eating the gold profit";
@@ -329,7 +343,9 @@ export default function NewSale() {
     setDiscountText(null);
     if (!product) return;
     if (v === "" || v == null) { setAgreedPct(listPct); return; }
-    const off = Math.max(0, (askingPrice - toBillTotal(num(v))) / taxFactor);
+    // Both ends converted through the scheme-aware inverse, so a typed price
+    // maps to the concession that actually produces it.
+    const off = Math.max(0, askingPretax - toPretax(toBillTotal(num(v))));
     setAgreedPct(listPct - rupeesToPct(off));
   };
   // The backend solves a typed price into the making charge and echoes the
@@ -1563,7 +1579,7 @@ export default function NewSale() {
                          the bill with GST taken back out (that money is the
                          government's, not the store's) against what the metal
                          is worth at today's rate. */
-                      detail={<>{money(round2((product.finalAmount || 0) / taxFactor))} bill less GST − {money(todaysGoldValue)} metal at published rate</>}
+                      detail={<>{money(toPretax(product.finalAmount || 0))} bill less GST − {money(todaysGoldValue)} metal at published rate</>}
                     />
                   )}
                 </Card>

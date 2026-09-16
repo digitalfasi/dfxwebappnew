@@ -86,7 +86,8 @@ describe("one concession, three boxes that agree", () => {
   });
 
   it("the headroom can never go negative", () => {
-    expect(ns).toMatch(/\? Math\.max\(0, round2\(askingPretax - minSafe \/ taxFactor\)\)/);
+    // converted through the scheme-aware inverse, not a flat factor
+    expect(ns).toMatch(/\? Math\.max\(0, round2\(askingPretax - toPretax\(minSafe\)\)\)/);
     expect(ns).toMatch(/: Math\.max\(0, pctToRupees\(listPct - profitFloorPct\)\);/);
   });
 
@@ -393,5 +394,38 @@ describe("the tunch a lot was bought at is the tunch it bills at", () => {
 
   it("a bullion purchase never carries a tunch leg", () => {
     expect(svcPy).toMatch(/charge_percent=0\.0,/);
+  });
+});
+
+
+describe("a scheme bill is judged against itself, not against a bill that is not being raised", () => {
+  const svcPy = read("../../DFX-Backend/app/modules/billing/service.py");
+
+  it("the asking price and the floor both carry the scheme carve", () => {
+    // Without it the guidance described the UN-carved bill: on a live screen
+    // MIN SAFE PRICE (3,37,690.72) sat ABOVE the CURRENT PRICE (3,35,449.03)
+    // while the verdict beside them read PROFIT.
+    const q = svcPy.slice(svcPy.indexOf("async def get_quote"), svcPy.indexOf("raw_guidance ="));
+    const full = q.slice(q.indexOf("full = BillingCalculationEngine.calculate"));
+    const floor = q.slice(q.indexOf("floor_breakdown = BillingCalculationEngine.calculate"));
+    expect(full.slice(0, floor.length ? full.indexOf("floor_breakdown") : undefined)).toMatch(/scheme_value,/);
+    expect(floor).toMatch(/scheme_value,/);
+  });
+
+  it("GST is never applied to the gold a scheme already bought", () => {
+    // A flat x(1 + rate) taxed the covered slice too - 3% of the credit, 900
+    // rupees on the owner's screenshot - and every figure built on the asking
+    // price inherited it.
+    expect(ns).toMatch(/const toFinal = \(pre\) => round2\(pre \+ Math\.max\(0, pre - schemeCovered\) \* taxRate\);/);
+    expect(ns).toMatch(/const toPretax = \(final\) => round2\(\(final \+ schemeCovered \* taxRate\) \/ taxFactor\);/);
+    // and nothing converts by the flat factor any more
+    expect(ns).not.toMatch(/askingPretax \* taxFactor/);
+    expect(ns).not.toMatch(/minSafe \/ taxFactor/);
+    expect(ns).not.toMatch(/\(product\.finalAmount \|\| 0\) \/ taxFactor/);
+  });
+
+  it("the asking price is built from the backend's own figures", () => {
+    expect(ns).toMatch(/const askingPrice = toFinal\(askingPretax\);/);
+    expect(ns).toMatch(/\(product\.subtotalBeforeTax \|\| 0\) - \(product\.makingChargeAmount \|\| 0\) \+ pctToRupees\(listPct\)/);
   });
 });
