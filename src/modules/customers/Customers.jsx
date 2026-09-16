@@ -259,7 +259,6 @@ export default function Customers({ intent, clearIntent } = {}) {
   // What the chosen scheme actually offers. All read from the scheme list the
   // backend already sends - nothing here is inferred from the scheme's name.
   const enrollScheme = schemeList.find((sc) => sc.id === chosenSchemeId) || null;
-  const enrollTiers = (enrollScheme?.tiers || []).filter((t) => t.isActive);
   // D6: the list offered only the TIERS, so a shop selling the plan at its own
   // advertised Rs 1,000 could not enrol anyone at Rs 1,000 - the base amount
   // lives on the scheme, not as a tier row, so it was never in the list.

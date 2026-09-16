@@ -220,7 +220,7 @@ export default function GoldRate() {
           )}
           <div className={`relative mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-bold backdrop-blur ${isUp ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300" : isDown ? "border-red-400/20 bg-red-500/15 text-red-300" : "border-[#fde68a]/20 bg-[#c9a84c]/15 text-[#fde68a]"}`} style={isDown ? { textShadow: "0 0 10px rgba(252,165,165,0.7)", boxShadow: "0 0 18px rgba(239,68,68,0.32)" } : isUp ? { textShadow: "0 0 10px rgba(110,231,183,0.55)", boxShadow: "0 0 18px rgba(16,185,129,0.22)" } : undefined}>
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">{isDown ? <path d="M7 7l10 10M17 7v10H7" /> : <path d="M7 17 17 7M7 7h10v10" />}</svg>
-            {diff === 0 ? "— No change vs yesterday" : `${diff > 0 ? "+" : ""}₹${diff} (${pct > 0 ? "+" : ""}${pct.toFixed(2)}%) vs yesterday`}
+            {diff === 0 ? "— No change vs yesterday" : `${diff > 0 ? "+" : "−"}₹${Math.abs(diff)} (${pct > 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%) vs yesterday`}
           </div>
           <div className="relative mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-5">
             <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3.5 backdrop-blur">
