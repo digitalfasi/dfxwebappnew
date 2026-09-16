@@ -494,7 +494,7 @@ export default function Inventory({ onNavigate }) {
       const karat = parseInt(r.purity, 10) || 0;
       const rate = Number(r.rate) || 0;
       if (net <= 0 || karat <= 0) continue;
-      const pct = r.tunch !== "" && r.tunch != null ? Number(r.tunch) || 0 : 0;
+      const pct = rowTunchPct(r);
       const fine = net * karat / 24;
       const base = fine * rate;
       const tunchAmt = base * pct / 100;
@@ -534,7 +534,10 @@ export default function Inventory({ onNavigate }) {
 
   // Tunch percentage for one row. Resolved per row now that each row carries
   // its own; bulkBreakdown above aggregates them.
-  const rowTunchPct = (r) => (r.tunch !== "" && r.tunch != null ? Number(r.tunch) || 0 : 0);
+  // Zero for bullion, whatever the row happens to be carrying: a bar has no
+  // tunch, so it must not appear in a raw-gold line total or its summary.
+  const rowTunchPct = (r) =>
+    bulkType === "JEWELLERY" && r.tunch !== "" && r.tunch != null ? Number(r.tunch) || 0 : 0;
 
   const handleBulkAdd = async () => {
     const h = bulkHeader;
@@ -575,7 +578,6 @@ export default function Inventory({ onNavigate }) {
             gross: r.gross,
             net: r.net,
             rate: r.rate,
-            tunch: r.tunch,
           }
           : {
             huid: r.ident.trim(),
@@ -822,7 +824,6 @@ export default function Inventory({ onNavigate }) {
                   <th className="px-4 py-2.5 text-right">Gross</th>
                   <th className="px-4 py-2.5 text-right">Net</th>
                   <th className="px-4 py-2.5">Vendor</th>
-                  <th className="px-4 py-2.5 text-right">Tunch</th>
                   <th className="px-4 py-2.5 text-right">Cost</th>
                   <th className="px-4 py-2.5">Status</th>
                 </tr>
@@ -836,7 +837,6 @@ export default function Inventory({ onNavigate }) {
                     <td className="num px-4 py-2.5 text-right">{Number(r.grossWeightGrams).toFixed(3)} g</td>
                     <td className="num px-4 py-2.5 text-right font-semibold">{Number(r.netGoldWeightGrams).toFixed(3)} g</td>
                     <td className="px-4 py-2.5 text-muted">{r.vendorName || "—"}</td>
-                    <td className="num px-4 py-2.5 text-right tabular-nums">{r.tunch != null ? `${r.tunch}%` : "—"}</td>
                     <td className="num px-4 py-2.5 text-right">{r.purchaseCost != null ? money(r.purchaseCost) : "—"}</td>
                     <td className="px-4 py-2.5">
                       <Badge tone={r.stockStatus === "IN_STOCK" ? "success" : "neutral"}>{r.stockStatus}</Badge>
@@ -1115,7 +1115,9 @@ export default function Inventory({ onNavigate }) {
                     <th className="py-2 w-[100px]">Gross (g) *</th>
                     <th className="py-2 w-[100px]">Net (g) *</th>
                     <th className="py-2 w-[120px]">24K Cost/g (₹) *</th>
-                    <th className="py-2 w-[90px]">Tunch %</th>
+                    {/* Bullion has no tunch. It is bought at rate x weight:
+                        there is no craftsman's charge on a bar. */}
+                    {bulkType === "JEWELLERY" && <th className="py-2 w-[90px]">Tunch %</th>}
                     {/* Jewellery only: bullion is gold and nothing else. */}
                     {bulkType === "JEWELLERY" && <th className="py-2 w-[120px]">Stone (₹)</th>}
                     <th className="py-2 w-[130px] text-right">Total Cost</th>
@@ -1140,7 +1142,11 @@ export default function Inventory({ onNavigate }) {
                           <td className="px-2 py-2"><Input type="number" value={r.net} onChange={e=>setCell("net",e.target.value)} className="h-9" /></td>
                           <td className="px-2 py-2"><Input type="number" value={r.rate} onChange={e=>setCell("rate",e.target.value)} className="h-9" /></td>
                           {/* One digit only: Tunch is quoted in whole single digits. */}
-                          <td className="px-2 py-2"><DigitsInput value={r.tunch} onValueChange={v=>setCell("tunch",v)} maxDigits={1} className="h-9" /></td>
+                          {/* maxDigits was 1, so a 12% lot could not be typed at
+                              all - the second digit was swallowed. */}
+                          {bulkType === "JEWELLERY" && (
+                            <td className="px-2 py-2"><DigitsInput value={r.tunch} onValueChange={v=>setCell("tunch",v)} maxDigits={2} className="h-9" /></td>
+                          )}
                           {/* Flat rupees for this row's stones: no purity, no Tunch. */}
                           {bulkType === "JEWELLERY" && (
                             <td className="px-2 py-2">

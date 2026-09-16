@@ -60,6 +60,20 @@ export const authService = {
     return this.fetchCurrentUser();
   },
 
+  /**
+   * POST /auth/forgot-password { email }
+   *
+   * The server answers the same way whether or not the address matches an
+   * account - that is deliberate, so this screen cannot be used to discover
+   * who has one - and its message is what we show, unchanged.
+   */
+  async requestPasswordReset(email) {
+    const res = await apiClient.post("/auth/forgot-password", {
+      email: String(email).trim(),
+    });
+    return res.message || "If an account exists for that email, a reset link has been sent.";
+  },
+
   getCurrentUser() {
     if (typeof window === "undefined") return null;
     const raw = localStorage.getItem(STORAGE_KEYS.user);

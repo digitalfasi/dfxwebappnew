@@ -28,14 +28,25 @@ const emailError = (email) => {
 
 describe("D4 — sign-in identifier", () => {
   it("is not typed as an email, so a phone number reaches the server", () => {
-    // The rendered attribute, not the word - the comment above the fix names
-    // the old value.
-    expect(gate).not.toMatch(/<Input\s+type="email"/);
-    expect(gate).toMatch(/<Input\s+type="text"/);
+    // Asserted on the identifier field itself rather than on which component
+    // renders it - the sign-in page was redesigned to a plain <input> and these
+    // checks went looking for markup that no longer existed, while the rule
+    // they exist to protect was in fact intact.
+    const field = gate.slice(gate.indexOf('id="username"'), gate.indexOf('id="password"'));
+    expect(field).toMatch(/type="text"/);
+    expect(field).not.toMatch(/type="email"/);
   });
 
-  it("says so in the label, rather than leaving the user guessing", () => {
-    expect(gate).toMatch(/Email or phone/);
+  it("says so where the user is typing, rather than leaving them guessing", () => {
+    expect(gate).toMatch(/Email address or phone/);
+  });
+
+  it("no client-side email pattern stands between the user and the server", () => {
+    // A design handed over with an email regex and a 6-character password
+    // minimum would have locked out every phone-only staff account before a
+    // request was sent, and could only ever reject a password that worked.
+    expect(gate).not.toMatch(/\[\^\\s@\]\+@\[\^\\s@\]\+/);
+    expect(gate).not.toMatch(/password\.length < 6/);
   });
 });
 

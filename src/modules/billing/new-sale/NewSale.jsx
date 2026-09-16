@@ -132,8 +132,11 @@ export default function NewSale() {
   const [rate, setRate] = useState("");
   const [makingVal, setMakingVal] = useState("");
   const [wastageVal, setWastageVal] = useState("");
-  // Not the discount itself - only what is being typed into that box right now.
-  // null means "show the concession the making charge already represents".
+  // What the admin has typed into the Discount box. It is NOT cleared on blur:
+  // the figure they entered stands, and the line beneath states what the bill
+  // does with it. Snapping the box to a re-derived value was the screen editing
+  // the admin's own number behind their back - they type 8,000 and the field
+  // answers 7,996.80. The machine advises; it does not overrule.
   const [discountText, setDiscountText] = useState(null);
   const [gst, setGst] = useState(true);
 
@@ -306,7 +309,12 @@ export default function NewSale() {
    *  boxes back to being derived, so no box can hold a figure typed against an
    *  older asking price. */
   const setAgreedPct = (pct) => {
-    const clamped = Math.max(0, round2(pct));
+    // FOUR decimals, not two. A concession is typed in rupees and stored as a
+    // percentage, and rounding that percentage to 2dp moved the money: a typed
+    // 8,000 came back as 7,996.80. The percentage is a carrier here, not a
+    // figure anyone negotiates in, so it keeps enough precision to hold the
+    // rupees the admin actually agreed.
+    const clamped = Math.max(0, Math.round(pct * 10000) / 10000);
     setMakingVal(String(clamped));
   };
   const onMakingInput = (v) => { setMakingVal(v); setDiscountText(null); setPriceText(null); };
@@ -1626,7 +1634,6 @@ export default function NewSale() {
                         type="number" step="0.01" min="0"
                         value={discountText != null ? discountText : (concession > 0 ? String(concession) : "")}
                         onChange={(e) => onDiscountInput(e.target.value)}
-                        onBlur={() => setDiscountText(null)}
                         error={discountExceedsProfit ? "Exceeds making charge" : undefined}
                         placeholder="0" />
                       {concession > 0 && (

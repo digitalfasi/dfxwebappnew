@@ -40,9 +40,17 @@ const API_ORIGIN = (() => {
   }
 })();
 
+// React's development build uses eval() for its debugging machinery - source
+// mapping, reconstructing a callstack from another environment. Without
+// 'unsafe-eval' the dev server throws "eval() is not supported in this
+// environment" on first paint, on top of every page. It is a DEV-ONLY grant:
+// React never uses eval() in a production build, so production keeps the
+// stricter policy and nothing about the deployed app is loosened by this.
+const IS_DEV = process.env.NODE_ENV !== "production";
+
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${IS_DEV ? " 'unsafe-eval'" : ""}`,
   // Google Fonts serves the stylesheet that loads Manrope and JetBrains Mono,
   // which layout.tsx links. Without it here the stylesheet is BLOCKED and the
   // whole product silently falls back to system fonts - the typography looks

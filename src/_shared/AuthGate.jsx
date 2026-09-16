@@ -1,14 +1,31 @@
 "use client";
 import { useState } from "react";
 import { useAuth } from "@/_shared/AuthContext";
-import { Input } from "@/_shared/ui/input";
-import { Button } from "@/_shared/ui/button";
+import DfxLogo from "@/_shared/DfxLogo";
 
 /**
  * Minimum auth boundary for the new UI. Renders children only when a session
- * exists (via AuthContext); otherwise shows a premium full-viewport login wired
- * to the existing DFX backend (Email + Password only). No domain screens or
- * existing design tokens are modified.
+ * exists (via AuthContext); otherwise shows the sign-in page wired to the
+ * existing DFX backend. No domain screens are modified.
+ *
+ * The layout is the dfx-sign-in-hub design: a photographic ground, a glass card
+ * centred over it, and the DFX lettermark above the form. What it is NOT is the
+ * design's form logic, which was a simulated submit with a 900ms timer. Three
+ * things are deliberately ours rather than the design's:
+ *
+ *   - the identifier field stays type="text" with NO email pattern. The server
+ *     accepts an email OR a phone number (auth/service.py matches User.email ==
+ *     username, or a phone), and an email input refuses a phone number before a
+ *     single request is sent. A staff member created with a phone and no email
+ *     could not sign in at all. The server decides what is a valid identifier.
+ *   - the password field has no 6-character minimum. A client-side length rule
+ *     here cannot know the server's policy and can only reject a password that
+ *     would have worked.
+ *
+ * There is no "Forgot password?" here: the owner does not use it on this screen.
+ * The backend endpoint (POST /auth/forgot-password) is untouched and still
+ * works, so putting the control back is a matter of restoring this block and
+ * authService.requestPasswordReset - it is not a feature that had to be rebuilt.
  */
 export default function AuthGate({ children }) {
   const { isAuthenticated, loading, login } = useAuth();
@@ -21,6 +38,10 @@ export default function AuthGate({ children }) {
   async function onSubmit(e) {
     e.preventDefault();
     setError("");
+    if (!username.trim() || !password) {
+      setError("Enter your email or phone, and your password.");
+      return;
+    }
     setBusy(true);
     try {
       await login(username, password);
@@ -41,223 +62,268 @@ export default function AuthGate({ children }) {
 
   if (isAuthenticated) return children;
 
+  const fieldBase =
+    "w-full rounded-xl border border-line bg-white/70 py-3 pl-11 text-[0.9rem] text-ink outline-none transition-all duration-300 placeholder:text-faint/80 hover:border-accent/50 hover:bg-white/90 focus:-translate-y-px focus:border-accent focus:bg-white focus:shadow-md focus:shadow-accent/10 focus:ring-4 focus:ring-accent/15";
+
   return (
-    <div className="grid h-screen w-full lg:grid-cols-[1.05fr_1fr]">
-      {/* Brand panel — living jewellery hero: drifting aurora light, panning
-          grid, shimmering gold headline and floating flecks. */}
-      <aside
-        className="relative hidden overflow-hidden lg:flex lg:flex-col lg:justify-between lg:p-12 xl:p-14"
-        style={{ background: "linear-gradient(160deg, #0d1220 0%, #151d30 45%, #1d2436 100%)" }}
-      >
-        <style>{`
-          @keyframes dfxAuroraA { 0%,100% { transform: translate3d(-8%,-6%,0) scale(1); }   50% { transform: translate3d(10%,8%,0) scale(1.25); } }
-          @keyframes dfxAuroraB { 0%,100% { transform: translate3d(6%,10%,0) scale(1.15); } 50% { transform: translate3d(-10%,-8%,0) scale(0.9); } }
-          @keyframes dfxAuroraC { 0%,100% { transform: translate3d(0,4%,0) scale(1); }      50% { transform: translate3d(-6%,-10%,0) scale(1.2); } }
-          @keyframes dfxGridPan  { 0% { background-position: 0 0, 0 0; } 100% { background-position: 46px 46px, 46px 46px; } }
-          @keyframes dfxShimmer  { 0% { background-position: -180% 0; } 100% { background-position: 180% 0; } }
-          @keyframes dfxFloat    { 0%,100% { transform: translateY(0); opacity: .25; } 50% { transform: translateY(-26px); opacity: .85; } }
-          @keyframes dfxSweep    { 0% { transform: translateX(-120%); } 100% { transform: translateX(220%); } }
-          @media (prefers-reduced-motion: reduce) {
-            .dfx-anim { animation: none !important; }
-          }
-        `}</style>
+    <div className="relative min-h-screen w-full overflow-hidden bg-canvas">
+      <style>{`
+        /* A slow pan and push on the photograph - 40s, so it is felt rather
+           than watched. Scaled past 100% first, or the edges would show. */
+        @keyframes dfxDrift {
+          0%   { transform: scale(1.08) translate3d(0, 0, 0); }
+          50%  { transform: scale(1.14) translate3d(-1.6%, -1.2%, 0); }
+          100% { transform: scale(1.08) translate3d(0, 0, 0); }
+        }
+        /* Warm light moving across the scene, as though the sun were shifting. */
+        @keyframes dfxGlow {
+          0%,100% { opacity: .30; transform: translate3d(-6%, -3%, 0) scale(1); }
+          50%     { opacity: .55; transform: translate3d(6%, 4%, 0) scale(1.15); }
+        }
+        /* The card arrives - it does not blink into place. */
+        @keyframes dfxRise {
+          from { opacity: 0; transform: translateY(18px) scale(.985); }
+          to   { opacity: 1; transform: none; }
+        }
+        /* Each row of the form follows the card, a beat apart. */
+        @keyframes dfxFadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: none; }
+        }
+        /* A champagne sheen crossing the Sign In button on hover. */
+        @keyframes dfxSheen {
+          from { transform: translateX(-140%) skewX(-18deg); }
+          to   { transform: translateX(260%) skewX(-18deg); }
+        }
+        .dfx-drift   { animation: dfxDrift 40s ease-in-out infinite; }
+        .dfx-glow    { animation: dfxGlow 18s ease-in-out infinite; }
+        .dfx-rise    { animation: dfxRise .7s cubic-bezier(.2,.8,.2,1) both; }
+        .dfx-step    { animation: dfxFadeUp .55s cubic-bezier(.2,.8,.2,1) both; }
+        .dfx-sheen::after {
+          content: ""; position: absolute; top: 0; bottom: 0; width: 45%;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
+          transform: translateX(-140%) skewX(-18deg); pointer-events: none;
+        }
+        .dfx-sheen:hover::after { animation: dfxSheen .85s ease-out; }
 
-        {/* Drifting aurora light — gold, amber, deep teal */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="dfx-anim absolute -left-1/4 -top-1/4 h-[70%] w-[70%] rounded-full blur-[90px]"
-            style={{ background: "radial-gradient(circle, rgba(201,168,76,0.55) 0%, rgba(201,168,76,0) 70%)", animation: "dfxAuroraA 22s ease-in-out infinite" }} />
-          <div className="dfx-anim absolute -bottom-1/4 -right-1/4 h-[75%] w-[75%] rounded-full blur-[100px]"
-            style={{ background: "radial-gradient(circle, rgba(231,201,107,0.34) 0%, rgba(231,201,107,0) 70%)", animation: "dfxAuroraB 27s ease-in-out infinite" }} />
-          <div className="dfx-anim absolute bottom-0 left-1/4 h-[55%] w-[55%] rounded-full blur-[90px]"
-            style={{ background: "radial-gradient(circle, rgba(45,116,110,0.36) 0%, rgba(45,116,110,0) 70%)", animation: "dfxAuroraC 31s ease-in-out infinite" }} />
-        </div>
+        /* Nothing above is information. Someone who asked their system for less
+           movement gets a page that is completely still and equally usable. */
+        @media (prefers-reduced-motion: reduce) {
+          .dfx-drift, .dfx-glow, .dfx-rise, .dfx-step { animation: none !important; }
+          .dfx-rise, .dfx-step { opacity: 1 !important; transform: none !important; }
+          .dfx-sheen:hover::after { animation: none !important; }
+        }
+      `}</style>
 
-        {/* Slowly panning grid */}
-        <div
-          className="dfx-anim pointer-events-none absolute inset-0 opacity-[0.07]"
-          style={{
-            backgroundImage: "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)",
-            backgroundSize: "46px 46px, 46px 46px",
-            animation: "dfxGridPan 14s linear infinite",
-            maskImage: "radial-gradient(120% 90% at 30% 20%, #000 40%, transparent 100%)",
-            WebkitMaskImage: "radial-gradient(120% 90% at 30% 20%, #000 40%, transparent 100%)",
-          }}
-        />
+      {/* Background scene */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/login-bg.jpg"
+        alt=""
+        aria-hidden="true"
+        className="dfx-drift absolute inset-0 h-full w-full object-cover will-change-transform"
+      />
+      <div className="absolute inset-0 bg-gradient-to-br from-white/85 via-white/55 to-white/25" />
+      {/* The moving light, under the vignette so it never washes the card out. */}
+      <div
+        className="dfx-glow pointer-events-none absolute inset-0 will-change-transform"
+        style={{
+          background:
+            "radial-gradient(45% 40% at 30% 35%, rgba(201,168,76,0.35), transparent 70%)",
+        }}
+      />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_45%,transparent_35%,rgba(45,38,28,0.28)_100%)]" />
 
-        {/* Floating gold flecks */}
-        <div className="pointer-events-none absolute inset-0">
-          {[
-            { l: "12%", t: "24%", s: 3, d: "0s", u: "7s" },
-            { l: "78%", t: "18%", s: 2, d: "1.4s", u: "9s" },
-            { l: "62%", t: "62%", s: 4, d: "0.7s", u: "8s" },
-            { l: "28%", t: "76%", s: 2, d: "2.1s", u: "10s" },
-            { l: "88%", t: "48%", s: 3, d: "1.1s", u: "11s" },
-            { l: "44%", t: "36%", s: 2, d: "2.8s", u: "9.5s" },
-          ].map((p, i) => (
-            <span
-              key={i}
-              className="dfx-anim absolute rounded-full bg-accent"
-              style={{ left: p.l, top: p.t, height: p.s, width: p.s, animation: `dfxFloat ${p.u} ease-in-out ${p.d} infinite` }}
-            />
-          ))}
-        </div>
-
-        {/* Brand */}
-        <div className="relative flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-[13px] font-extrabold tracking-tight text-[#1b2030] shadow-lg shadow-accent/30">
-            DFX
-          </div>
-          <div className="leading-tight">
-            <div className="text-lg font-extrabold tracking-tight text-white">DFX Solution</div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent/80">Jewellery OS</div>
-          </div>
-        </div>
-
-        {/* Headline */}
-        <div className="relative max-w-lg">
-          <span className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-accent backdrop-blur-sm">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" /> Live · Secure · Multi-tenant
-          </span>
-          <h2 className="mt-6 text-4xl font-extrabold leading-[1.08] tracking-tight text-white xl:text-[52px]">
-            The operating system for modern{" "}
-            <span
-              className="dfx-anim bg-clip-text text-transparent"
-              style={{
-                backgroundImage: "linear-gradient(100deg, #b8963f 0%, #e7c96b 35%, #fff6d8 50%, #e7c96b 65%, #b8963f 100%)",
-                backgroundSize: "220% 100%",
-                animation: "dfxShimmer 6s linear infinite",
-              }}
-            >
-              jewellery
-            </span>{" "}
-            businesses.
-          </h2>
-          <p className="mt-5 text-[15px] leading-relaxed text-white/65">
-            Live bullion rates, schemes, billing and customer insights — unified in one secure, multi-tenant platform.
-          </p>
-
-          {/* Live-rate glass card with a light sweep */}
-          <div className="relative mt-8 max-w-md overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] p-4 shadow-2xl shadow-black/30 backdrop-blur-md">
-            <div
-              className="dfx-anim pointer-events-none absolute inset-y-0 w-1/3 skew-x-[-18deg]"
-              style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent)", animation: "dfxSweep 5.5s ease-in-out infinite" }}
-            />
-            <div className="relative flex items-center justify-between">
-              <span className="flex items-center gap-2 text-xs font-bold text-white/85">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-                </span>
-                Live Gold Rate
+      {/* Centred card */}
+      <main className="relative z-10 flex min-h-screen items-center justify-center px-5 py-14">
+        <div className="w-full max-w-[26.5rem]">
+          <div className="dfx-rise rounded-[1.75rem] border border-white/45 bg-white/80 p-8 shadow-[0_24px_70px_-30px_rgba(30,41,59,0.45)] backdrop-blur-xl transition-shadow duration-500 hover:shadow-[0_30px_85px_-28px_rgba(30,41,59,0.55)] sm:p-10">
+            <div className="flex flex-col items-center text-center">
+              <span className="dfx-step mb-6 inline-flex items-center gap-1.5 rounded-full border border-accent-line bg-accent-soft px-3 py-1 text-[0.6rem] font-bold uppercase tracking-[0.18em] text-accent-strong [animation-delay:80ms]">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 3l7 3v5.5c0 4.3-2.9 7.9-7 9.5-4.1-1.6-7-5.2-7-9.5V6l7-3Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                </svg>
+                Trusted jewellery platform
               </span>
-              <span className="text-[11px] font-semibold text-white/40">per gram</span>
+              <span className="dfx-step [animation-delay:120ms]">
+                <DfxLogo size={50} />
+              </span>
+
+              <h1
+                className="dfx-step mt-8 text-[1.9rem] font-semibold leading-tight tracking-tight text-ink [animation-delay:200ms]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                Welcome Back
+              </h1>
+              <p className="dfx-step mt-2 text-sm text-muted [animation-delay:260ms]">
+                Sign in to access your DFX account
+              </p>
             </div>
-            <div className="relative mt-3 grid grid-cols-3 gap-3">
-              {[{ k: "24K", v: "₹15,764" }, { k: "22K", v: "₹14,130" }, { k: "18K", v: "₹11,900" }].map((r) => (
-                <div key={r.k} className="rounded-xl border border-white/5 bg-black/25 px-3 py-2.5">
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-white/45">{r.k}</div>
-                  <div className="num mt-0.5 text-sm font-extrabold text-accent">{r.v}</div>
+
+              <form noValidate onSubmit={onSubmit} className="mt-8 space-y-3.5">
+                {/* Identifier — email OR phone, decided by the server. */}
+                <div className="dfx-step [animation-delay:320ms]">
+                  <label htmlFor="username" className="sr-only">
+                    Email address or phone number
+                  </label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-11 items-center justify-center text-faint">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" strokeWidth="1.6" />
+                        <path d="m4 8 7.1 4.7a2 2 0 0 0 2.2 0L20 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                      </svg>
+                    </span>
+                    <input
+                      id="username"
+                      name="username"
+                      type="text"
+                      autoComplete="username"
+                      placeholder="Email address or phone"
+                      value={username}
+                      autoFocus
+                      onChange={(e) => {
+                        setUsername(e.target.value);
+                        if (error) setError("");
+                      }}
+                      className={`${fieldBase} pr-4`}
+                    />
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* Feature highlights */}
-        <div className="relative grid max-w-md gap-3">
-          {[
-            { t: "Bank-grade security", d: "Encrypted, role-based, audit-ready" },
-            { t: "Real-time bullion", d: "Live market rates, auto-synced" },
-            { t: "Schemes & billing", d: "Enrollments, invoices, collections" },
-          ].map((f) => (
-            <div key={f.t} className="flex items-center gap-3">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-accent/30 bg-accent/10 text-accent backdrop-blur-sm">
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-              </span>
-              <span>
-                <span className="block text-sm font-bold text-white">{f.t}</span>
-                <span className="block text-xs text-white/45">{f.d}</span>
-              </span>
-            </div>
-          ))}
-        </div>
-      </aside>
+                {/* Password */}
+                <div className="dfx-step [animation-delay:380ms]">
+                  <label htmlFor="password" className="sr-only">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-11 items-center justify-center text-faint">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="4" y="10" width="16" height="10" rx="3" stroke="currentColor" strokeWidth="1.6" />
+                        <path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                      </svg>
+                    </span>
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="Password"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (error) setError("");
+                      }}
+                      className={`${fieldBase} pr-12`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((s) => !s)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
+                      className="absolute inset-y-0 right-0 z-10 flex w-12 items-center justify-center text-faint transition-all duration-200 hover:scale-110 hover:text-accent-strong active:scale-95"
+                    >
+                      {showPassword ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M3 3l18 18M10.6 10.7a2 2 0 0 0 2.8 2.8M9.4 5.1A10.5 10.5 0 0 1 12 5c5 0 9 4.5 9 7s-1.2 3.6-3.1 5M6.1 7.6C3.8 9 2.5 10.7 2.5 12c0 2.5 4 7 9.5 7 1.2 0 2.4-.2 3.5-.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
 
-      {/* Form panel — vertically centered, comfortable width, balanced spacing. */}
-      <main className="flex items-center justify-center bg-canvas px-6 py-10 sm:px-10">
-        <div className="w-full max-w-[400px]">
-          <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-[11px] font-extrabold tracking-tight text-[#1b2030] shadow">DFX</div>
-            <span className="text-lg font-extrabold tracking-tight text-ink">DFX Solution</span>
-          </div>
+                {/* Whatever the server said, said plainly. */}
+                {error ? (
+                  <div className="flex items-start gap-2 rounded-xl border border-danger-line bg-danger-soft px-3.5 py-2.5">
+                    <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 shrink-0 text-danger" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M12 8v4M12 16h.01" />
+                    </svg>
+                    <p className="text-xs font-semibold text-danger">{error}</p>
+                  </div>
+                ) : null}
 
-          <h1 className="text-[26px] font-extrabold tracking-tight text-ink">Welcome back</h1>
-          <p className="mt-1.5 text-sm text-muted">Sign in to your DFX workspace to continue.</p>
-
-          <form onSubmit={onSubmit} className="mt-8 space-y-5">
-            <label className="grid gap-1.5">
-              <span className="text-xs font-bold text-ink-soft">Email or phone</span>
-              {/* NOT type="email". The server accepts either an email or a phone
-                  number (auth/service.py: User.email == username OR a phone match),
-                  but the browser refused a phone number before a single request was
-                  sent - "Please include an '@'" - so a staff member created with a
-                  phone and no email could not sign in at all. The server decides what
-                  is a valid identifier, not the browser. */}
-              <Input
-                type="text"
-                placeholder="you@company.com or 9876543210"
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoFocus
-              />
-            </label>
-
-            <label className="grid gap-1.5">
-              <span className="text-xs font-bold text-ink-soft">Password</span>
-              <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="pr-11"
-                />
                 <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-faint transition-colors hover:text-ink"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  type="submit"
+                  disabled={busy}
+                  className="dfx-sheen dfx-step group relative mt-2 flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-ink-deep px-4 py-3.5 text-sm font-semibold tracking-wide text-white shadow-lg shadow-ink-deep/20 transition-all duration-300 [animation-delay:480ms] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-ink-deep/30 hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25 active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-85 disabled:hover:translate-y-0"
                 >
-                  {showPassword ? (
-                    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>
+                  {busy ? (
+                    <>
+                      <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" strokeOpacity="0.25" />
+                        <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                      </svg>
+                      Signing In…
+                    </>
                   ) : (
-                    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" /><circle cx="12" cy="12" r="3" /></svg>
+                    <>
+                      Sign In
+                      <svg
+                        className="transition-transform group-hover:translate-x-1"
+                        width="17"
+                        height="17"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 12h15m0 0-5.5-5.5M19 12l-5.5 5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </>
                   )}
                 </button>
+              </form>
+
+            {/* What the product does, inside the card and hung off the form
+                rather than floating below it. It was an outer panel that read
+                as a stray object at the foot of the page - and it said security
+                a third time, after the rule above it and the sentence under
+                that. Those two are gone; these three points carry it, and the
+                card is a single object again. */}
+            <div className="mt-7 border-t border-line-soft pt-5">
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  {
+                    label: "Live bullion rates",
+                    icon: <path d="M3 17l5-6 4 4 4-6 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
+                  },
+                  {
+                    label: "Billing & schemes",
+                    icon: (
+                      <>
+                        <rect x="4" y="3" width="16" height="18" rx="2.5" stroke="currentColor" strokeWidth="2" />
+                        <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </>
+                    ),
+                  },
+                  {
+                    label: "Bank-grade security",
+                    icon: (
+                      <>
+                        <rect x="4" y="10" width="16" height="10" rx="2.5" stroke="currentColor" strokeWidth="2" />
+                        <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </>
+                    ),
+                  },
+                ].map((f) => (
+                  <div key={f.label} className="flex flex-col items-center gap-1.5 px-1 text-center">
+                    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] text-accent-strong" fill="none" aria-hidden="true">
+                      {f.icon}
+                    </svg>
+                    <span className="text-[0.64rem] font-semibold leading-tight text-ink/65">{f.label}</span>
+                  </div>
+                ))}
               </div>
-            </label>
+            </div>
+          </div>
 
-            {error && (
-              <div className="flex items-start gap-2 rounded-xl border border-danger-line bg-danger-soft px-3.5 py-2.5">
-                <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 shrink-0 text-danger" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
-                <p className="text-xs font-semibold text-danger">{error}</p>
-              </div>
-            )}
-
-            <Button type="submit" disabled={busy} size="lg" className="w-full">
-              {busy ? "Signing in…" : "Sign in"}
-            </Button>
-          </form>
-
-          <p className="mt-8 text-center text-xs text-faint">
-            © {new Date().getFullYear()} DFX Solution. Secure business platform.
-          </p>
         </div>
       </main>
+
     </div>
   );
 }

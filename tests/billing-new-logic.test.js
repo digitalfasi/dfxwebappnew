@@ -115,15 +115,30 @@ describe("Online actually charges the tax-inclusive rate", () => {
 });
 
 describe("the tunch a piece was bought at is visible in stock", () => {
-  it("the service carries it, and null stays null", () => {
+  it("the service carries it for jewellery, and null stays null", () => {
     expect(svc).toMatch(/tunch: raw\.tunch_percent \?\? null,/);
-    expect(svc).toMatch(/tunch: r\.tunch_percent \?\? null,/);
   });
-  it("both tables have the column, and an unrecorded tunch is a dash not 0%", () => {
+
+  it("the product list shows it; an unrecorded tunch is a dash, not 0%", () => {
     expect(inv).toMatch(/<th className="px-3 py-3 text-right">Tunch<\/th>/);
-    expect(inv).toMatch(/<th className="px-4 py-2.5 text-right">Tunch<\/th>/);
     expect(inv).toMatch(/\{p\.tunch != null \? `\$\{p\.tunch\}%` : "—"\}/);
-    expect(inv).toMatch(/\{r\.tunch != null \? `\$\{r\.tunch\}%` : "—"\}/);
+  });
+
+  it("bullion has no tunch anywhere", () => {
+    // A bar is bought at rate x weight and sold at rate x weight plus GST.
+    // There is no craftsman's charge at either end, so the column, the input,
+    // the payload field and the response field are all gone rather than sitting
+    // there as a permanent zero for someone to fill in.
+    expect(svc).not.toMatch(/tunch: r\.tunch_percent/);
+    expect(inv).not.toMatch(/<th className="px-4 py-2.5 text-right">Tunch<\/th>/);
+    expect(inv).toMatch(/\{bulkType === "JEWELLERY" && <th className="py-2 w-\[90px\]">Tunch %<\/th>\}/);
+    // and the tunch leg is zero in every raw-gold total on the screen
+    expect(inv).toMatch(/bulkType === "JEWELLERY" && r\.tunch !== "" && r\.tunch != null \? Number\(r\.tunch\) \|\| 0 : 0;/);
+  });
+
+  it("a two-digit tunch can actually be typed in the bulk grid", () => {
+    // maxDigits was 1, so a 12% lot lost its second digit as it was entered.
+    expect(inv).toMatch(/onValueChange=\{v=>setCell\("tunch",v\)\} maxDigits=\{2\}/);
   });
   it("the store default making value is the shop's 6%, not a saved blank 0", () => {
     expect(svc).toMatch(/makingValue: d\.making_charge_value \? d\.making_charge_value : 6,/);
@@ -351,5 +366,32 @@ describe("the screens stay small enough to use", () => {
   it("nothing on the bar panel is captioned Tax or GST", () => {
     const panel = ns.slice(ns.indexOf("{rawGold && ("), ns.indexOf("Placeholder for the pinned summary"));
     expect(panel).not.toMatch(/className="text-xs font-bold">Tax</);
+  });
+});
+
+
+describe("the tunch a lot was bought at is the tunch it bills at", () => {
+  const svcPy = read("../../DFX-Backend/app/modules/billing/service.py");
+
+  it("single Add Purchase points the item back at its lot", () => {
+    // The purchase knew its item; the item did not know its purchase. Every
+    // reader starts from the ITEM, so a lot entered at 6% was found as the
+    // vendor master's 4% - in stock and on every bill raised against it.
+    const fn = svcPy.slice(svcPy.indexOf("async def create_purchase"), svcPy.indexOf("async def list_purchases"));
+    expect(fn).toMatch(/item\.vendor_purchase_id = purchase\.id/);
+  });
+
+  it("stock already created without that link still reports its real tunch", () => {
+    // Reached from the other end rather than by rewriting historical rows.
+    expect(svcPy).toMatch(/VendorPurchase\.inventory_item_id\.in_\(\{i\.id for i in items\}\)/);
+    expect(svcPy).toMatch(/VendorPurchase\.inventory_item_id == item\.id/);
+  });
+
+  it("the lot is preferred over the vendor master, in both readers", () => {
+    expect(svcPy).toMatch(/v = by_item\.get\(i\.id\)/);
+  });
+
+  it("a bullion purchase never carries a tunch leg", () => {
+    expect(svcPy).toMatch(/charge_percent=0\.0,/);
   });
 });

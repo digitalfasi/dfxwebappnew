@@ -17,6 +17,14 @@
   --color-accent-strong: #a68631;
   --color-accent-soft: #fffbf0;
   --color-accent-line: #ffe5c7;
+  /* The lighter end of the champagne gradient in the DFX lettermark. Added
+     rather than carrying the sign-in design's separate oklch palette, so the
+     mark is the same gold as every other gold in the product. */
+  --color-accent-light: #e7d59a;
+  /* The sign-in page's display face and its ink-dark primary button. Used only
+     there; every other screen stays on Manrope and the gold button. */
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --color-ink-deep: #1b2030;
 
   --color-warn: #d4b46d;
   --color-warn-soft: #fff8e7;

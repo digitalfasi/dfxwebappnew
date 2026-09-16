@@ -83,7 +83,6 @@ export const billingService = {
       purchaseInvoiceRef: r.purchase_invoice_ref ?? "",
       purchaseRatePerGram: r.purchase_rate_per_gram ?? null,
       purchaseCost: r.purchase_cost ?? null,
-      tunch: r.tunch_percent ?? null,
       stockStatus: r.stock_status,
     }));
   },
