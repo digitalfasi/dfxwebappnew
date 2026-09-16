@@ -28,15 +28,24 @@ export function AuthProvider({ children }) {
       try {
         const u = await authService.fetchCurrentUser();
         if (alive) setUser(u);
-        const tn = await authService.getTenantName();
-        if (alive) setTenantName(tn);
+        const tn = await authService.getTenantName(u?.tenantId);
+        if (alive) setTenantName(tn || u?.tenantName || null);
       } catch {
         tokenStore.clear();
       } finally {
         if (alive) setLoading(false);
       }
     }
-    boot();
+    // boot() must never leave `loading` stuck true. Its own try/catch/finally
+    // only covers the network calls; the token-store read above that guard is
+    // NOT inside it, and localStorage access can genuinely throw (Safari's
+    // "Block all cookies", storage disabled by policy, a sandboxed context) —
+    // an uncaught rejection here previously left the app showing "Loading…"
+    // forever, with no way to reach the login screen. This is a pure
+    // exception-safety net: it changes no authentication/token/refresh logic.
+    boot().catch(() => {
+      if (alive) setLoading(false);
+    });
     return () => {
       alive = false;
     };
@@ -59,7 +68,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (username, password) => {
     const u = await authService.loginWithEmail(username, password);
     setUser(u);
-    authService.getTenantName().then(setTenantName);
+    authService.getTenantName(u?.tenantId).then((tn) => setTenantName(tn || u?.tenantName || null));
     return u;
   }, []);
 

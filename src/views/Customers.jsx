@@ -91,6 +91,14 @@ export default function Customers() {
   const [schemeListLoading, setSchemeListLoading] = useState(false);
   const [chosenSchemeId, setChosenSchemeId] = useState("");
   const [enrollBusy, setEnrollBusy] = useState(false);
+  // FIXED_GOLD_RATE / FLEXIBLE_DIGI_GOLD require a purity, chosen with the
+  // customer at joining and then locked for that enrollment (backend field
+  // `purity` on POST, returned back as `selected_purity`). MONTHLY has no
+  // purity concept, so this stays empty and unsent for it.
+  const [chosenPurity, setChosenPurity] = useState("");
+  const PURITIES = ["24K", "22K", "18K", "14K", "9K"];
+  const enrollScheme = schemeList.find((s) => s.id === chosenSchemeId) || null;
+  const enrollIsGold = enrollScheme?.schemeType === "FIXED_GOLD_RATE" || enrollScheme?.schemeType === "FLEXIBLE_DIGI_GOLD";
 
   useEffect(() => {
     if (!selected) return;
@@ -138,6 +146,7 @@ export default function Customers() {
   // tenant's active schemes once.
   async function openEnroll() {
     setChosenSchemeId("");
+    setChosenPurity("");
     setEnrollOpen(true);
     if (schemeList.length) return;
     setSchemeListLoading(true);
@@ -152,9 +161,13 @@ export default function Customers() {
   }
   async function submitEnroll() {
     if (!selected || !chosenSchemeId) { toast("Pick a scheme"); return; }
+    if (enrollIsGold && !chosenPurity) { toast("Select a purity"); return; }
     setEnrollBusy(true);
     try {
-      await enrollmentService.adminEnrollCustomer(selected.id, { schemeId: chosenSchemeId });
+      await enrollmentService.adminEnrollCustomer(selected.id, {
+        schemeId: chosenSchemeId,
+        goldPurity: enrollIsGold ? chosenPurity : undefined,
+      });
       const nm = selected.name;
       setEnrollOpen(false);
       await openCustomer(selected); // refresh drawer schemes/history
@@ -673,14 +686,31 @@ export default function Customers() {
                 ) : schemeList.length === 0 ? (
                   <div className="rounded-xl border border-line px-3.5 py-2.5 text-sm text-muted">No active schemes available.</div>
                 ) : (
-                  <Select value={chosenSchemeId} onValueChange={setChosenSchemeId} options={schemeList.map((s) => ({ value: s.id, label: s.name }))} placeholder="Select a scheme…" />
+                  <Select value={chosenSchemeId} onValueChange={(v) => { setChosenSchemeId(v); setChosenPurity(""); }} options={schemeList.map((s) => ({ value: s.id, label: s.name }))} placeholder="Select a scheme…" />
                 )}
               </label>
+              {enrollIsGold && (
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Purity<span className="text-danger">*</span></span>
+                  <Select
+                    value={chosenPurity}
+                    onValueChange={setChosenPurity}
+                    options={PURITIES.map((p) => ({ value: p, label: p }))}
+                    placeholder="Select a purity…"
+                  />
+                  <span className="text-[11px] text-muted">
+                    Locked for this enrollment.{" "}
+                    {enrollScheme?.schemeType === "FIXED_GOLD_RATE"
+                      ? "Today's rate for this purity is locked for the whole term."
+                      : "Every contribution buys gold at that day's rate for this purity."}
+                  </span>
+                </label>
+              )}
               <p className="rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">Enrolls on the scheme&apos;s base terms from today. A customer can hold several schemes; the same scheme can&apos;t be active twice.</p>
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" disabled={enrollBusy} onClick={() => setEnrollOpen(false)}>Cancel</Button>
-              <Button size="sm" disabled={enrollBusy || !chosenSchemeId} onClick={submitEnroll}>{enrollBusy ? "Enrolling…" : "Enroll"}</Button>
+              <Button size="sm" disabled={enrollBusy || !chosenSchemeId || (enrollIsGold && !chosenPurity)} onClick={submitEnroll}>{enrollBusy ? "Enrolling…" : "Enroll"}</Button>
             </div>
           </div>
         </div>

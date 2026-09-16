@@ -75,11 +75,27 @@ export const authService = {
   },
 
   /** GET /users/me is the identity; the store/tenant display name comes from
-   *  GET /admin/tenant/profile. Best-effort — staff without access simply 403. */
-  async getTenantName() {
+   *  GET /admin/tenant/profile. Best-effort — staff without access simply 403.
+   *
+   *  GET /users/me carries no tenant_name (only tenant_id), and
+   *  /admin/tenant/profile is Admin-only, so Staff/Customer have no other way
+   *  to resolve the store name from that alone. GET /tenants/public is
+   *  unauthenticated, lists every active tenant's {id, name, slug}, and is
+   *  cross-referenced by the tenant_id already on the logged-in user — no
+   *  backend change needed. */
+  async getTenantName(tenantId) {
     try {
       const res = await apiClient.get("/admin/tenant/profile", { auth: true });
-      return res.data?.profile?.name ?? null;
+      const name = res.data?.profile?.name ?? null;
+      if (name) return name;
+    } catch {
+      // Admin-only endpoint — expected to fail for Staff/Customer, fall through.
+    }
+    if (!tenantId) return null;
+    try {
+      const res = await apiClient.get("/tenants/public");
+      const match = (res.data?.tenants ?? []).find((t) => t.id === tenantId);
+      return match?.name ?? null;
     } catch {
       return null;
     }
