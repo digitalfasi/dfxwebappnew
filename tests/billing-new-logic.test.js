@@ -429,3 +429,26 @@ describe("a scheme bill is judged against itself, not against a bill that is not
     expect(ns).toMatch(/\(product\.subtotalBeforeTax \|\| 0\) - \(product\.makingChargeAmount \|\| 0\) \+ pctToRupees\(listPct\)/);
   });
 });
+
+describe("one answer to \"how much may I give?\"", () => {
+  it("the Safe Price panel prints the SAME cap the Discount box takes", () => {
+    // It printed the tax-inclusive figure (8,025.94) beside the box's pre-tax
+    // one (7,792.17) - both true, in different units, with nothing saying so.
+    // The owner could not tell which number to type.
+    expect(ns).toMatch(/Max Discount<\/div><div className="num text-sm font-extrabold">\{discountCeiling != null \? money\(discountCeiling\)/);
+    expect(ns).not.toMatch(/Price Can Drop/);
+    expect(ns).not.toMatch(/const maxDiscount =/);
+  });
+
+  it("and states what that cap does to the bill, so the two figures reconcile", () => {
+    expect(ns).toMatch(/The bill falls by \{money\(round2\(discountCeiling \* taxFactor\)\)\}/);
+  });
+
+  it("a scheme bill shows what the customer actually hands over", () => {
+    // finalAmount is the total BEFORE the credit; on a scheme bill that is not
+    // the money changing hands - 3,40,799.66 printed against a real 3,10,799.66.
+    expect(ns).toMatch(/\{quoteHasScheme \? "Customer Pays" : "Current Price"\}/);
+    expect(ns).toMatch(/money\(round2\(\(product\.finalAmount \|\| 0\) - quotedScheme\)\)/);
+    expect(ns).toMatch(/money\(round2\(minSafe - quotedScheme\)\)/);
+  });
+});

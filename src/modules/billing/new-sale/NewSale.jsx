@@ -722,7 +722,6 @@ export default function NewSale() {
   // price, because the bill records the concession as a lower making charge
   // rather than as a discount.
   const comeDown = product ? Math.max(0, round2(askingPrice - sellingPrice)) : 0;
-  const maxDiscount = minSafe != null ? Math.max(0, round2(askingPrice - minSafe)) : null;
 
   // Today's gold worth of the piece at the PUBLISHED rate for its purity — the
   // same rate the bill is priced at, so this tile and the bill can never
@@ -1664,8 +1663,8 @@ export default function NewSale() {
                           {discountExceedsProfit
                             ? `Max discount ${money(discountCeiling)} — ${ceilingReason}.`
                             : schemeSelected
-                              ? `Up to ${money(discountCeiling)} can be given — the negotiable extra on the grams the scheme has not covered.`
-                              : `Up to ${money(discountCeiling)} can be given — the negotiable extra on this piece. Past it the gold profit starts going.`}
+                              ? `Up to ${money(discountCeiling)} — the negotiable extra on the grams the scheme has not covered. That takes ${money(round2(discountCeiling * taxFactor))} off the bill, with the GST no longer due on it.`
+                              : `Up to ${money(discountCeiling)} — the negotiable extra on this piece. That takes ${money(round2(discountCeiling * taxFactor))} off the bill, with the GST no longer due on it. Past it the gold profit starts going.`}
                         </span>
                       ) : <span className="text-[11px] text-muted">A discount is the making charge coming down, and nothing else.</span>}
                     </label>
@@ -1914,17 +1913,23 @@ export default function NewSale() {
                   <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5">
                     <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-emerald-800">Safe Price</div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-                      <div><div className="text-[10px] font-bold uppercase text-muted">Current Price</div><div className="num text-sm font-extrabold">{money(product.finalAmount)}</div></div>
-                      <div><div className="text-[10px] font-bold uppercase text-muted">Min Safe Price</div><div className="num text-sm font-extrabold">{minSafe != null ? money(minSafe) : "—"}</div></div>
-                      {/* NOT "max discount": this is how far the PRICE may come down, which is
-                          the discount plus the GST that comes off with it. Printing it
-                          under the same name as the pre-tax figure in the Discount box
-                          put two different rupee amounts called "max discount" on one
-                          screen - 6,293.79 here against 6,110.47 there. Same limit,
-                          different units, now said so. */}
-                      <div><div className="text-[10px] font-bold uppercase text-muted">Price Can Drop</div><div className="num text-sm font-extrabold">{maxDiscount != null ? money(maxDiscount) : "—"}</div></div>
+                      {/* On a scheme bill these are what the customer HANDS OVER -
+                          the credit already taken off. Printing the pre-credit
+                          total as "Current Price" put 3,40,799.66 on screen
+                          beside a real 3,10,799.66. */}
+                      <div><div className="text-[10px] font-bold uppercase text-muted">{quoteHasScheme ? "Customer Pays" : "Current Price"}</div><div className="num text-sm font-extrabold">{money(round2((product.finalAmount || 0) - quotedScheme))}</div></div>
+                      <div><div className="text-[10px] font-bold uppercase text-muted">Min Safe Price</div><div className="num text-sm font-extrabold">{minSafe != null ? money(round2(minSafe - quotedScheme)) : "—"}</div></div>
+                      {/* The SAME figure the Discount box takes, not a second
+                          one in another unit. Two numbers for one question -
+                          7,792.17 there, 8,025.94 here - is what made this
+                          panel impossible to act on. */}
+                      <div><div className="text-[10px] font-bold uppercase text-muted">Max Discount</div><div className="num text-sm font-extrabold">{discountCeiling != null ? money(discountCeiling) : "—"}</div></div>
                     </div>
-                    <div className="mt-2 text-[10px] leading-snug text-emerald-800/80">The lowest price that still keeps the gold profit whole, and how much is cuttable to reach it.</div>
+                    <div className="mt-2 text-[10px] leading-snug text-emerald-800/80">
+                      {discountCeiling != null && discountCeiling > 0
+                        ? <>Type up to <b>{money(discountCeiling)}</b> in Discount &mdash; that is the lowest price that still keeps the gold profit whole. The bill falls by {money(round2(discountCeiling * taxFactor))}: the discount plus the {product.taxRatePercent || 0}% GST no longer due on it.</>
+                        : <>The lowest price that still keeps the gold profit whole.</>}
+                    </div>
                     {product.safePrice.message && <div className={`mt-2 text-[11px] ${product.safePrice.isLoss ? "font-semibold text-danger" : "text-emerald-800"}`}>{product.safePrice.message}</div>}
                   </div>
                 ) : (
