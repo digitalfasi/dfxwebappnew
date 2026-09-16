@@ -52,6 +52,53 @@ function rate(v) {
   return isBlank(v) ? "—" : `${fmtMoney(v)}/g`;
 }
 
+/** A Digi Gold wallet's real finish line: one gram.
+ *
+ *  It has no duration and no instalment, so there is no date to count down to.
+ *  The customer takes his gold the moment the balance reaches the target,
+ *  whether that is in two months or two years. The bar is the honest version of
+ *  a maturity date - it says how far he has come, not when he is owed. */
+function GramGoal({ grams, target }) {
+  const g = Number(grams) || 0;
+  const t = Number(target) || 1;
+  const pct = Math.max(0, Math.min(100, (g / t) * 100));
+  const done = g >= t;
+  return (
+    <div className="min-w-[104px]">
+      <div className={`num text-[13px] font-bold leading-tight ${done ? "text-emerald-600" : "text-ink"}`}>
+        {g.toFixed(3)} <span className="font-semibold text-muted">/ {t.toFixed(2)} g</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-line-soft">
+        <div
+          className={`h-full rounded-full transition-[width] duration-300 ${done ? "bg-emerald-500" : "bg-accent"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className={`mt-1 text-[10px] font-bold uppercase tracking-wider ${done ? "text-emerald-600" : "text-muted"}`}>
+        {done ? "Ready to take" : `${Math.round(pct)}% there`}
+      </div>
+    </div>
+  );
+}
+
+/** A wallet customer who has gone quiet. NOT an arrear.
+ *
+ *  He owes nothing - a wallet has no due date and can never be late - so this
+ *  is amber and it is never red. Red would send staff to chase a customer who
+ *  owes nothing, and would tell him he is behind when he is not. It says what
+ *  is actually true: nobody has seen a deposit from him in a while. */
+function QuietNudge({ days }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700"
+      title="Nothing is owed — a Digi Gold wallet has no due date. This is a reminder that the customer has stopped depositing."
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+      No deposit{days != null ? ` · ${days}d` : ""}
+    </span>
+  );
+}
+
 // KPI card — presentation only, matches the existing DFX card language.
 function KpiCard({ label, value }) {
   return (
@@ -326,7 +373,16 @@ export default function SchemeManagement() {
                   <td className="px-4 py-3.5 font-medium">{r.scheme}</td>
                   <td className="px-4 py-3.5 font-mono text-xs font-semibold whitespace-nowrap">{r.enrollment}</td>
                   <td className="px-4 py-3.5 text-muted whitespace-nowrap">{fmtDate(r.joined)}</td>
-                  <td className="px-4 py-3.5 text-muted whitespace-nowrap">{fmtDate(r.maturity)}</td>
+                  {/* A wallet matures on a WEIGHT, not a date. The date the
+                      backend sends for one is joined + 12 months, inherited
+                      from the instalment plans every scheme used to be, and it
+                      promises the customer something the product does not do.
+                      What decides a wallet is the gram. */}
+                  <td className="px-4 py-3.5 text-muted whitespace-nowrap">
+                    {isWalletScheme(r.schemeType) && r.goldGramsTarget
+                      ? <GramGoal grams={r.goldGrams} target={r.goldGramsTarget} />
+                      : fmtDate(r.maturity)}
+                  </td>
                   {/* Same rule as the Manage Scheme panel: a wallet has no
                       instalment and nothing outstanding. Dash stays on the
                       column's own right-aligned rule. */}
@@ -347,9 +403,13 @@ export default function SchemeManagement() {
                       and shows a dash, not eleven months of future contract.
                       A wallet can never be overdue - nothing is ever due. */}
                   <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${(r.overdueAmount || 0) > 0 ? "font-bold text-danger" : "font-semibold text-muted"}`}>
-                    {isWalletScheme(r.schemeType) || !(r.overdueAmount > 0)
-                      ? NOT_APPLICABLE
-                      : <>{money(r.overdueAmount)}<span className="ml-1 text-[11px] font-semibold">· {r.overdueDays}d</span></>}
+                    {isWalletScheme(r.schemeType)
+                      ? (r.quiet
+                          ? <QuietNudge days={r.daysQuiet} />
+                          : NOT_APPLICABLE)
+                      : !(r.overdueAmount > 0)
+                        ? NOT_APPLICABLE
+                        : <>{money(r.overdueAmount)}<span className="ml-1 text-[11px] font-semibold">· {r.overdueDays}d</span></>}
                   </td>
                   <td className="px-4 py-3.5"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></td>
                   <td className="px-4 py-3.5 pr-6 text-right">

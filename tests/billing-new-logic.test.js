@@ -272,10 +272,37 @@ describe("the enrollment list shows overdue, not the rest of the contract", () =
   });
 
   it("a plan merely mid-term shows a dash, not eleven months of future contract", () => {
-    // No newline in the pattern: the source wraps there, so match the two
-    // halves separately rather than guessing the line ending.
-    expect(sm).toMatch(/isWalletScheme\(r\.schemeType\) \|\| !\(r\.overdueAmount > 0\)/);
-    expect(sm).toMatch(/\? NOT_APPLICABLE/);
+    expect(sm).toMatch(/!\(r\.overdueAmount > 0\)/);
+    expect(sm).toMatch(/NOT_APPLICABLE/);
+  });
+
+  it("a wallet is never shown an overdue amount", () => {
+    // A Digi Gold wallet has no duration, no instalment and no due date, so it
+    // cannot be in arrears. The wallet branch of this cell must be reached
+    // BEFORE any overdue figure is considered.
+    expect(sm).toMatch(/isWalletScheme\(r\.schemeType\)\s*\?\s*\(r\.quiet/);
+  });
+
+  it("a quiet wallet is a reminder, never an arrear", () => {
+    // Amber, never red, and it must not use the arrears wording. Red would send
+    // staff to chase a customer who owes nothing.
+    expect(sm).toMatch(/function QuietNudge/);
+    expect(sm).toMatch(/No deposit/);
+    expect(sm).toMatch(/border-amber-300/);
+    // The nudge must not borrow the danger styling the real arrears use, and
+    // must not call the customer overdue. (Its tooltip DOES say "no due date" -
+    // explaining why nothing is owed is the point, so "due" is not banned.)
+    const nudge = sm.slice(sm.indexOf("function QuietNudge"), sm.indexOf("// KPI card"));
+    expect(nudge).not.toMatch(/text-danger|bg-danger|border-danger/);
+    expect(nudge).not.toMatch(/overdue|Overdue|arrear|late|Late/);
+  });
+
+  it("a wallet matures on a gram, not on a date", () => {
+    // maturity_date on a wallet is joined + 12 months, inherited from the
+    // instalment plans - it promises something the product does not do.
+    expect(sm).toMatch(/function GramGoal/);
+    expect(sm).toMatch(/isWalletScheme\(r\.schemeType\) && r\.goldGramsTarget/);
+    expect(sm).toMatch(/Ready to take/);
   });
 
   it("the remaining-contract figure is gone from the list entirely", () => {

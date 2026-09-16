@@ -59,6 +59,17 @@ function mapRow(raw) {
     // Redemptions are not on the list payload; enriched from balance on open.
     alreadyRedeemed: 0,
     nextDue: raw.next_due_date,
+    // ─── Digi Gold wallet only; null on every instalment plan ───
+    // A wallet matures on a WEIGHT, not a date. maturity above is joined + 12
+    // months, inherited from the instalment plans every scheme used to be, and
+    // means nothing for a wallet - these are what the row should read instead.
+    goldGrams: raw.gold_grams_accumulated ?? null,
+    goldGramsTarget: raw.maturity_grams_target ?? null,
+    // Days since HIS last deposit, not since the 1st of the month.
+    daysQuiet: raw.days_since_last_contribution ?? null,
+    // He owes nothing - a wallet has nothing due - but he has gone quiet.
+    // Never render this as an arrear.
+    quiet: !!raw.quiet,
     // Backend-authoritative, decided on the shop's IST calendar. Two screens
     // read these (Enrollment Management's Overdue filter and Payments' Scheme
     // Dues table); they now agree with the server and with each other whatever
