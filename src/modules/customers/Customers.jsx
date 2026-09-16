@@ -278,12 +278,10 @@ export default function Customers({ intent, clearIntent } = {}) {
       return `No monthly amount: this is a wallet. The customer pays whatever he likes, ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, as often as he likes, and each payment converts to gold at that day's rate the moment it is made. What is fixed here is the purity below.`;
     }
     if (scheme?.schemeType === "FIXED_GOLD_RATE") {
-      // It HAS a monthly amount - the scheme's own - and saying "no monthly
-      // amount" read as though the plan had none at all. What is absent is a
-      // CHOICE: the scheme fixes the instalment, so only the purity is picked
-      // here. Naming the figure is what makes that unambiguous.
-      const amt = Number(scheme?.amount) || 0;
-      return `The monthly instalment is the scheme's own${amt ? ` — ${money(amt)} a month` : ""}, so there is nothing to choose here. What IS chosen is the purity below: the rate published for it today is frozen for the whole term, and whether the market rises or falls every contribution buys gold at the rate on the day of enrollment.`;
+      // No monthly amount at all now: the plan fixes his RATE, not his money.
+      // He pays what he likes, whenever he likes, and every rupee converts at
+      // the rate frozen today for the purity he picks below.
+      return `No monthly amount: this plan fixes the RATE, not the money. Pick the purity below and the rate published for it TODAY is frozen for the whole term — whether the market rises or falls, every rupee he pays buys gold at today's rate. He then deposits what he likes, ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, as often as he likes.`;
     }
     return "";
   };

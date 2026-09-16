@@ -8,7 +8,7 @@ import { formatINR, istToday } from "@/_shared/utils";
 import { customerService } from "@/modules/customers/customerService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { paymentService } from "@/modules/payments/paymentService";
-import { isWalletScheme, DIGI_MIN, DIGI_MAX } from "@/modules/plan/scheme/schemeCapabilities";
+import { isWalletScheme, isFreeAmountScheme, DIGI_MIN, DIGI_MAX } from "@/modules/plan/scheme/schemeCapabilities";
 import { dueSchedule, fmtDueDate, fmtMissedDates } from "@/modules/plan/scheme/schemeDue";
 
 // Scheme manual-payment method enum (backend PaymentMethod for /payments/manual).
@@ -151,6 +151,11 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
   // accepted any deposit in range (payments/service.py: DIGI_GOLD_MIN_DEPOSIT /
   // DIGI_GOLD_MAX_DEPOSIT); only the screen refused.
   const isWallet = isWalletScheme(balance?.scheme_type);
+  // Who decides the amount. A Fixed Gold Rate customer pays what he likes
+  // against the rate frozen when he joined, exactly as a wallet customer pays
+  // what he likes against today's rate - so the amount is typed, not derived
+  // from an instalment the shop never set. Only MONTHLY keeps monthly x months.
+  const freeAmount = isFreeAmountScheme(balance?.scheme_type);
   // Backend-derived coverage numbers (never recomputed here).
   const monthly = balance?.monthly_amount ?? 0;
   const remainingMonths = balance ? Math.max(0, (balance.duration_months ?? 0) - (balance.months_paid ?? 0)) : 0;
@@ -177,8 +182,8 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
   // the backend requires to match exactly). On a wallet it is whatever the
   // customer hands over.
   const walletAmount = Number(String(form.walletAmount).replace(/[^0-9.]/g, "")) || 0;
-  const amount = isWallet ? walletAmount : monthly * form.months;
-  const walletAmountError = !isWallet || !form.walletAmount
+  const amount = freeAmount ? walletAmount : monthly * form.months;
+  const walletAmountError = !freeAmount || !form.walletAmount
     ? ""
     : walletAmount < DIGI_MIN || walletAmount > DIGI_MAX
       ? `A deposit must be between ${formatINR(DIGI_MIN)} and ${formatINR(DIGI_MAX)}.`
@@ -202,7 +207,7 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
       setFormError("This enrollment cannot accept contributions.");
       return;
     }
-    if (isWallet) {
+    if (freeAmount) {
       if (!(amount >= DIGI_MIN && amount <= DIGI_MAX)) {
         setFormError(`A deposit must be between ${formatINR(DIGI_MIN)} and ${formatINR(DIGI_MAX)}.`);
         return;
@@ -377,7 +382,19 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
                     </div>
                     <div className="mt-0.5 font-mono text-[11px] text-muted">{balance.enrollment_number}</div>
                     <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                      {isWallet ? (
+                      {freeAmount && !isWallet ? (
+                        <>
+                          {/* What this customer actually bought: a RATE. His
+                              instalment/duration/months-paid are the instalment
+                              plan's vocabulary and say nothing true about him. */}
+                          <span className="text-muted">Deposit</span><span className="num text-right font-bold">{formatINR(DIGI_MIN)} – {formatINR(DIGI_MAX)}</span>
+                          <span className="text-muted">Locked rate</span><span className="num text-right font-bold">{balance.locked_gold_rate ? `${formatINR(balance.locked_gold_rate)}/g` : "—"}</span>
+                          <span className="text-muted">Buys purity</span><span className="text-right font-bold">{balance.gold_purity || "—"}</span>
+                          <span className="text-muted">Deposits made</span><span className="num text-right font-bold">{balance.successful_payment_count ?? 0}</span>
+                          <span className="text-muted">Total paid in</span><span className="num text-right font-bold">{formatINR(balance.total_paid ?? 0)}</span>
+                          <span className="text-muted">Available balance</span><span className="num text-right font-bold">{formatINR(balance.available_balance ?? 0)}</span>
+                        </>
+                      ) : isWallet ? (
                         <>
                           <span className="text-muted">Deposit</span><span className="num text-right font-bold">{formatINR(DIGI_MIN)} – {formatINR(DIGI_MAX)}</span>
                           <span className="text-muted">Buys purity</span><span className="text-right font-bold">{balance.gold_purity || "—"}</span>
@@ -400,7 +417,7 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
                     {/* Installment status. The backend's next_due_date is the OLDEST
                         UNPAID installment, so it is a PAST date once payments are
                         missed — never label that "next due". */}
-                    {!isWallet && (() => {
+                    {!freeAmount && (() => {
                       const sched = dueSchedule(balance.next_due_date, monthly, remainingMonths);
                       if (sched.missedCount > 0) {
                         return (
@@ -431,14 +448,14 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
                     })()}
                   </div>
 
-                  {canContribute && (isWallet || monthChoices.length > 0) ? (
+                  {canContribute && (freeAmount || monthChoices.length > 0) ? (
                     <form onSubmit={submit} className="space-y-4 border-t border-line pt-5">
                       <div className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Record contribution</div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         {/* An instalment plan is paid in installments. A wallet
                             is not: it has no monthly figure to multiply, so this
                             selector - and the amount it locked - do not apply. */}
-                        {!isWallet && (
+                        {!freeAmount && (
                           <label className="grid gap-1.5">
                             <span className="text-xs font-bold">Installments *</span>
                             <Select
@@ -462,8 +479,8 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
                             locked to monthly x installments, so the most that
                             could ever be recorded was Rs 6,000. */}
                         <label className="grid gap-1.5">
-                          <span className="text-xs font-bold">Amount (₹){isWallet ? " *" : ""}</span>
-                          {isWallet ? (
+                          <span className="text-xs font-bold">Amount (₹){freeAmount ? " *" : ""}</span>
+                          {freeAmount ? (
                             <Input
                               inputMode="decimal"
                               placeholder={`${formatINR(DIGI_MIN)} – ${formatINR(DIGI_MAX)}`}
@@ -474,10 +491,15 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
                           ) : (
                             <Input value={formatINR(amount)} readOnly disabled />
                           )}
-                          {isWallet && (
+                          {freeAmount && (
                             walletAmountError
                               ? <span className="text-[11px] font-semibold text-danger">{walletAmountError}</span>
-                              : <span className="text-[11px] text-muted">Any amount from {formatINR(DIGI_MIN)} to {formatINR(DIGI_MAX)}.</span>
+                              : <span className="text-[11px] text-muted">
+                                  Any amount from {formatINR(DIGI_MIN)} to {formatINR(DIGI_MAX)}.
+                                  {!isWallet && balance?.locked_gold_rate
+                                    ? ` Converts at this customer's locked ${balance.gold_purity || ""} rate of ${formatINR(balance.locked_gold_rate)}/g${amount > 0 ? ` — ${(amount / balance.locked_gold_rate).toFixed(3)} g` : ""}.`
+                                    : ""}
+                                </span>
                           )}
                         </label>
                         <label className="grid gap-1.5">
@@ -497,7 +519,7 @@ export default function SchemeManualPaymentModal({ onClose, onRecorded, initial 
                       {formError && <p role="alert" className="text-xs font-semibold text-danger">{formError}</p>}
                       <div className="flex justify-end gap-2.5">
                         <Button type="button" variant="outline" size="sm" onClick={back} disabled={submitting}>Back</Button>
-                        <Button type="submit" size="sm" disabled={submitting || !!walletAmountError || (isWallet && !form.walletAmount)}>{submitting ? "Recording…" : "Record payment"}</Button>
+                        <Button type="submit" size="sm" disabled={submitting || !!walletAmountError || (freeAmount && !form.walletAmount)}>{submitting ? "Recording…" : "Record payment"}</Button>
                       </div>
                     </form>
                   ) : (

@@ -27,6 +27,27 @@ export const NOT_APPLICABLE = "—";
 export const isWalletScheme = (schemeType) =>
   schemeType === SCHEME_TYPE.FLEXIBLE_DIGI_GOLD;
 
+/** Does the CUSTOMER decide what he pays, rather than the shop?
+ *
+ * Two of the three types say yes, for different reasons:
+ *
+ *   FLEXIBLE_DIGI_GOLD  a wallet. He deposits what he likes, whenever he likes,
+ *                       and each payment converts at that day's rate.
+ *   FIXED_GOLD_RATE     he chooses a PURITY, that purity's rate on the day he
+ *                       joins is frozen for his whole term, and he then pays
+ *                       what he likes against the frozen rate. The shop fixes
+ *                       the RATE; it does not fix the money.
+ *
+ * Only MONTHLY is sold on an instalment the shop sets.
+ *
+ * Fixed Gold Rate used to demand an instalment the shop nominated for every
+ * customer alike, which is why the create form asked for a Monthly Amount and
+ * why the payment modal locked the amount to monthly x months. Both were the
+ * instalment plan's shape forced onto a plan that is bought on the rate. */
+export const isFreeAmountScheme = (schemeType) =>
+  schemeType === SCHEME_TYPE.FLEXIBLE_DIGI_GOLD ||
+  schemeType === SCHEME_TYPE.FIXED_GOLD_RATE;
+
 /** Capabilities of a scheme type. Unknown/missing type is treated as an
  *  instalment plan, which is what every pre-existing scheme is. */
 /**

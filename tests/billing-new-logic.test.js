@@ -298,17 +298,21 @@ describe("the enrollment list shows overdue, not the rest of the contract", () =
     expect(nudge).not.toMatch(/overdue|Overdue|arrear|late|Late/);
   });
 
-  it("Fixed Gold Rate does not inherit another type's instalment", () => {
-    // A pre-filled 1000, carried over from MONTHLY's ladder, read as a decision
-    // somebody had already made. Fixed Gold Rate is the one type where the shop
-    // picks any figure in a range, so it must be picked.
-    expect(sch).toMatch(/t === "FIXED_GOLD_RATE" && f\.type !== "FIXED_GOLD_RATE" \? "" : f\.amount/);
+  it("the shop never sets an amount on a Fixed Gold Rate plan", () => {
+    // It fixes the RATE, not the money. Asking for a monthly instalment was the
+    // instalment plan's shape forced onto a plan bought on the rate, and the
+    // pre-filled 1000 it left behind read as a decision already made.
+    expect(sch).toMatch(/isFreeAmountScheme\(form\.type\) \? "Deposit \(₹\)" : "Monthly Amount \(₹\)"/);
+    expect(sch).toMatch(/Nothing to set\. The customer pays what he likes/);
+    expect(sch).toMatch(/fixes his RATE, not his money/);
   });
 
-  it("the instalment field says what the number does, not only what it accepts", () => {
-    expect(sch).toMatch(/Monthly Instalment \(₹\)/);
-    expect(sch).toMatch(/he does not choose it/);
-    expect(sch).toMatch(/chooses only the purity/);
+  it("a Fixed Gold Rate plan offers every purity, not one the shop pinned", () => {
+    // The purity IS the product: the rate he freezes is the rate of the purity
+    // he picks. Pinning one meant a separate scheme per purity, and the mobile
+    // customer was offered exactly one.
+    expect(sch).toMatch(/const needsPurity = \(type\) => type === "FLEXIBLE_DIGI_GOLD"/);
+    expect(sch).toMatch(/All purities offered/);
   });
 
   it("a scheme cannot be sold in a purity the shop cannot price", () => {

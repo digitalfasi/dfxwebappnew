@@ -6,6 +6,7 @@ import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { Select } from "@/_shared/ui/select";
 import { formatINR, money } from "@/_shared/utils";
+import { isFreeAmountScheme } from "@/modules/plan/scheme/schemeCapabilities";
 import { schemeService, SCHEME_TYPES } from "@/modules/plan/scheme/schemeService";
 import { planHeadline } from "@/modules/plan/scheme/schemeCapabilities";
 
@@ -32,7 +33,17 @@ const DIGI_MAX = 100000;
 // A plan cannot be sold in a purity the store cannot value.
 const PURITY_CHOICES = ["9K", "14K", "18K", "22K", "24K"];
 const GOLD_SCHEME_TYPES = ["FIXED_GOLD_RATE", "FLEXIBLE_DIGI_GOLD"];
-const needsPurity = (type) => GOLD_SCHEME_TYPES.includes(type);
+// Which types ask the SHOP to pin one purity.
+//
+// A wallet does: every deposit converts at that purity's rate on the day it is
+// paid, so the plan has to say which metal it buys.
+//
+// Fixed Gold Rate does NOT, any more. The purity is the customer's choice - it
+// is the whole product, because the rate he freezes is the rate of the purity
+// he picks. Pinning one on the scheme meant the shop had to publish a separate
+// plan per purity, and the mobile customer was offered exactly one. The scheme
+// now stores no purity and every purity is offered at enrollment.
+const needsPurity = (type) => type === "FLEXIBLE_DIGI_GOLD";
 
 // bonus_description stays a string in the contract; the UI captures the
 // percentage and composes the sentence, so the stored value is predictable
@@ -135,11 +146,13 @@ export default function Schemes() {
     // A wallet's amount is never typed (the field is read-only), so it cannot
     // be wrong. The contract still needs a figure: keep whatever the scheme
     // already has when editing, else the minimum deposit.
-    const walletAmount = amt >= DIGI_MIN && amt <= DIGI_MAX ? amt : DIGI_MIN;
-    const amountToSave = isWallet ? walletAmount : amt;
-    if (!isWallet && (!form.amount || amt <= 0)) e.amount = "Enter valid amount";
-    else if (form.type === "MONTHLY" && !MONTHLY_TIER_AMOUNTS.includes(amt)) e.amount = `Monthly Gold Saving is sold at ${MONTHLY_TIER_AMOUNTS.map((a) => money(a)).join(", ")} only`;
-    else if (!isWallet && form.type !== "MONTHLY" && (amt < MONTHLY_MIN || amt > MONTHLY_MAX)) e.amount = `Amount must be ${money(MONTHLY_MIN)}–${money(MONTHLY_MAX)}`;
+    // Neither a wallet nor a Fixed Gold Rate plan is sold on an instalment the
+    // shop sets, so neither has an amount to type. The contract still needs a
+    // figure: keep whatever the scheme already has when editing, else the
+    // minimum deposit. It is a per-deposit guide, never an instalment.
+    const guideAmount = amt >= DIGI_MIN && amt <= DIGI_MAX ? amt : DIGI_MIN;
+    const amountToSave = isFreeAmountScheme(form.type) ? guideAmount : amt;
+    if (form.type === "MONTHLY" && !MONTHLY_TIER_AMOUNTS.includes(amt)) e.amount = `Monthly Gold Saving is sold at ${MONTHLY_TIER_AMOUNTS.map((a) => money(a)).join(", ")} only`;
     // A gold scheme is bought IN a purity; a money scheme has none.
     if (needsPurity(form.type) && !PURITY_CHOICES.includes(form.purity)) e.purity = "Choose the purity this scheme buys in";
     if (form.bonusPct !== "" && (Number(form.bonusPct) < 0 || Number(form.bonusPct) > 99)) e.bonusPct = "Bonus must be 0–99%";
@@ -363,33 +376,35 @@ export default function Schemes() {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Title<span className="text-danger">*</span> — e.g. Festival Special Plan</span><input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Festival Special Plan" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.title ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.title && <span className="text-xs font-semibold text-danger">{errors.title}</span>}</label>
               <label className="grid gap-1.5"><span className="text-xs font-bold">Description — Short description shown to customers</span><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short description..." rows={2} className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Type<span className="text-danger">*</span> — how contributions convert to gold</span><Select value={form.type} onValueChange={(t) => setForm(f => ({
-                ...f,
-                type: t,
-                // MONTHLY sells at a fixed ladder and a wallet never uses this
-                // figure at all, so switching to Fixed Gold Rate carried the
-                // other type's number across and it LOOKED like a decision
-                // already made. Fixed Gold Rate is the one type where the shop
-                // picks any figure in a range, so it must be picked, not
-                // inherited. Editing an existing scheme keeps its saved amount
-                // (the type is not being changed there).
-                amount: t === "FIXED_GOLD_RATE" && f.type !== "FIXED_GOLD_RATE" ? "" : f.amount,
-              }))} options={SCHEME_TYPES.map(t => ({ value: t.value, label: t.label }))} /><span className="text-[11px] text-muted">{form.type === "FIXED_GOLD_RATE" ? "Gold rate is locked at enrollment; contributions convert at that locked rate." : form.type === "FLEXIBLE_DIGI_GOLD" ? "Contributions convert to gold at the rate on the contribution date." : "Standard monthly savings plan."}</span></label>
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Scheme Type<span className="text-danger">*</span> — how contributions convert to gold</span><Select value={form.type} onValueChange={(t) => setForm(f => ({ ...f, type: t }))} options={SCHEME_TYPES.map(t => ({ value: t.value, label: t.label }))} /><span className="text-[11px] text-muted">{form.type === "FIXED_GOLD_RATE" ? "Gold rate is locked at enrollment; contributions convert at that locked rate." : form.type === "FLEXIBLE_DIGI_GOLD" ? "Contributions convert to gold at the rate on the contribution date." : "Standard monthly savings plan."}</span></label>
               {/* Fixed Gold Rate and Digi Gold are bought IN a purity: it
                   decides what each contribution buys and what those grams are
                   worth against the piece at the counter. A Monthly plan saves
                   money, so it is never asked. */}
+              {form.type === "FIXED_GOLD_RATE" && (
+                <div className="grid gap-1.5">
+                  <span className="text-xs font-bold">Gold Purity <span className="font-normal text-muted">— the customer chooses</span></span>
+                  <div className="rounded-xl border border-line bg-canvas/60 px-3.5 py-2.5 text-sm font-semibold text-muted">
+                    All purities offered
+                  </div>
+                  <span className="text-[11px] text-muted">
+                    The purity IS the product here. Whichever he picks, that purity&rsquo;s published
+                    rate on the day he joins is frozen for his whole term — so one plan serves every
+                    purity instead of needing a separate scheme for each.
+                  </span>
+                </div>
+              )}
               {needsPurity(form.type) && (
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Gold Purity<span className="text-danger">*</span> <span className="font-normal text-muted">— what this scheme buys</span></span><Select value={form.purity} onValueChange={(p) => setForm({ ...form, purity: p })} options={PURITY_CHOICES.map((p) => ({ value: p, label: p }))} />{errors.purity ? <span className="text-xs font-semibold text-danger">{errors.purity}</span> : <span className="text-[11px] text-muted">Contributions buy grams of this purity; at the counter they convert to the piece&rsquo;s own purity.</span>}</label>
               )}
               <label className="grid gap-1.5"><span className="text-xs font-bold">Duration (Months)<span className="text-danger">*</span> <span className="font-normal text-muted">— max {MAX_DURATION_MONTHS}</span></span><input type="number" min={1} max={MAX_DURATION_MONTHS} step={1} value={form.duration} onChange={e => setForm({ ...form, duration: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none transition ${errors.duration ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.duration && <span className="text-xs font-semibold text-danger">{errors.duration}</span>}</label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">{form.type === "FIXED_GOLD_RATE" ? "Monthly Instalment (₹)" : "Monthly Amount (₹)"}<span className="text-danger">*</span> <span className="font-normal text-muted">— {form.type === "FLEXIBLE_DIGI_GOLD" ? `${money(DIGI_MIN)} to ${money(DIGI_MAX)}` : form.type === "MONTHLY" ? "fixed tiers" : "what every customer on this plan pays"}</span></span>{/* FDG-004. A Digi Gold wallet has no monthly amount to set: the
+              <label className="grid gap-1.5"><span className="text-xs font-bold">{isFreeAmountScheme(form.type) ? "Deposit (₹)" : "Monthly Amount (₹)"}{isFreeAmountScheme(form.type) ? "" : <span className="text-danger">*</span>} <span className="font-normal text-muted">— {isFreeAmountScheme(form.type) ? "the customer decides" : "fixed tiers"}</span></span>{/* FDG-004. A Digi Gold wallet has no monthly amount to set: the
                     customer deposits what he likes, whenever he likes, within a
                     fixed range. The control states that range and is read-only
                     (not disabled - it stays reachable by keyboard and readable
                     by a screen reader). Switching to any other scheme type
                     restores the normal editable field. */}
-                {form.type === "FLEXIBLE_DIGI_GOLD" ? (
+                {isFreeAmountScheme(form.type) ? (
                   <input type="text" readOnly aria-readonly="true" value={`${money(DIGI_MIN)} to ${money(DIGI_MAX)}`} className="h-10 cursor-default rounded-xl border border-line bg-canvas/60 px-3.5 text-sm font-semibold text-muted outline-none" />
                 ) : form.type === "MONTHLY" ? (
                   /* Sold at five instalments and nothing else, so it is chosen,
@@ -407,7 +422,7 @@ export default function Schemes() {
                 {!errors.amount && <span className="text-[11px] text-muted">{form.type === "FLEXIBLE_DIGI_GOLD"
                   ? `A wallet deposit may be ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, any number of times.`
                   : form.type === "FIXED_GOLD_RATE"
-                  ? `Every customer on this plan pays this same amount each month — he does not choose it. At enrollment he chooses only the purity, and that purity's rate that day is frozen for his whole term. Anything from ${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}.`
+                  ? `Nothing to set. The customer pays what he likes, ${money(DIGI_MIN)} to ${money(DIGI_MAX)}, and every rupee converts at the rate he froze on the day he joined. This plan fixes his RATE, not his money.`
                   : `An instalment must be ${money(MONTHLY_MIN)} to ${money(MONTHLY_MAX)}.`}</span>}{errors.amount && <span className="text-xs font-semibold text-danger">{errors.amount}</span>}</label>
               {/* The bonus is a PERCENTAGE, so it is captured as a bounded number
                   (0-99) rather than free text that accepted any digits at all.

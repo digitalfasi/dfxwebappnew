@@ -58,14 +58,24 @@ describe("a wallet can be paid its own way", () => {
     expect(src).toMatch(/const isWallet = isWalletScheme\(balance\?\.scheme_type\)/);
   });
 
-  it("the amount is typed on a wallet, not derived from installments", () => {
-    expect(src).toMatch(/const amount = isWallet \? walletAmount : monthly \* form\.months/);
+  it("the amount is typed wherever the CUSTOMER decides it, not from installments", () => {
+    // Two types leave the amount to the customer: a wallet (pays what he likes
+    // at today's rate) and Fixed Gold Rate (pays what he likes at the rate
+    // frozen when he joined). Only MONTHLY multiplies an instalment.
+    expect(src).toMatch(/const amount = freeAmount \? walletAmount : monthly \* form\.months/);
     expect(src).toMatch(/onChange=\{\(ev\) => setForm\(\{ \.\.\.form, walletAmount:/);
   });
 
-  it("the installments selector does not render for a wallet", () => {
-    expect(src).toMatch(/\{!isWallet && \(\r?\n\s*<label/);
+  it("the installments selector renders only for a plan sold on installments", () => {
+    expect(src).toMatch(/\{!freeAmount && \(/);
   });
+
+  it("a Fixed Gold Rate contribution converts at the customer's OWN locked rate", () => {
+    // The whole product: the rate was frozen the day he chose his purity, so
+    // the grams his money buys must be quoted against THAT, never today's.
+    expect(src).toMatch(/balance\.locked_gold_rate/);
+  });
+
 
   it("a deposit is bounded by the same range the backend enforces", () => {
     expect(DIGI_MIN).toBe(500);
@@ -77,8 +87,11 @@ describe("a wallet can be paid its own way", () => {
     expect(src).toMatch(/can_contribute && \(isWallet \|\| remainingMonths > 0\)/);
   });
 
-  it("nothing is ever 'due' on a wallet", () => {
-    expect(src).toMatch(/\{!isWallet && \(\(\) => \{/);
+  it("nothing is ever 'due' where there are no installments", () => {
+    // The schedule panel belongs to instalment plans alone. A wallet has no
+    // due dates, and neither does Fixed Gold Rate now that the customer pays
+    // what he likes against his locked rate.
+    expect(src).toMatch(/\{!freeAmount && \(\(\) => \{/);
   });
 });
 
