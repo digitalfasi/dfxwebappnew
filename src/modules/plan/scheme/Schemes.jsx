@@ -20,8 +20,17 @@ const MONTHLY_TIER_AMOUNTS = [1000, 2000, 5000, 10000, 15000];
 const DIGI_MIN = 500;
 const DIGI_MAX = 100000;
 // The two schemes that buy gold rather than save money pick a purity at
-// enrollment. Mirrors PURITY_CHOICES in app/_shared/core/constants.py.
-const PURITY_CHOICES = ["9K", "14K", "18K", "20K", "22K", "24K"];
+// enrollment.
+//
+// 20K is deliberately NOT here, though the shop's general purity list carries
+// it. There is no published 20K rate - PUBLISHED_RATE_COLUMN in
+// gold_rate/purity_rate.py maps 24K/22K/18K/14K/9K and nothing else - so a
+// scheme saved in 20K is a scheme NOBODY CAN JOIN: resolve_locked_gold_rate
+// refuses every enrollment into it for want of a rate to lock, and a
+// contribution has no rate to convert at. The enrollment picker already
+// offered only these five; the two lists disagreed and this was the wrong one.
+// A plan cannot be sold in a purity the store cannot value.
+const PURITY_CHOICES = ["9K", "14K", "18K", "22K", "24K"];
 const GOLD_SCHEME_TYPES = ["FIXED_GOLD_RATE", "FLEXIBLE_DIGI_GOLD"];
 const needsPurity = (type) => GOLD_SCHEME_TYPES.includes(type);
 
