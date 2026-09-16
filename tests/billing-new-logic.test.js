@@ -8,6 +8,11 @@ const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 const ns = read("../src/modules/billing/new-sale/NewSale.jsx");
 const svc = read("../src/modules/billing/billingService.js");
 const inv = read("../src/modules/procurement/inventory/Inventory.jsx");
+// The profit/loss word and its wording live in ONE place now, shared by New
+// Sale and Sales History, so that the two screens cannot describe the same
+// bill differently.
+const verdict = read("../src/_shared/ui/verdict.jsx");
+const sh = read("../src/modules/billing/sale-history/SalesHistory.jsx");
 const sm = read("../src/modules/plan/enrollment/SchemeManagement.jsx");
 
 describe("the making charge is this lot's, not a hard-coded 14", () => {
@@ -319,7 +324,25 @@ describe("the verdict states this piece's own floors", () => {
     // be checked against anything - and it was welded at 11 regardless.
     expect(ns).not.toMatch(/Above 11% break-even/);
     expect(ns).not.toMatch(/Under 11% break-even/);
-    expect(ns).toMatch(/note: "Gold profit intact"/);
+    expect(verdict).toMatch(/note: "Gold profit intact"/);
+    expect(verdict).not.toMatch(/11%/);
+  });
+
+  it("Sales History shows the word to whoever cannot see the rupees", () => {
+    // Staff saw the direction while pricing the bill and nothing at all once
+    // it was raised: the only profit block on that screen is gated on
+    // purchaseCost, which the backend nulls for a Staff caller. Same rule as
+    // New Sale, so the same card.
+    expect(sh).toMatch(/PnlWordCard/);
+    expect(sh).toMatch(/sale\.purchaseCost == null && sale\.profitLabel/);
+  });
+
+  it("neither screen keeps its own copy of the wording", () => {
+    // Two readers of one rule drift. The tunch readers already proved that.
+    for (const src of [ns, sh]) {
+      expect(src).not.toMatch(/word: "BREAK EVEN"/);
+      expect(src).toMatch(/from "@\/_shared\/ui\/verdict"/);
+    }
   });
 
   it("the derivation lives in Store Defaults, not over the billing field", () => {

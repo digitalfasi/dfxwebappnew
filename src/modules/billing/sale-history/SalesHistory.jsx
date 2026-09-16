@@ -8,6 +8,7 @@ import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { formatINR, istToday } from "@/_shared/utils";
+import { PnlWordCard } from "@/_shared/ui/verdict";
 import { billingService } from "@/modules/billing/billingService";
 
 const STATUS_TONE = { Paid: "success", Partial: "warning", Pending: "danger", Returned: "info", Canceled: "neutral" };
@@ -663,6 +664,18 @@ function SaleDetail({ sale, onClose, onChanged }) {
               <BreakdownRow label="Bill Total" value={formatINR(sale.finalAmount)} strong />
             </div>
           </div>
+
+          {/* The DIRECTION, for whoever is not shown the rupees. New Sale has
+              always shown a Staff user this word while the bill was being
+              priced; Sales History showed them nothing at all once it was
+              raised, because the only profit block on this screen is gated on
+              purchaseCost, which the backend nulls for Staff. Same rule, same
+              word, same component - see _shared/ui/verdict. */}
+          {sale.purchaseCost == null && sale.profitLabel && (
+            <div className="max-w-[220px]">
+              <PnlWordCard label="This bill" verdict={sale.profitLabel} />
+            </div>
+          )}
 
           {/* Admin-only cost + profit/loss. */}
           {sale.purchaseCost != null && (
