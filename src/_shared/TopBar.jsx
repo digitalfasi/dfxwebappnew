@@ -12,7 +12,7 @@ import { BUILD_SHA } from "@/_shared/utils";
    shifts sideways on refresh is what makes a feed look unreliable. */
 function Quote({ label, value, dot }) {
   return (
-    <div className="min-w-[92px] border-r border-line-soft px-3.5 py-1.5 last:border-r-0">
+    <div className="min-w-[92px] border-r border-line-soft px-3.5 py-1.5">
       <div className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
         <span className="text-[9.5px] font-extrabold uppercase tracking-[0.09em] text-faint">{label}</span>
@@ -126,16 +126,30 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
                 </span>
               )}
             </div>
-            {/* Every published purity, not just the three that used to fit. A
-                counter quoting 14K or 9K had to leave this screen to find the
-                rate it was about to charge. */}
-            <div className="flex items-stretch">
-              <Quote label="24K" value={bullion?.rate_24k} dot="#c9a84c" />
-              <Quote label="22K" value={bullion?.rate_22k} dot="#d4b65e" />
-              <Quote label="18K" value={bullion?.rate_18k} dot="#e3cd8a" />
-              <Quote label="14K" value={bullion?.rate_14k} dot="#c9b78c" />
-              <Quote label="9K" value={bullion?.rate_9k} dot="#cfc3a4" />
-              <Quote label="Silver" value={bullion?.silver_999} dot="#a8adb7" />
+            {/* Every published purity, scrolling as one endless feed the way a
+                bullion desk board reads — no counter has to leave the screen to
+                find 14K or 9K. Two identical runs sit back to back inside a
+                fixed window; the track travels exactly one run width so the
+                wrap is seamless. Ordered ascending by value (Silver → 24K).
+                Pauses on hover; under reduced-motion it stops moving and
+                becomes a normal horizontal scroll instead. */}
+            <div className="group relative w-[440px] min-w-0 shrink-0 overflow-hidden xl:w-[560px]">
+              {/* Soft edges so figures dissolve in and out rather than clipping
+                  against a hard border. */}
+              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-surface to-transparent" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-surface to-transparent" />
+              <div className="flex w-max animate-ticker items-stretch group-hover:[animation-play-state:paused]">
+                {[0, 1].map((run) => (
+                  <div key={run} className="flex items-stretch" aria-hidden={run === 1}>
+                    <Quote label="Silver" value={bullion?.silver_999} dot="#a8adb7" />
+                    <Quote label="9K" value={bullion?.rate_9k} dot="#cfc3a4" />
+                    <Quote label="14K" value={bullion?.rate_14k} dot="#c9b78c" />
+                    <Quote label="18K" value={bullion?.rate_18k} dot="#e3cd8a" />
+                    <Quote label="22K" value={bullion?.rate_22k} dot="#d4b65e" />
+                    <Quote label="24K" value={bullion?.rate_24k} dot="#c9a84c" />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

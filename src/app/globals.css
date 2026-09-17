@@ -132,3 +132,28 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* ── Live bullion ticker ─────────────────────────────────────────────
+   The rate rail runs two identical purity sets back to back and travels
+   exactly one set width (-50%), so the loop point is invisible and the
+   feed reads as one endless scroll. Linear timing keeps a steady desk
+   pace; it pauses on hover (set in TopBar) and holds still under
+   prefers-reduced-motion. Keyframes sit inside @theme so Tailwind v4
+   registers the animate-ticker utility. */
+@theme {
+  --animate-ticker: ticker 28s linear infinite;
+
+  @keyframes ticker {
+    to { transform: translateX(-50%); }
+  }
+}
+
+/* The live feed is the point of this strip — its slow, hover-pausable scroll
+   is how a bullion board signals "live". The app-wide reduced-motion rule
+   above neutralises every animation with a universal !important; this
+   class-level !important overrides it for the ticker alone, so the feed keeps
+   moving even under prefers-reduced-motion while everything else still stops. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-ticker { animation: ticker 28s linear infinite !important; }
+  .group:hover .animate-ticker { animation-play-state: paused !important; }
+}
