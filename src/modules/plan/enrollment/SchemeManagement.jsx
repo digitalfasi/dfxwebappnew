@@ -6,11 +6,11 @@ import { Select } from "@/_shared/ui/select";
 import { SearchInput } from "@/_shared/ui/input";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
-import { fmtDate, grams as fmtGrams, money as fmtMoney } from "@/_shared/utils";
+import { fmtDate, grams as fmtGrams, money as fmtMoney, istToday } from "@/_shared/utils";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { passbookService } from "@/_shared/passbookService";
 import { paymentService } from "@/modules/payments/paymentService";
-import { isWalletScheme, isFreeAmountScheme, NOT_APPLICABLE } from "@/modules/plan/scheme/schemeCapabilities";
+import { isWalletScheme, isFreeAmountScheme, NOT_APPLICABLE, SCHEME_TYPE, DIGI_MIN, DIGI_MAX } from "@/modules/plan/scheme/schemeCapabilities";
 
 // Scheme Management — operational customer/enrollment module. Consolidates the
 // former Enrollments + Collections screens. All figures (paid, outstanding,
@@ -33,6 +33,76 @@ const CLOSE_PRESETS = [
   "Switching to another scheme",
   "Duplicate enrollment",
 ];
+
+// ── Period window ───────────────────────────────────────────────────────────
+// The Dashboard's Scheme card is read in windows ("Today's New Enrollments",
+// "Today's Collection") and its KPIs link here, so this screen has to be able to
+// stand in the same window — otherwise clicking "3 new enrollments today" landed
+// on a list of every enrollment the shop has ever taken, with no way to see
+// which three it meant. Same window names and the same IST calendar the
+// Dashboard uses: the shop's day, never the browser's.
+// Same windows, same order and the same names the Dashboard's Scheme card
+// uses, plus Last Month (a shop closes its books on one) and All time. A
+// window the Dashboard can be standing in must exist here, or its KPI would
+// link to a screen that cannot show what the card counted.
+const PERIODS = [
+  { value: "today", label: "Today" },
+  { value: "this_week", label: "This Week" },
+  { value: "this_month", label: "This Month" },
+  { value: "last_month", label: "Last Month" },
+  { value: "this_year", label: "This Year" },
+  { value: "all", label: "All time" },
+];
+// This Month, not All time. An enrollment book grows forever, so "everything
+// ever" is the one view that answers no question a shop asks at the counter;
+// the current month is what it is actually working in.
+const DEFAULT_PERIOD = "this_month";
+const PERIOD_WORD = {
+  today: "today", this_week: "this week", this_month: "this month",
+  last_month: "last month", this_year: "this year", custom: "in this range",
+};
+const PERIOD_PFX = {
+  today: "Today's", this_week: "This Week's", this_month: "This Month's",
+  last_month: "Last Month's", this_year: "This Year's", custom: "Selected",
+};
+
+/** An ISO instant or date → the calendar day it falls on in IST ("YYYY-MM-DD").
+ *  Never `toISOString().slice(0,10)` — that is the UTC day, which rolls over
+ *  5½ hours late and drops the shop's evening business out of "today". */
+function istDay(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return String(iso).slice(0, 10);
+  const d = new Date(t + 5.5 * 3600 * 1000);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+
+/** The window as an inclusive IST day range, or null for "all time".
+ *  Weeks start Monday. Last Month is a CLOSED range - it ends on the last day
+ *  of that month, not today - which is why this returns both ends and not just
+ *  a start. `custom` carries the Dashboard's own from/to straight through. */
+function periodRange(period, custom) {
+  if (!period || period === "all") return null;
+  if (period === "custom") {
+    return custom?.from && custom?.to ? { start: custom.from, end: custom.to } : null;
+  }
+  const today = istToday();
+  const [y, m, d] = today.split("-").map(Number);
+  const p = (n) => String(n).padStart(2, "0");
+  const iso = (dt) => `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
+  if (period === "today") return { start: today, end: today };
+  if (period === "this_month") return { start: `${y}-${p(m)}-01`, end: today };
+  if (period === "this_year") return { start: `${y}-01-01`, end: today };
+  if (period === "last_month") {
+    const first = new Date(Date.UTC(y, m - 2, 1));          // 1st of last month
+    const last = new Date(Date.UTC(y, m - 1, 0));           // day 0 = last day of it
+    return { start: iso(first), end: iso(last) };
+  }
+  const mon = new Date(Date.UTC(y, m - 1, d));
+  mon.setUTCDate(mon.getUTCDate() - ((mon.getUTCDay() + 6) % 7)); // back to Monday
+  return { start: iso(mon), end: today };
+}
 
 function statusTone(s) {
   return s === "Active" ? "info" : s === "Completed" ? "success" : "danger";
@@ -81,6 +151,69 @@ function GramGoal({ grams, target }) {
   );
 }
 
+/** A Digi Gold wallet has no maturity date at all.
+ *
+ *  The record still carries one — joined + duration, inherited from the days
+ *  when every scheme was a 12-month instalment plan — and printing it told the
+ *  customer his wallet ends on a date the product will not end it on. He
+ *  deposits what he likes for as long as he likes; the finish line is a WEIGHT
+ *  (see GramGoal) or nothing at all. Fixed Gold Rate is NOT this: it does run
+ *  for its 12 months, and keeps its real maturity date. */
+function NoTerm() {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-accent-line bg-accent-soft px-2.5 py-1"
+      title="No maturity date — this plan has no fixed term. The customer keeps it open as long as he likes."
+    >
+      <span className="text-[15px] font-extrabold leading-none text-accent-strong">∞</span>
+      <span className="text-[11px] font-bold uppercase tracking-wider text-muted">No end date</span>
+    </span>
+  );
+}
+
+/** How the plan is SOLD, in its own type's terms — never an instalment figure
+ *  on a plan the shop sets no instalment for. Replaces the old Installment
+ *  column, which printed a dash for two of the three scheme types and so said
+ *  nothing at all about what the customer had actually signed up to. */
+function PlanCell({ row, deposits }) {
+  const t = row.schemeType;
+  const wallet = isWalletScheme(t);
+  // How far through the plan the customer is, in the unit his plan counts in.
+  // A wallet counts deposits against nothing to reach, so its denominator is
+  // the only honest one there is: ∞. Fixed Gold Rate counts deposits
+  // against its 12 months; Monthly counts instalments against its duration.
+  const done = wallet || t === SCHEME_TYPE.FIXED_GOLD_RATE ? deposits : row.paid;
+  const term = wallet ? "∞" : row.total || 0;
+  const plan = wallet
+    ? { value: `₹${DIGI_MIN.toLocaleString("en-IN")} – ₹${DIGI_MAX.toLocaleString("en-IN")}`, unit: "Per deposit", num: true }
+    : t === SCHEME_TYPE.FIXED_GOLD_RATE
+      ? { value: row.goldPurity ? `${row.goldPurity} rate locked` : "Rate locked", unit: "Any amount", num: false }
+      : { value: money(row.installment), unit: "Per month", num: true };
+  return (
+    <span className="inline-flex flex-col items-start gap-1 leading-tight">
+      <span className={`text-[13px] font-bold ${plan.num ? "num" : ""}`}>{plan.value}</span>
+      <span className="flex items-center gap-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{plan.unit}</span>
+        {/* The counter sits in a pill so the eye can find it down the column
+            whatever length the line above it happens to be. Tabular figures
+            keep the slash in the same place on every row. */}
+        <span
+          className={`num rounded-full border px-1.5 py-px text-[10px] font-bold tabular-nums ${wallet ? "border-accent-line bg-accent-soft text-accent-strong" : "border-line bg-canvas text-ink-soft"}`}
+          title={wallet ? "Deposits made — a wallet has no set number to reach" : `Paid ${done} of ${term}`}
+        >
+          {done}/{term}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** Has this customer paid anything OUTSIDE the selected window? Only then is
+ *  a second, lifetime figure worth the line it costs. */
+function lifetimeDiffers(row, act) {
+  return Math.abs((act?.amount || 0) - (Number(row.totalPaid) || 0)) >= 0.005;
+}
+
 /** A wallet customer who has gone quiet. NOT an arrear.
  *
  *  He owes nothing - a wallet has no due date and can never be late - so this
@@ -100,22 +233,31 @@ function QuietNudge({ days }) {
 }
 
 // KPI card — presentation only, matches the existing DFX card language.
-function KpiCard({ label, value }) {
+// `hint` states the window the figure was measured over, so a card can never
+// again be read as "all time" when it is showing today. `danger` was already
+// being passed for Overdue and silently dropped, which is why the overdue
+// figure rendered in the same ink as the rest.
+function KpiCard({ label, value, hint, danger }) {
   return (
     <div className="rounded-2xl border border-line bg-surface p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-accent-line hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0">
-      <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{label}</div>
-      <div className="mt-1.5 text-xl font-extrabold tracking-tight">{value}</div>
+      <div className="min-h-[2.2em] text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{label}</div>
+      <div className={`num mt-1.5 text-xl font-extrabold tracking-tight ${danger ? "text-danger" : ""}`}>{value}</div>
+      {hint && <div className="mt-1 text-[10px] font-semibold text-faint">{hint}</div>}
     </div>
   );
 }
 
-export default function SchemeManagement() {
+export default function SchemeManagement({ intent, clearIntent } = {}) {
   const scope = useRef(null);
   usePressFeedback(scope);
   const [filter, setFilter] = useState("All");
+  const [period, setPeriod] = useState(DEFAULT_PERIOD);
+  // Only ever set from a Dashboard "Custom" window; the tabs here never set it.
+  const [customRange, setCustomRange] = useState(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState([]);
+  const [ledger, setLedger] = useState([]);  // every scheme payment, for windowing
   const [summary, setSummary] = useState(null); // backend-authoritative KPI slices
   const [loading, setLoading] = useState(true);
   usePageMotion(scope, [loading]);
@@ -138,9 +280,18 @@ export default function SchemeManagement() {
     setLoading(true);
     setLoadError("");
     try {
-      const { rows: r, summary: s } = await enrollmentService.getEnrollmentsWithSummary();
+      // The payment ledger comes along because the window figures need it: the
+      // enrollment payload carries lifetime total_paid only, so "collected
+      // today" can only be read off the payments themselves. Each amount is the
+      // server's own; nothing is recomputed, only selected by date. A failed
+      // ledger never fails the screen — the enrollments still render.
+      const [{ rows: r, summary: s }, pays] = await Promise.all([
+        enrollmentService.getEnrollmentsWithSummary(),
+        paymentService.getSchemePayments().catch(() => []),
+      ]);
       setRows(r);
       setSummary(s);
+      setLedger(pays || []);
     } catch (err) {
       setLoadError(err?.message || "Could not load enrollments.");
     } finally {
@@ -150,11 +301,78 @@ export default function SchemeManagement() {
 
   useEffect(() => { loadRows(); }, [loadRows]);
 
+  // Arriving from a Dashboard KPI. "3 new enrollments today" has to land on
+  // those three, not on the whole book — the intent carries the window (and,
+  // for the overdue alert, the status) the card was counting.
+  useEffect(() => {
+    if (!intent) return;
+    // "custom" is not one of the tabs, but the Dashboard can be standing in
+    // one — it arrives with its own from/to and is honoured as-is, so the
+    // window the admin clicked is the window that opens.
+    if (intent.period === "custom" && intent.from && intent.to) {
+      setCustomRange({ from: intent.from, to: intent.to });
+      setPeriod("custom");
+    } else if (intent.period && PERIODS.some((p) => p.value === intent.period)) {
+      setPeriod(intent.period);
+    }
+    if (intent.status && FILTERS.includes(intent.status)) setFilter(intent.status);
+    clearIntent?.();
+  }, [intent, clearIntent]);
+
+  // ── What happened inside the window ───────────────────────────────────────
+  // Two facts per enrollment: money taken in the window, and how many deposits
+  // made it up. Both are sums of amounts the backend sent on its own payment
+  // rows — the same "select the server's figures, never invent one" rule the
+  // overdue total already follows. Only SUCCESS/COMPLETED money is counted.
+  const range = periodRange(period, customRange);
+  const windowed = !!range;
+  const activity = useMemo(() => {
+    const m = new Map();
+    for (const p of ledger) {
+      if (!(p.status === "SUCCESS" || p.status === "COMPLETED")) continue;
+      const day = istDay(p.ts);
+      if (range && (!day || day < range.start || day > range.end)) continue;
+      const cur = m.get(p.enrollment) || { amount: 0, count: 0 };
+      cur.amount += Number(p.amount) || 0;
+      cur.count += 1;
+      m.set(p.enrollment, cur);
+    }
+    return m;
+  }, [ledger, range?.start, range?.end]);
+
+  // Lifetime deposit count per enrollment — the numerator of the "n / ∞" a
+  // free-amount plan shows in place of an instalment count it does not have.
+  const depositCount = useMemo(() => {
+    const m = new Map();
+    for (const p of ledger) {
+      if (!(p.status === "SUCCESS" || p.status === "COMPLETED")) continue;
+      m.set(p.enrollment, (m.get(p.enrollment) || 0) + 1);
+    }
+    return m;
+  }, [ledger]);
+
+  const joinedInWindow = useCallback(
+    (r) => {
+      if (!range) return true;
+      const day = istDay(r.joined);
+      return !!day && day >= range.start && day <= range.end;
+    },
+    [range?.start, range?.end]
+  );
+
+  // A window shows what MOVED in it: plans taken out, and plans paid into.
+  // Scoping on the joined date alone would have hidden today's ₹90,000 of
+  // collections the moment they were made against last month's enrollments.
+  const inWindow = useMemo(() => {
+    if (!windowed) return rows;
+    return rows.filter((r) => joinedInWindow(r) || activity.has(r.enrollment));
+  }, [rows, windowed, joinedInWindow, activity]);
+
   const filtered = useMemo(() => {
-    if (filter === "All") return rows;
-    if (filter === "Overdue") return rows.filter(isOverdue);
-    return rows.filter((r) => r.status === filter);
-  }, [rows, filter]);
+    if (filter === "All") return inWindow;
+    if (filter === "Overdue") return inWindow.filter(isOverdue);
+    return inWindow.filter((r) => r.status === filter);
+  }, [inWindow, filter]);
 
   // Text search over the already-loaded rows — customer name or enrollment
   // number only. A pure display filter for the table; it never touches KPIs
@@ -177,7 +395,7 @@ export default function SchemeManagement() {
     () => searched.slice((pageSafe - 1) * ROWS_PER_PAGE, pageSafe * ROWS_PER_PAGE),
     [searched, pageSafe]
   );
-  useEffect(() => { setPage(1); }, [filter, query]);
+  useEffect(() => { setPage(1); }, [filter, query, period]);
 
   // KPI row — read straight from the backend-authoritative `summary` slice for
   // the active filter. The frontend performs NO financial aggregation: it only
@@ -195,6 +413,19 @@ export default function SchemeManagement() {
   // the list is unpaginated, so the total is exact rather than a page's worth.
   const overdueTotal = rows.reduce((s, r) => s + (Number(r.overdueAmount) || 0), 0);
   const overdueCount = rows.filter((r) => (Number(r.overdueAmount) || 0) > 0).length;
+
+  // ── The four figures, in whichever window is selected ─────────────────────
+  // "All time" keeps reading the backend's own summary slice, unchanged. A
+  // window is answered from the window: enrollments STARTED in it, money TAKEN
+  // in it. Overdue is deliberately never windowed — arrears are a fact about
+  // right now, and "overdue this week" is not a thing a shop can act on.
+  const newInWindow = windowed ? rows.filter(joinedInWindow).length : null;
+  const collectedInWindow = windowed
+    ? [...activity.values()].reduce((s, a) => s + a.amount, 0)
+    : null;
+  const completedInWindow = windowed ? inWindow.filter((r) => r.status === "Completed").length : null;
+  const windowLabel = PERIOD_WORD[period] || "";
+  const windowPfx = PERIOD_PFX[period] || "";
 
   // Outstanding is backend-authoritative (enrollment.outstanding_amount). The
   // frontend never computes it — `—` when the live backend hasn't sent it yet.
@@ -323,8 +554,16 @@ export default function SchemeManagement() {
       </div>
 
       <div data-motion="reveal" className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiCard label="Active Enrollments" value={loading || !kpis ? "—" : String(kpis.active_enrollments)} />
-        <KpiCard label="Total Paid" value={loading || !kpis ? "—" : money(kpis.total_paid)} />
+        <KpiCard
+          label={windowed ? `${windowPfx} New Enrollments` : "Active Enrollments"}
+          value={loading ? "—" : windowed ? String(newInWindow) : (kpis ? String(kpis.active_enrollments) : "—")}
+          hint={windowed ? `Plans started ${windowLabel}` : "Currently running"}
+        />
+        <KpiCard
+          label={windowed ? `Collected ${windowPfx.replace("'s", "")}` : "Total Paid"}
+          value={loading ? "—" : windowed ? money(collectedInWindow) : (kpis ? money(kpis.total_paid) : "—")}
+          hint={windowed ? `Money taken ${windowLabel}` : "Lifetime, all enrollments"}
+        />
         {/* OVERDUE, not "remaining". The remaining contract value of a healthy
             plan is not a number a shop needs on this screen - on a 12-month
             plan with one instalment paid it is eleven months' worth, none of it
@@ -332,8 +571,47 @@ export default function SchemeManagement() {
             owed. What a shop wants to see is who has MISSED an instalment date,
             which the backend already computes (overdue_amount / overdue_days)
             from the oldest unpaid due date. */}
-        <KpiCard label={overdueCount ? `Overdue · ${overdueCount}` : "Overdue"} value={loading ? "—" : money(overdueTotal)} danger />
-        <KpiCard label="Completed" value={loading || !kpis ? "—" : String(kpis.completed)} />
+        {/* Never windowed. Arrears are a fact about TODAY — "overdue this week"
+            is not a number a shop can act on, and showing one would hide the
+            customer who has been late since March the moment a window was
+            picked. */}
+        <KpiCard
+          label={overdueCount ? `Overdue · ${overdueCount}` : "Overdue"}
+          value={loading ? "—" : money(overdueTotal)}
+          hint="As of today — not filtered"
+          danger
+        />
+        <KpiCard
+          label="Completed"
+          value={loading ? "—" : windowed ? String(completedInWindow) : (kpis ? String(kpis.completed) : "—")}
+          hint={windowed ? `Among plans active ${windowLabel}` : "All time"}
+        />
+      </div>
+
+      {/* Two rows, two different questions, so neither is mistaken for the
+          other: WHEN (the window every figure above is measured over) and WHAT
+          STATE (the status chips that have always been here). They used to be
+          one wrapping line of pills with nothing to say which pill meant what. */}
+      <div data-motion="toolbar" className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="mr-0.5 text-[11px] font-bold uppercase tracking-[0.06em] text-faint">Period</span>
+        <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-line bg-canvas/60 p-1">
+          {PERIODS.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => { setCustomRange(null); setPeriod(p.value); }}
+              aria-pressed={period === p.value}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all active:scale-95 ${period === p.value ? "bg-accent-strong text-white shadow-sm" : "text-muted hover:text-accent-strong"}`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {windowed && (
+          <span className="text-[11px] font-semibold text-muted">
+            Showing what moved {windowLabel} — new plans and plans paid into. IST.
+          </span>
+        )}
       </div>
 
       <div data-motion="toolbar" className="mb-4 flex flex-wrap items-center gap-2">
@@ -347,10 +625,10 @@ export default function SchemeManagement() {
         {FILTERS.map((f) => (
           <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${filter === f ? "border-ink bg-ink text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{f}</button>
         ))}
-        {(filter !== "All" || query) && (
+        {(filter !== "All" || query || period !== DEFAULT_PERIOD) && (
           <button
             type="button"
-            onClick={() => { setFilter("All"); setQuery(""); }}
+            onClick={() => { setFilter("All"); setQuery(""); setPeriod(DEFAULT_PERIOD); setCustomRange(null); }}
             className="ml-auto rounded-full border border-danger-line bg-danger-soft px-3.5 py-1.5 text-xs font-bold text-danger transition-colors hover:bg-danger hover:text-white"
           >
             Clear filters
@@ -363,13 +641,24 @@ export default function SchemeManagement() {
           <table className="w-full min-w-[1160px] border-collapse text-sm">
             <thead>
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3 text-right">Installment</th><th className="px-4 py-3 text-right">Paid</th><th className="px-4 py-3 text-right">Overdue</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
+                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3">Plan</th><th className="px-4 py-3 text-right">{windowed ? `Paid ${windowPfx.replace("'s", "")}` : "Paid"}</th><th className="px-4 py-3 text-right">Overdue</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
               </tr>
             </thead>
             <tbody>
               {paged.map((r) => (
                 <tr key={r.enrollment} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
-                  <td className="px-6 py-3.5"><div className="font-bold leading-tight">{r.customer}</div></td>
+                  {/* In a window the list mixes plans STARTED in it with older
+                      plans merely paid into, so the ones the "New Enrollments"
+                      card counted are marked — otherwise the count and the
+                      list disagree on sight. */}
+                  <td className="px-6 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold leading-tight">{r.customer}</span>
+                      {windowed && joinedInWindow(r) && (
+                        <span className="rounded-full border border-accent-line bg-accent-soft px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-accent-strong">New</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3.5 font-medium">{r.scheme}</td>
                   <td className="px-4 py-3.5 font-mono text-xs font-semibold whitespace-nowrap">{r.enrollment}</td>
                   <td className="px-4 py-3.5 text-muted whitespace-nowrap">{fmtDate(r.joined)}</td>
@@ -381,16 +670,19 @@ export default function SchemeManagement() {
                   <td className="px-4 py-3.5 text-muted whitespace-nowrap">
                     {isWalletScheme(r.schemeType) && r.goldGramsTarget
                       ? <GramGoal grams={r.goldGrams} target={r.goldGramsTarget} />
-                      : fmtDate(r.maturity)}
+                      : isWalletScheme(r.schemeType)
+                        ? <NoTerm />
+                        : fmtDate(r.maturity)}
                   </td>
-                  {/* Same rule as the Manage Scheme panel: a plan the shop
-                      sets no instalment on has none to show. This read the
-                      wallet alone, so a Fixed Gold Rate enrollment still
-                      displayed the catalogue's 1,000 as though the customer
-                      had committed to paying it every month - the same figure,
-                      in the same wrong place, that the scheme form used to
-                      show. Dash stays on the column's own right-aligned rule. */}
-                  <td className={`num px-4 py-3.5 text-right whitespace-nowrap ${isFreeAmountScheme(r.schemeType) ? "font-semibold text-muted" : "font-semibold"}`}>{isFreeAmountScheme(r.schemeType) ? NOT_APPLICABLE : money(r.installment)}</td>
+                  {/* Was "Installment", which two of the three scheme types do
+                      not have - so the column rendered a dash for them and
+                      told the counter nothing about what the customer had
+                      actually joined. It now states each plan in its own
+                      terms: an instalment for Monthly, the locked purity for
+                      Fixed Gold Rate, the deposit range for a wallet. */}
+                  <td className="px-4 py-3.5 whitespace-nowrap">
+                    <PlanCell row={r} deposits={depositCount.get(r.enrollment) || 0} />
+                  </td>
                   {/* A wallet has no instalments to count, so "0/12" was a lie
                       told beside a funded enrollment: Raiyan Abbas had paid
                       Rs 40,000 in and this column read 0/12. months_paid is
@@ -405,14 +697,30 @@ export default function SchemeManagement() {
                       number now owns the line and the unit sits under it in
                       small caps, so the column scans as one column of numbers
                       whichever kind of plan the row is. */}
+                  {/* In a window this column answers the window's question -
+                      "how much did this customer pay TODAY" - because that is
+                      what a shop clicking "Today's Collection" came to see. A
+                      lifetime total under a card labelled Today was the single
+                      most confusing thing on the screen. Out of a window it is
+                      the lifetime figure it has always been. */}
                   <td className="num px-4 py-3.5 text-right whitespace-nowrap">
                     <span className="inline-flex flex-col items-end leading-tight">
-                      <span className="font-bold">
-                        {isFreeAmountScheme(r.schemeType) ? money(r.totalPaid) : `${r.paid}/${r.total}`}
-                      </span>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                        {isFreeAmountScheme(r.schemeType) ? "deposited" : "installments"}
-                      </span>
+                      {windowed ? (
+                        <>
+                          <span className={`font-bold ${activity.get(r.enrollment)?.amount ? "text-emerald-600" : "text-muted"}`}>
+                            {money(activity.get(r.enrollment)?.amount ?? 0)}
+                          </span>
+                          {/* Only when the window figure is NOT the whole
+                              story. When every payment a customer has made
+                              falls inside the window the two are the same
+                              number, and printing it twice said nothing. */}
+                          {lifetimeDiffers(r, activity.get(r.enrollment)) && (
+                            <span className="text-[10px] font-semibold text-muted">of {money(r.totalPaid)} lifetime</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="font-bold">{money(r.totalPaid)}</span>
+                      )}
                     </span>
                   </td>
                   {/* Overdue only: an instalment whose due date has passed
@@ -497,7 +805,10 @@ export default function SchemeManagement() {
                           whenever the customer likes, so there is no instalment
                           to state. The stored figure is left untouched. */}
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Installment</td><td className={`px-4 py-2.5 ${isWalletScheme(manage.schemeType) ? "font-semibold text-muted" : "font-bold"}`}>{isWalletScheme(manage.schemeType) ? NOT_APPLICABLE : money(manage.installment)}</td></tr>
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Planned Duration</td><td className="px-4 py-2.5 font-medium">{manage.total} months</td></tr>
+                      {/* A wallet has no term and no maturity date. Fixed Gold
+                          Rate does — it runs its 12 months — so only the
+                          wallet is exempted here. */}
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Planned Duration</td><td className="px-4 py-2.5 font-medium">{isWalletScheme(manage.schemeType) ? <span className="font-bold text-accent-strong">∞ — no fixed term</span> : `${manage.total} months`}</td></tr>
                       {/* SM-ENR-001. `manage.paid` is MONTHS paid, and the
                           denominator beside it is the plan's duration - so this
                           row was a months counter wearing the word "Payments".
@@ -532,7 +843,7 @@ export default function SchemeManagement() {
                         <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Current Gold Balance</td><td className="px-4 py-2.5 font-bold text-accent-strong">{grams(goldBalance)}</td></tr>
                       )}
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.joined)}</td></tr>
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.maturity)}</td></tr>
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-mono text-xs">{isWalletScheme(manage.schemeType) ? <span className="font-sans font-bold text-accent-strong">No maturity date</span> : fmtDate(manage.maturity)}</td></tr>
                       <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-mono text-xs">{isClosed ? "Nil" : fmtDate(manage.nextDue)}</td></tr>
                     </tbody>
                   </table>

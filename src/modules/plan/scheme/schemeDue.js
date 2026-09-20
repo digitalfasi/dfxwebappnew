@@ -13,6 +13,8 @@
  * screens that have no backend overdue field (e.g. the manual-payment modal).
  */
 
+import { istToday } from "@/_shared/utils";
+
 /** Add n calendar months, clamping to the last valid day of the target month. */
 function addMonths(base, n) {
   const day = base.getDate();
@@ -27,6 +29,16 @@ function startOfDay(d) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+/** Today on the SHOP's calendar (IST), as a local-midnight Date for comparing
+ *  against due dates. `new Date()` is the viewer's day: on a machine set west
+ *  of IST it is still yesterday during the shop's morning, so the same
+ *  enrollment read as overdue on one laptop and not on another — and never
+ *  agreed with the backend, which decides overdue on IST. */
+function istStartOfToday() {
+  const [y, m, d] = istToday().split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 const EMPTY = { missedCount: 0, missedAmount: 0, missedDates: [], oldestUnpaid: null, nextUpcoming: null, daysOverdue: 0 };
 
 /**
@@ -35,7 +47,7 @@ const EMPTY = { missedCount: 0, missedAmount: 0, missedDates: [], oldestUnpaid: 
  * @param remainingMonths cap so we never count past contractual maturity
  * @returns {{missedCount:number, missedAmount:number, oldestUnpaid:Date|null, nextUpcoming:Date|null, daysOverdue:number}}
  */
-export function dueSchedule(nextDueIso, monthlyAmount = 0, remainingMonths = null, today = new Date()) {
+export function dueSchedule(nextDueIso, monthlyAmount = 0, remainingMonths = null, today = istStartOfToday()) {
   if (!nextDueIso) return EMPTY;
   const parsed = new Date(nextDueIso);
   if (Number.isNaN(parsed.getTime())) return EMPTY;
@@ -43,16 +55,23 @@ export function dueSchedule(nextDueIso, monthlyAmount = 0, remainingMonths = nul
   const first = startOfDay(parsed);
   const t = startOfDay(today);
 
-  // Nothing missed — the oldest unpaid installment is still in the future.
-  if (first > t) return { ...EMPTY, nextUpcoming: first };
+  // Nothing missed — the oldest unpaid installment is due today or later.
+  // An installment due TODAY is DUE, not LATE. This used to be `first > t`,
+  // with the loop below counting `cursor <= t`, so the day an installment fell
+  // due the modal announced "1 installment overdue — 0 days" against a customer
+  // who still had all day to pay. The backend has always said otherwise
+  // (`days = ist_today() - due; if days <= 0: not overdue`), which is why
+  // Enrollment Management showed no overdue for the same enrollment at the same
+  // moment. The two screens now agree, and they agree with the server.
+  if (first >= t) return { ...EMPTY, nextUpcoming: first };
 
-  // Count every installment date from `first` through today (inclusive),
+  // Count every installment date from `first` up to (not including) today,
   // capped by the months still left on the contract.
   const cap = remainingMonths == null ? Number.POSITIVE_INFINITY : Math.max(0, remainingMonths);
   let missedCount = 0;
   let cursor = first;
   const missedDates = [];
-  while (cursor <= t && missedCount < cap && missedCount < 600) {
+  while (cursor < t && missedCount < cap && missedCount < 600) {
     missedDates.push(cursor);
     missedCount += 1;
     cursor = addMonths(first, missedCount);

@@ -23,6 +23,22 @@ const DONUT_BUSINESS = DONUT_PALETTE;
 const DONUT_SCHEME = ["#d19a2e", "#059669", "#8b5cf6", "#2563eb", "#e11d48", "#0891b2", "#ea580c", "#475569", "#db2777", "#16a34a"];
 
 // Distinguishes "the shop has no pending actions" from "we could not find out".
+// How long a dashboard may sit unwatched before returning to it is worth a
+// refetch. Under this, the figures on screen are still today's and still fresh
+// enough to trust — and keeping them beats blanking the screen to redraw the
+// same numbers.
+const STALE_AFTER_MS = 5 * 60 * 1000;
+
+// The Dashboard unmounts the moment you open any other module, so coming back
+// to it used to be a cold start: every card blank, every figure refetched from
+// nothing. That is the flash — it is not a rendering fault, it is the screen
+// genuinely having no data again. This module-level cache outlives the
+// component, so a return paints the last known figures immediately and the
+// refetch happens behind them. Memory only: a browser refresh starts clean,
+// and nothing here is ever shown as "today's" once the IST day has rolled
+// over (the day check reloads and overwrites it).
+const CACHE = { core: null, biz: new Map(), scheme: new Map() };
+
 const CARDS_FAILED = { __failed: true };
 // D7: a refusal is NOT a failure. A staff member whose grants do not cover the
 // alert sources was shown "Alerts unavailable", which reads as an outage and
@@ -429,20 +445,20 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);    // Generate Report popup
   const [exporting, setExporting] = useState(false);
-  const [outstanding, setOutstanding] = useState(null);   // business product dues (all-time)
-  const [pendingDues, setPendingDues] = useState(null);   // scheme dues not yet collected (all-time)
-  const [invoices, setInvoices] = useState([]);
-  const [enrollList, setEnrollList] = useState([]);
+  const [outstanding, setOutstanding] = useState(CACHE.core?.outstanding ?? null);
+  const [pendingDues, setPendingDues] = useState(CACHE.core?.pendingDues ?? null);
+  const [invoices, setInvoices] = useState(CACHE.core?.invoices ?? []);
+  const [enrollList, setEnrollList] = useState(CACHE.core?.enrollList ?? []);
   // A failed alerts call must not read as "all clear". null and {} are both
   // falsy on every key, so a 500 rendered exactly like a clean shop - the one
   // thing an alert panel must never do. This sentinel keeps the two apart.
-  const [cards, setCards] = useState({});
+  const [cards, setCards] = useState(CACHE.core?.cards ?? {});
 
   // Business period (KPIs + Sales Trend chart share it)
   const [bizPeriod, setBizPeriod] = useState("today");
   const [bizCustom, setBizCustom] = useState({ from: "", to: "" });
   const [bizMetric, setBizMetric] = useState("sales");
-  const [salesTrend, setSalesTrend] = useState(null);     // sales-trend points
+  const [salesTrend, setSalesTrend] = useState(CACHE.biz.get("today") ?? null);
   // Whether the LAST attempt to load this panel failed, as opposed to the panel
   // simply not having been asked for yet. Without it a failure and a first
   // paint look identical, and the screen has no way to say "this did not load"
@@ -451,13 +467,13 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // In flight. Without this, a request still on the wire and a request that
   // came back empty both render a bare em dash, so a slow network looks exactly
   // like a quiet morning - which is how this went unexplained for a day.
-  const [bizLoading, setBizLoading] = useState(true);
+  const [bizLoading, setBizLoading] = useState(!CACHE.biz.has("today"));
   const [bizReason, setBizReason] = useState("");
   // The Schemes panel needs the same three states as Store Business. It had
   // none: its KPIs read paySummary/enrollSummary, which are simply null when a
   // fetch fails, so four em dashes appeared with nothing to say why - the same
   // silence, one panel over.
-  const [schemeLoading, setSchemeLoading] = useState(true);
+  const [schemeLoading, setSchemeLoading] = useState(!CACHE.scheme.has("today"));
   const [schemeFailed, setSchemeFailed] = useState(false);
   const [schemeReason, setSchemeReason] = useState("");
   // Outstanding Amount and Pending Dues come from the FIRST effect, not from
@@ -466,15 +482,15 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // cards beside them showing real money. That is the narrowest and most
   // confusing form of this bug: a dashboard that is plainly working, with one
   // silent hole in it.
-  const [coreLoading, setCoreLoading] = useState(true);
+  const [coreLoading, setCoreLoading] = useState(!CACHE.core);
   const [coreFailed, setCoreFailed] = useState(false);
 
   // Scheme period (KPIs + Collections Trend chart share it)
   const [schemePeriod, setSchemePeriod] = useState("today");
   const [schemeCustom, setSchemeCustom] = useState({ from: "", to: "" });
   const [schemeMetric, setSchemeMetric] = useState("collections");
-  const [paySummary, setPaySummary] = useState(null);     // payment-summary (collection + monthly_trend)
-  const [enrollSummary, setEnrollSummary] = useState(null); // enrollment-summary (new + daily_trend)
+  const [paySummary, setPaySummary] = useState(CACHE.scheme.get("today")?.pay ?? null);
+  const [enrollSummary, setEnrollSummary] = useState(CACHE.scheme.get("today")?.enr ?? null);
 
   // Historical analytics (own period, default this_year)
   const [catPeriod, setCatPeriod] = useState("this_year");
@@ -499,12 +515,23 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // showing yesterday under today's heading. No polling timer: nothing here
   // fires while the tab is idle and untouched.
   const drawnFor = useRef(istToday());
+  // When the base load last completed, so returning to the tab can tell a
+  // genuinely stale page from one looked away from for a moment.
+  const lastLoadAt = useRef(0);
   useEffect(() => {
     const check = () => {
       const now = istToday();
       if (now !== drawnFor.current) { drawnFor.current = now; reload(); }
     };
-    const onFocus = () => { check(); reload(); };
+    // Coming back to the tab used to fire an unconditional reload, and every
+    // reload flips the KPI cards back to skeletons — so merely switching tabs
+    // and returning made the whole dashboard flash empty. Figures a few
+    // seconds old are not worth that. A refetch now happens when the shop's
+    // day has rolled over (check) or when the page has genuinely gone stale.
+    const onFocus = () => {
+      check();
+      if (Date.now() - lastLoadAt.current > STALE_AFTER_MS) reload();
+    };
     const t = setInterval(check, 60000);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", check);
@@ -548,6 +575,14 @@ export default function Dashboard({ onNavigate, search = "" }) {
       setOutstanding(billing ? billing.totalOutstanding : null);
       setEnrollList((enr ?? []).slice(0, 5));
       setCards(cds ?? CARDS_FAILED);
+      lastLoadAt.current = Date.now();
+      CACHE.core = {
+        outstanding: billing ? billing.totalOutstanding : null,
+        pendingDues: payAllOk ? payAll.outstanding_dues ?? null : null,
+        invoices: billing?.sales ?? [],
+        enrollList: (enr ?? []).slice(0, 5),
+        cards: cds ?? CARDS_FAILED,
+      };
       setCoreLoading(false);
       // billing === null means both attempts failed. Say so rather than
       // leaving one card dashed among four that worked.
@@ -561,6 +596,10 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const bizReq = useRef("today");
   useEffect(() => {
     const key = rangeKey(bizPeriod, bizCustom);
+    // Only a new window makes what is on screen wrong. Clearing here (and not
+    // on a same-window refresh) is what lets the skeleton mean "unknown"
+    // instead of "busy".
+    if (bizReq.current !== key) setSalesTrend(null);
     bizReq.current = key;
     const q = rangeQuery(bizPeriod, bizCustom);
     if (!q) return; // custom awaiting Apply
@@ -573,6 +612,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
       // null (unknown) survives into state so the KPIs read "—" instead of a
       // fabricated zero. See rowsOrUnknown.
       const rows = rowsOrUnknown(t, "trend");
+      if (rows) CACHE.biz.set(key, rows);
       setSalesTrend(rows);
       setBizFailed(rows === null);
       setBizReason(rows === null ? (t && t.__refused ? "not permitted for this account" : dashboardFailureReason()) : "");
@@ -583,6 +623,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const schemeReq = useRef("today");
   useEffect(() => {
     const key = rangeKey(schemePeriod, schemeCustom);
+    if (schemeReq.current !== key) { setPaySummary(null); setEnrollSummary(null); }
     schemeReq.current = key;
     const q = rangeQuery(schemePeriod, schemeCustom);
     if (!q) return;
@@ -595,6 +636,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
         const usable = (v) => (v && !v.__refused && !v.__failed ? v : null);
         const pay = usable(p);
         const enr = usable(e);
+        if (pay || enr) CACHE.scheme.set(key, { pay, enr });
         setPaySummary(pay);
         setEnrollSummary(enr);
         const dead = pay === null || enr === null;
@@ -645,9 +687,17 @@ export default function Dashboard({ onNavigate, search = "" }) {
   }));
   const bizUnit = bizMetric === "gold" ? "grams" : "inr";
 
+  // Skeletons are for a card with NOTHING to show. Once a figure is on screen
+  // a background refresh must leave it there and swap it when the new one
+  // lands — a card that empties and refills on every visit reads as a glitch,
+  // which is exactly what it looked like. Changing the PERIOD still shows
+  // skeletons, because those figures really are unknown until they arrive.
+  const bizFirstLoad = bizLoading && !salesTrend;
+
   const schemePfx = periodPrefix(schemePeriod);
   const newEnroll = enrollSummary ? enrollSummary.new_enrollments_in_range : null;
   const newMaturity = enrollSummary ? (enrollSummary.daily_trend ?? []).reduce((s, p) => s + (Number(p.maturity_amount) || 0), 0) : null;
+  const schemeFirstLoad = schemeLoading && !enrollSummary && !paySummary;
   const schemeSeries =
     schemeMetric === "collections" ? (paySummary?.monthly_trend ?? []).map((p) => ({ x: p.period_label, y: Number(p.total_amount) || 0 }))
     : schemeMetric === "maturity" ? (enrollSummary?.daily_trend ?? []).map((p) => ({ x: p.period_label, y: Number(p.maturity_amount) || 0 }))
@@ -737,10 +787,10 @@ export default function Dashboard({ onNavigate, search = "" }) {
             </div>
           )}
           <div className="grid grid-cols-2 gap-2.5">
-            <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSales)} loading={bizLoading} onClick={() => nav("sales-history")} />
-            <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} loading={bizLoading} onClick={() => nav("sales-history")} />
+            <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSales)} loading={bizFirstLoad} onClick={() => nav("sales-history")} />
+            <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} loading={bizFirstLoad} onClick={() => nav("sales-history")} />
             {seesProfit && (
-              <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} loading={bizLoading} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
+              <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} loading={bizFirstLoad} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
             )}
             <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} loading={coreLoading} danger onClick={() => nav("sales-history")} />
           </div>
@@ -829,9 +879,17 @@ export default function Dashboard({ onNavigate, search = "" }) {
             </div>
           )}
           <div className="grid grid-cols-2 gap-2.5">
-            <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} loading={schemeLoading} growth={paySummary?.total_revenue_growth_percent} growthOf={paySummary?.total_revenue} onClick={() => nav("payments")} />
-            <KpiCard title={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} loading={schemeLoading} onClick={() => nav("scheme-management")} />
-            <KpiCard title={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} loading={schemeLoading} onClick={() => nav("scheme-management")} />
+            <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} loading={schemeFirstLoad} growth={paySummary?.total_revenue_growth_percent} growthOf={paySummary?.total_revenue} onClick={() => nav("payments")} />
+            {/* Both carry the window they were counted over, so Enrollment
+                Management opens standing in the same window instead of showing
+                the whole book beside a figure that counted one day of it. */}
+            <KpiCard title={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} loading={schemeFirstLoad} onClick={() => nav("scheme-management", { period: schemePeriod, from: schemeCustom.from, to: schemeCustom.to })} />
+            {/* "Today's Estimated Maturity" read as "maturing today" — it is
+                neither today's nor an estimate. It is what the plans TAKEN OUT
+                in this window will be worth at their own maturity, years off.
+                Named for what it is; free-amount plans contribute nothing to it
+                because nobody has promised a figure to mature. */}
+            <KpiCard title={`Maturity Value of ${schemePfx} New Plans`} value={fmtCurrency(newMaturity)} loading={schemeFirstLoad} onClick={() => nav("scheme-management", { period: schemePeriod, from: schemeCustom.from, to: schemeCustom.to })} />
             <KpiCard title="Pending Dues" value={fmtCurrency(pendingDues)} loading={coreLoading} danger onClick={() => nav("payments")} />
           </div>
 
@@ -947,7 +1005,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
               <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-faint">Schemes</div>
               <ReportRow label={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} />
               <ReportRow label={`${schemePfx} New Enrollments`} value={fmtCount(newEnroll)} />
-              <ReportRow label={`${schemePfx} Estimated Maturity`} value={fmtCurrency(newMaturity)} />
+              <ReportRow label={`Maturity Value of ${schemePfx} New Plans`} value={fmtCurrency(newMaturity)} />
               <ReportRow label="Pending Dues" value={fmtCurrency(pendingDues)} />
             </div>
             <button
