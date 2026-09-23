@@ -29,6 +29,28 @@ const ICON = {
   eye: <><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z" /><circle cx="12" cy="12" r="3" /></>,
 };
 
+// The curated sub-category icon set. A FIXED list on purpose: arbitrary
+// uploads turn a taxonomy into a sticker book, and emoji render differently on
+// every OS and break the design system. The stored value is the KEY ("ring"),
+// never the path below, so these drawings can be restyled or replaced without a
+// data migration. A key that is no longer in this map falls back to the neutral
+// tag icon rather than rendering nothing.
+const SUBCATEGORY_ICONS = {
+  ring: { label: "Rings", d: <><circle cx="12" cy="14" r="5.5" /><path d="M9 6.5 12 3l3 3.5-3 2z" /></> },
+  bangle: { label: "Bangles", d: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /></> },
+  chain: { label: "Chains", d: <><path d="M9 7a3.5 3.5 0 0 1 5 0l1.5 1.5a3.5 3.5 0 0 1-5 5" /><path d="M15 17a3.5 3.5 0 0 1-5 0L8.5 15.5a3.5 3.5 0 0 1 5-5" /></> },
+  necklace: { label: "Necklaces", d: <><path d="M5 4a9 9 0 0 0 14 0" /><path d="M5 4a9 9 0 0 1 3.5 9.5" /><path d="M19 4a9 9 0 0 0-3.5 9.5" /><circle cx="12" cy="17" r="3" /></> },
+  earring: { label: "Earrings", d: <><path d="M9 4a3 3 0 0 1 6 0v4" /><circle cx="15" cy="15" r="4" /></> },
+  pendant: { label: "Pendants", d: <><path d="M4 5a12 12 0 0 0 16 0" /><path d="m12 10 3.5 4-3.5 5-3.5-5z" /></> },
+  bracelet: { label: "Bracelets", d: <><ellipse cx="12" cy="12" rx="8" ry="5.5" /><path d="M12 6.5v11" /></> },
+  coin: { label: "Coins / Bullion", d: <><circle cx="12" cy="12" r="8" /><path d="M12 8v8M9.5 9.5h5M9.5 14.5h5" /></> },
+  bar: { label: "Bars", d: <><path d="M4 15h16l-2.5-6h-11z" /><path d="M7 12h10" /></> },
+  anklet: { label: "Anklets", d: <><path d="M6 5v7a6 6 0 0 0 12 0V5" /><circle cx="12" cy="18.5" r="2" /></> },
+  nosepin: { label: "Nose pins", d: <><path d="M7 19a8 8 0 0 1 3-13" /><circle cx="15" cy="8" r="3" /></> },
+  gemstone: { label: "Gemstones", d: <><path d="m12 4 6 5-6 11-6-11z" /><path d="M6 9h12M12 4v16" /></> },
+};
+const SUBCATEGORY_ICON_KEYS = Object.keys(SUBCATEGORY_ICONS);
+
 function Icon({ d, className = "h-4 w-4" }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -235,9 +257,10 @@ export default function MasterInventory({ onNavigate, search = "" }) {
       categoryId: categoryId || (focusId !== ALL ? focusId : categories[0]?.id || ""),
       name: "",
       code: "",
+      icon: "",
     });
   };
-  const openEditSubcategory = (s) => { setFormError(""); setForm({ mode: "sub-edit", id: s.id, categoryId: s.categoryId, name: s.name, code: s.code }); };
+  const openEditSubcategory = (s) => { setFormError(""); setForm({ mode: "sub-edit", id: s.id, categoryId: s.categoryId, name: s.name, code: s.code, icon: s.icon || "" }); };
 
   async function submitForm() {
     if (!form) return;
@@ -270,10 +293,10 @@ export default function MasterInventory({ onNavigate, search = "" }) {
         await masterInventoryService.updateCategory(form.id, { name, code: form.code.trim() });
         toast(`Category renamed — ${name}`);
       } else if (form.mode === "sub-add") {
-        await masterInventoryService.createSubcategory({ categoryId: form.categoryId, name, code: form.code.trim() });
+        await masterInventoryService.createSubcategory({ categoryId: form.categoryId, name, code: form.code.trim(), icon: form.icon || "" });
         toast(`Subcategory added — ${name}`);
       } else {
-        await masterInventoryService.updateSubcategory(form.id, { categoryId: form.categoryId, name, code: form.code.trim() });
+        await masterInventoryService.updateSubcategory(form.id, { categoryId: form.categoryId, name, code: form.code.trim(), icon: form.icon || "" });
         toast(`Subcategory renamed — ${name}`);
       }
       setForm(null);
@@ -497,7 +520,13 @@ export default function MasterInventory({ onNavigate, search = "" }) {
                   <li key={sub.id} className="group flex flex-wrap items-center justify-between gap-3 border-b border-line-soft px-5 py-2.5 pl-[4.25rem] last:border-0 transition-colors hover:bg-canvas/50">
                     <div className="flex min-w-0 flex-col gap-1">
                       <div className="flex min-w-0 items-center gap-2.5">
-                      <Icon d={ICON.tag} className="h-3.5 w-3.5 shrink-0 text-faint" />
+                        {/* The sub-category's own icon, falling back to the
+                            neutral tag when none is set or the stored key is no
+                            longer in the curated set. */}
+                        <Icon
+                          d={SUBCATEGORY_ICONS[sub.icon]?.d ?? ICON.tag}
+                          className={`h-3.5 w-3.5 shrink-0 ${sub.icon && SUBCATEGORY_ICONS[sub.icon] ? "text-accent-strong" : "text-faint"}`}
+                        />
                       <span className="truncate text-sm font-semibold">{sub.name}</span>
                       <CodeChip value={sub.code} />
                       {!sub.isActive && (
@@ -580,6 +609,37 @@ export default function MasterInventory({ onNavigate, search = "" }) {
                   className="num font-mono"
                 />
               </label>
+              {/* Sub-categories only, per the request. A fixed grid of the
+                  curated set: pick one, or None to fall back to the default. */}
+              {form.mode.startsWith("sub") && (
+                <div className="grid gap-1.5">
+                  <span className="text-xs font-bold">Icon <span className="font-normal text-muted">— optional</span></span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, icon: "" }))}
+                      aria-pressed={!form.icon}
+                      className={`grid h-10 w-10 place-items-center rounded-xl border text-[10px] font-bold transition-colors ${!form.icon ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-surface text-muted hover:border-accent"}`}
+                      title="No icon"
+                    >
+                      None
+                    </button>
+                    {SUBCATEGORY_ICON_KEYS.map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, icon: key }))}
+                        aria-pressed={form.icon === key}
+                        className={`grid h-10 w-10 place-items-center rounded-xl border transition-colors ${form.icon === key ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-surface text-muted hover:border-accent"}`}
+                        title={SUBCATEGORY_ICONS[key].label}
+                      >
+                        <Icon d={SUBCATEGORY_ICONS[key].d} className="h-5 w-5" />
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-[11px] text-muted">{form.icon ? SUBCATEGORY_ICONS[form.icon]?.label ?? form.icon : "No icon — the default tag is shown."}</span>
+                </div>
+              )}
               {formError && <p role="alert" className="text-xs font-semibold text-danger">{formError}</p>}
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">

@@ -10,14 +10,17 @@ import { formatINR } from "@/_shared/utils";
 import { goldRateService } from "@/modules/gold-rate/goldRateService";
 import { liveRateService } from "@/modules/gold-rate/liveRateService";
 import { LineChart } from "@/_shared/ui/LineChart";
+import { purityLabel } from "@/_shared/purity";
 
-// Purity options for the trend dropdown; keys match the backend rate columns.
+// Purity options for the trend dropdown. `key` is the backend rate COLUMN and
+// is never a purity value — do not feed these keys to _shared/purity.js, and do
+// not replace them with its labels. Only the display text carries the fineness.
 const PURITY_OPTS = [
-  { key: "rate_24k", label: "24K" },
-  { key: "rate_22k", label: "22K" },
-  { key: "rate_18k", label: "18K" },
-  { key: "rate_14k", label: "14K" },
-  { key: "rate_9k", label: "9K" },
+  { key: "rate_24k", label: purityLabel("24K") },
+  { key: "rate_22k", label: purityLabel("22K") },
+  { key: "rate_18k", label: purityLabel("18K") },
+  { key: "rate_14k", label: purityLabel("14K") },
+  { key: "rate_9k", label: purityLabel("9K") },
   { key: "silver_999", label: "Silver 999" },
 ];
 
@@ -56,7 +59,10 @@ export default function GoldRate() {
   // Published rate history (newest first) — powers the trend chart + table.
   const [history, setHistory] = useState([]);
   const [histErr, setHistErr] = useState("");
-  const [trendKey, setTrendKey] = useState("rate_22k");
+  // 24K is the default view everywhere on this screen: it is the only
+  // backend-required figure, it is the rate a purchase is always priced at,
+  // and every other purity is derived from it.
+  const [trendKey, setTrendKey] = useState("rate_24k");
   const loadHistory = useCallback(async () => {
     try {
       setHistory(await goldRateService.getHistory(30));
@@ -162,11 +168,13 @@ export default function GoldRate() {
     }
   }
 
-  // Hero "vs yesterday" delta: published 22K day-over-day from the history
-  // trail. Flat (0) until at least two published days carry a 22K value.
-  const h22 = history.filter((h) => h.rate_22k != null);
-  const diff = h22.length >= 2 ? Math.round(Number(h22[0].rate_22k) - Number(h22[1].rate_22k)) : 0;
-  const pct = diff && h22[1]?.rate_22k ? (diff / Number(h22[1].rate_22k)) * 100 : 0;
+  // Hero "vs yesterday" delta: published 24K day-over-day from the history
+  // trail. Flat (0) until at least two published days carry a 24K value.
+  // 24K, not 22K: it is the only figure the backend requires on a publish, so
+  // it is the one that is always there to compare.
+  const h24 = history.filter((h) => h.rate_24k != null);
+  const diff = h24.length >= 2 ? Math.round(Number(h24[0].rate_24k) - Number(h24[1].rate_24k)) : 0;
+  const pct = diff && h24[1]?.rate_24k ? (diff / Number(h24[1].rate_24k)) * 100 : 0;
   const isUp = diff > 0;
   const isDown = diff < 0;
 
@@ -207,26 +215,24 @@ export default function GoldRate() {
           <div className="pointer-events-none absolute -left-12 -bottom-12 h-40 w-40 rounded-full bg-amber-400/10 blur-2xl" />
           <div className="pointer-events-none absolute inset-0 rounded-[20px] border border-white/[0.06]" />
           <div className="relative flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/60">22K Gold · per gram</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/60">{purityLabel("24K")} Gold · per gram</span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-bold backdrop-blur"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />LIVE</span>
           </div>
           <div className="num relative mt-3 text-5xl font-extrabold tracking-tight text-white drop-shadow-sm">
-            {num(rates.r22) != null ? formatINR(num(rates.r22)) : "—"}
+            {num(rates.r24) != null ? formatINR(num(rates.r24)) : "—"}
           </div>
-          {live?.rates?.gold_22k?.withGst != null && (
-            <div className="num relative mt-1 text-[13px] font-semibold text-white/60">
-              incl. GST {formatINR(live.rates.gold_22k.withGst)}
-            </div>
-          )}
+          <div className="relative mt-1 text-[13px] font-semibold text-white/60">
+            The rate every purchase is priced at
+          </div>
           <div className={`relative mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-bold backdrop-blur ${isUp ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300" : isDown ? "border-red-400/20 bg-red-500/15 text-red-300" : "border-[#fde68a]/20 bg-[#c9a84c]/15 text-[#fde68a]"}`} style={isDown ? { textShadow: "0 0 10px rgba(252,165,165,0.7)", boxShadow: "0 0 18px rgba(239,68,68,0.32)" } : isUp ? { textShadow: "0 0 10px rgba(110,231,183,0.55)", boxShadow: "0 0 18px rgba(16,185,129,0.22)" } : undefined}>
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">{isDown ? <path d="M7 7l10 10M17 7v10H7" /> : <path d="M7 17 17 7M7 7h10v10" />}</svg>
             {diff === 0 ? "— No change vs yesterday" : `${diff > 0 ? "+" : "−"}₹${Math.abs(diff)} (${pct > 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%) vs yesterday`}
           </div>
           <div className="relative mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-5">
             <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3.5 backdrop-blur">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white/55"><span className="h-1.5 w-1.5 rounded-full bg-amber-300" />24K</div>
-              <div className="num mt-1 text-[15px] font-extrabold text-white">{num(rates.r24) != null ? formatINR(num(rates.r24)) : "—"}</div>
-              <div className="text-[11px] text-white/45">per gram</div>
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white/55"><span className="h-1.5 w-1.5 rounded-full bg-amber-300" />{purityLabel("22K")}</div>
+              <div className="num mt-1 text-[15px] font-extrabold text-white">{num(rates.r22) != null ? formatINR(num(rates.r22)) : "—"}</div>
+              <div className="num text-[11px] text-white/45">{live?.rates?.gold_22k?.withGst != null ? `incl. GST ${formatINR(live.rates.gold_22k.withGst)}` : "per gram"}</div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3.5 backdrop-blur">
               <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white/55"><span className="h-1.5 w-1.5 rounded-full bg-slate-300" />Silver / g</div>
@@ -308,7 +314,7 @@ export default function GoldRate() {
                   value={trendKey}
                   onValueChange={setTrendKey}
                   options={PURITY_OPTS.map((p) => ({ value: p.key, label: p.label }))}
-                  className="w-[104px]"
+                  className="w-[132px]"
                   triggerClassName="h-9 min-h-[36px] text-xs font-bold"
                 />
               </div>

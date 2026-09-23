@@ -31,6 +31,9 @@ function mapSubcategory(raw) {
     categoryId: raw.category_id,
     name: raw.name,
     code: raw.code || "",
+    // An icon KEY from the curated set (SUBCATEGORY_ICONS), not a drawing. An
+    // empty string means "no icon chosen" and renders the neutral default.
+    icon: raw.icon || "",
     isActive: raw.is_active,
     stock: mapStock(raw.stock),
   };
@@ -82,21 +85,24 @@ export const masterInventoryService = {
     await apiClient.delete(`/procurement/master-inventory/categories/${id}`, { auth: true });
   },
 
-  async createSubcategory({ categoryId, name, code }) {
+  async createSubcategory({ categoryId, name, code, icon }) {
     const res = await apiClient.post(
       "/procurement/master-inventory/subcategories",
-      { category_id: categoryId, name, ...(code ? { code } : {}) },
+      { category_id: categoryId, name, ...(code ? { code } : {}), ...(icon ? { icon } : {}) },
       { auth: true }
     );
     return res.data?.subcategory;
   },
 
-  async updateSubcategory(id, { categoryId, name, code, isActive }) {
+  async updateSubcategory(id, { categoryId, name, code, icon, isActive }) {
     const res = await apiClient.put(
       `/procurement/master-inventory/subcategories/${id}`,
       {
         name,
         code: code || null,
+        // Sent even when empty: clearing the icon back to the default has to be
+        // possible, and an omitted field would leave the old one in place.
+        icon: icon || null,
         ...(categoryId ? { category_id: categoryId } : {}),
         ...(isActive === undefined ? {} : { is_active: isActive }),
       },

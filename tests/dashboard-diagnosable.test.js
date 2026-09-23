@@ -19,12 +19,19 @@ describe("waiting is not the same as not knowing", () => {
     expect(dash).toMatch(/function KpiCard\(\{ title, value, growth, growthOf, danger, onClick, loading = false \}\)/);
   });
 
+  // The flag is bizFirstLoad, not bizLoading. A reload or a tab switch
+  // re-fetches while the previous answer is still on screen, and swapping a
+  // real number for a skeleton on every focus is the flicker this panel was
+  // reported for. The skeleton now means "no value yet", which is what a
+  // skeleton is supposed to mean; a refresh of a value already shown is silent.
   it("the business KPIs pass that flag", () => {
-    for (const m of [/Sales`\} value=\{fmtCurrency\(bizSales\)\} loading=\{bizLoading\}/,
-                     /Gold Sold`\} value=\{fmtGrams\(goldSold\)\} loading=\{bizLoading\}/,
-                     /Profit`\} value=\{fmtProfit\(profit\)\} loading=\{bizLoading\}/]) {
+    for (const m of [/Sales`\} value=\{fmtCurrency\(bizSales\)\} loading=\{bizFirstLoad\}/,
+                     /Gold Sold`\} value=\{fmtGrams\(goldSold\)\} loading=\{bizFirstLoad\}/,
+                     /Profit`\} value=\{fmtProfit\(profit\)\} loading=\{bizFirstLoad\}/]) {
       expect(dash).toMatch(m);
     }
+    // ...and it is only true when there is genuinely nothing to show.
+    expect(dash).toMatch(/const bizFirstLoad = bizLoading && !salesTrend;/);
   });
 
   it("a superseded response clears the loading flag it no longer owns", () => {
@@ -90,14 +97,18 @@ describe("a dead session is named as one", () => {
 
 describe("no panel may silently show dashes", () => {
   it("Schemes has the same three states as Store Business", () => {
-    expect(dash).toMatch(/const \[schemeLoading, setSchemeLoading\] = useState\(true\)/);
+    // Seeded from the module-level cache: true on a cold start, false when a
+    // previous mount already fetched this window, so navigating back to the
+    // Dashboard shows the numbers it had instead of starting from skeletons.
+    expect(dash).toMatch(/const \[schemeLoading, setSchemeLoading\] = useState\(!CACHE\.scheme\.has\("today"\)\)/);
     expect(dash).toMatch(/const \[schemeFailed, setSchemeFailed\] = useState\(false\)/);
     expect(dash).toMatch(/schemeFailed \|\| coreFailed/);
   });
 
-  it("its KPIs show the skeleton while in flight", () => {
-    expect(dash).toMatch(/Collection`\} value=\{fmtCurrency\(paySummary\?\.total_revenue\)\} loading=\{schemeLoading\}/);
-    expect(dash).toMatch(/New Enrollments`\} value=\{fmtCount\(newEnroll\)\} loading=\{schemeLoading\}/);
+  it("its KPIs show the skeleton only when there is nothing to show", () => {
+    expect(dash).toMatch(/Collection`\} value=\{fmtCurrency\(paySummary\?\.total_revenue\)\} loading=\{schemeFirstLoad\}/);
+    expect(dash).toMatch(/New Enrollments`\} value=\{fmtCount\(newEnroll\)\} loading=\{schemeFirstLoad\}/);
+    expect(dash).toMatch(/const schemeFirstLoad = schemeLoading && !enrollSummary && !paySummary;/);
   });
 
   it("a refused or failed summary is not mistaken for real data", () => {

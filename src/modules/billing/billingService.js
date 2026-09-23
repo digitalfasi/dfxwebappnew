@@ -32,6 +32,9 @@ function mapItem(raw) {
     status: labelStock(raw.stock_status),
     catalogue: raw.add_to_catalogue ? "Yes" : "No",
     huid: raw.huid ?? "",
+    // ONLINE (HUID, rate locked) / OFFLINE (Item Code, rate editable).
+    billMode: raw.bill_mode ?? (raw.huid ? "ONLINE" : "OFFLINE"),
+    tag: raw.tag ?? "",
     cost: raw.purchase_cost ?? 0,
     // The tunch this piece was bought at. null (not 0) when the lot never
     // recorded one - the table shows a dash, because "no tunch charged" and
@@ -199,7 +202,12 @@ export const billingService = {
     const body = {
       vendor_id: data.vendorId,
       purchase_date: data.purchaseDate,
+      // The time of day beside the date. purchase_date stays the DATE every
+      // filter and report runs on; this is additive and may be null.
+      purchase_at: data.purchaseAt || null,
       invoice_ref: data.invoiceRef || null,
+      reference_type: data.referenceType || null,
+      delivered_by: data.deliveredBy || null,
       weight_grams: data.weightGrams,
       rate_per_gram: data.ratePerGram,
       // Purity of the gold bought. Tunch is charged on the net weight at its
@@ -209,6 +217,11 @@ export const billingService = {
       // Flat rupee cost of the stones in the piece. The server adds it to the
       // payable after the gold math, so Tunch never touches it.
       stone_charge_amount: data.stoneChargeAmount != null && data.stoneChargeAmount !== "" ? Number(data.stoneChargeAmount) : 0,
+      // The other half of the V/A card. Money, never metal: the server adds it
+      // after the gold math, so no purity conversion and no Tunch touch it.
+      other_charges_amount: data.otherChargesAmount != null && data.otherChargesAmount !== "" ? Number(data.otherChargesAmount) : 0,
+      // The non-gold WEIGHT the net was derived from. Recorded, never priced.
+      stone_weight_grams: data.stoneWeightGrams != null && data.stoneWeightGrams !== "" ? Number(data.stoneWeightGrams) : null,
       vendor_charge_percent: data.vendorChargePercent ?? null,
       inventory_item_id: data.inventoryItemId || null,
       note: data.note || null,
@@ -372,7 +385,8 @@ export const billingService = {
   /** POST /api/v1/billing/inventory — create item (image path mandatory server-side). */
   async createInventoryItem(data) {
     const body = {
-      product_code: data.productCode,
+      // Blank = the server allocates the Item Code; ignored when a HUID is sent.
+      product_code: data.productCode || null,
       product_name: data.productName,
       category: data.category || null,
       subcategory: data.subcategory || null,
@@ -380,10 +394,13 @@ export const billingService = {
       purity: data.purity,
       gross_weight_grams: data.grossWeightGrams,
       net_gold_weight_grams: data.netGoldWeightGrams,
+      stone_weight_grams: data.stoneWeightGrams != null && data.stoneWeightGrams !== "" ? Number(data.stoneWeightGrams) : null,
       vendor_id: data.vendorId || null,
       vendor_name: data.vendorName || null,
       purchase_date: data.purchaseDate || null,
+      purchase_at: data.purchaseAt || null,
       purchase_invoice_ref: data.purchaseInvoiceRef || null,
+      purchase_reference_type: data.purchaseReferenceType || null,
       purchase_rate_per_gram: data.purchaseRatePerGram ?? null,
       purchase_cost: data.purchaseCost ?? null,
       making_charge_type: data.makingChargeType,
@@ -412,7 +429,10 @@ export const billingService = {
     const body = {
       vendor_id: data.vendorId,
       purchase_date: data.purchaseDate,
+      purchase_at: data.purchaseAt || null,
       purchase_invoice_ref: data.invoiceRef || null,
+      purchase_reference_type: data.referenceType || null,
+      delivered_by: data.deliveredBy || null,
       vendor_charge_percent: data.tunchPercent !== "" && data.tunchPercent != null ? Number(data.tunchPercent) : null,
       payment_mode: data.paymentMode,
       paid_now: data.paymentMode === "PARTIAL" && data.paidNow !== "" && data.paidNow != null ? Number(data.paidNow) : null,
@@ -421,17 +441,24 @@ export const billingService = {
       reference_no: data.referenceNo || null,
       remarks: data.remarks || null,
       items: (data.items ?? []).map((r) => ({
-        huid: r.huid,
+        // Item Code XOR HUID. Both blank = the server allocates an Item Code.
+        huid: r.huid || null,
+        product_code: r.huid ? null : (r.itemCode || null),
         product_name: r.name,
         category: r.category || null,
         subcategory: r.subCategory || null,
         purity: r.purity,
         gross_weight_grams: Number(r.gross),
+        // Net is still sent because every gold calculation runs on it - but it
+        // is now DERIVED from the two figures the slip actually states.
         net_gold_weight_grams: Number(r.net),
+        stone_weight_grams: r.stoneWt !== "" && r.stoneWt != null ? Number(r.stoneWt) : null,
         purchase_rate_per_gram: Number(r.rate),
         // Flat rupee cost of this row's stones - not gold, so it carries no
         // purity conversion and no Tunch.
         stone_charge_amount: r.stone !== "" && r.stone != null ? Number(r.stone) : 0,
+        // The V/A card's second line. Money, never metal.
+        other_charges_amount: r.other !== "" && r.other != null ? Number(r.other) : 0,
         // Tunch per row. Null (omitted) lets the server fall back to the
         // header, then to the vendor default.
         vendor_charge_percent: r.tunch !== "" && r.tunch != null ? Number(r.tunch) : null,
@@ -453,7 +480,10 @@ export const billingService = {
     const body = {
       vendor_id: data.vendorId,
       purchase_date: data.purchaseDate,
+      purchase_at: data.purchaseAt || null,
       purchase_invoice_ref: data.invoiceRef || null,
+      purchase_reference_type: data.referenceType || null,
+      delivered_by: data.deliveredBy || null,
       vendor_charge_percent: data.tunchPercent !== "" && data.tunchPercent != null ? Number(data.tunchPercent) : null,
       payment_mode: data.paymentMode,
       paid_now: data.paymentMode === "PARTIAL" && data.paidNow !== "" && data.paidNow != null ? Number(data.paidNow) : null,
@@ -867,6 +897,10 @@ function mapVendor(v = {}) {
     email: v.email ?? "",
     address: v.address ?? "",
     gstNumber: v.gst_number ?? "",
+    // Supplier Master: the store's short code name and its owner.
+    code: v.code ?? "",
+    ownerName: v.owner_name ?? "",
+    ownerPhone: v.owner_phone ?? "",
     vendorChargePercent: v.vendor_charge_percent ?? 4,
     isActive: v.is_active ?? true,
     createdAt: v.created_at ?? null,
@@ -883,6 +917,9 @@ function vendorBody(data = {}) {
   if (data.email !== undefined) b.email = data.email || null;
   if (data.address !== undefined) b.address = data.address || null;
   if (data.gstNumber !== undefined) b.gst_number = data.gstNumber || null;
+  if (data.code !== undefined) b.code = data.code || "";
+  if (data.ownerName !== undefined) b.owner_name = data.ownerName || null;
+  if (data.ownerPhone !== undefined) b.owner_phone = data.ownerPhone || null;
   if (data.vendorChargePercent !== undefined && data.vendorChargePercent !== "" && data.vendorChargePercent !== null)
     b.vendor_charge_percent = Number(data.vendorChargePercent);
   if (data.isActive !== undefined) b.is_active = data.isActive;
@@ -899,6 +936,7 @@ function mapVendorPurchase(p = {}) {
     inventoryItemId: p.inventory_item_id ?? null,
     purchaseDate: p.purchase_date ?? null,
     invoiceRef: p.invoice_ref ?? "",
+    deliveredBy: p.delivered_by ?? "",
     // netWeightGrams is the metal received (45 g of 22K stays 45 g);
     // weightGrams is the 24K equivalent the payment was calculated on. Null
     // netWeightGrams means a purchase recorded before the column existed.

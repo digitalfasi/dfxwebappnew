@@ -379,20 +379,27 @@ export default function NewSale() {
   // First HUID lookup — confirm a real sellable item and seed edit fields.
   const handleFind = useCallback(async () => {
     const key = code.trim();
-    if (!key) { toast("Enter a HUID or serial number"); return; }
+    if (!key) { toast("Enter a HUID, Item Code or serial number"); return; }
     if (loading) return;
     setLoading(true); setLookupError("");
     setProduct(null); setProductCode("");
     setRawGold(null); setRawGoldRate("");
     setDiscountText(null); setGst(true);
     setPriceText(null); setQuoteError("");
-    setSaleMode(null); // a fresh product always starts at the Online/Offline choice
+    setSaleMode(null);
     try {
       const q = await billingService.getSaleQuote(key, { discountAmount: 0, gstApplied: true });
       setProduct(q);
       setProductCode(q.productCode);
-      setRate(q.goldRateApplied != null ? String(q.goldRateApplied) : "");
-      setPublishedRate(q.goldRateApplied != null ? q.goldRateApplied : null);
+      // The piece decides the mode; the cashier does not. HUID = ONLINE (rate
+      // locked, quoted tax-inclusive); Item Code = OFFLINE (rate editable). The
+      // backend refuses an edited rate on a HUID piece as well.
+      const mode = (q.huid || "").trim() ? "ONLINE" : "OFFLINE";
+      const published = q.goldRateApplied != null ? q.goldRateApplied : null;
+      const factor = 1 + (Number(q.taxRatePercent) || 0) / 100;
+      setSaleMode(mode);
+      setRate(published == null ? "" : String(round2(mode === "ONLINE" ? published * factor : published)));
+      setPublishedRate(published);
       // The list percentage for THIS piece: the shop's base plus its running
       // cost plus the tunch of the lot this piece was received on. It was a
       // hard-coded 14, which is only right when the lot happened to be bought
@@ -636,7 +643,6 @@ export default function NewSale() {
   const rawGoldOutstanding = round2(Math.max(0, rawGoldTotal - rawGoldPaidNow));
 
   const baseInputs = () => {
-    const offline = saleMode === "OFFLINE";
     return {
       productCode: product.productCode,
       customerId: customerMode === "existing" ? selectedCustomer?.id : undefined,
@@ -646,7 +652,10 @@ export default function NewSale() {
       // replays the sale's own discount, so it survives the carve-out.
       discountAmount: 0,   // in the making charge already - see the quote effect
       gstApplied: gst,
-      appliedRatePerGram: offline && rate !== "" ? num(rate) : undefined,
+      // Both modes, exactly as the quote sends it. Gating this on OFFLINE saved
+      // every Online bill at the ex-tax rate while the screen had quoted the
+      // tax-inclusive one - the customer was shown one price and billed another.
+      appliedRatePerGram: rate !== "" && !rateOutOfBand ? num(rate) : undefined,
       makingChargeValue: makingVal !== "" ? num(makingVal) : undefined,
       makingChargeType: product.makingChargeType || undefined,
       wastageValue: wastageVal !== "" ? num(wastageVal) : undefined,
@@ -993,7 +1002,7 @@ export default function NewSale() {
     <div ref={scope} className="mx-auto max-w-[1240px] pb-32 lg:pb-14">
       <div data-motion="page-head" className="mb-6">
         <h2 className="text-2xl font-extrabold tracking-tight">New Sale</h2>
-        <p className="mt-1 max-w-[64ch] text-sm text-muted">Enter the item&rsquo;s HUID, or the serial number of a gold bar, then set the rate and charges, identify the buyer and confirm. Every amount is calculated by the backend.</p>
+        <p className="mt-1 max-w-[64ch] text-sm text-muted">Enter the item&rsquo;s HUID or Item Code, or the serial number of a gold bar, then set the rate and charges, identify the buyer and confirm. Every amount is calculated by the backend.</p>
       </div>
 
       {/* Lookup, and — until an item is loaded — the same two-column skeleton the
@@ -1008,8 +1017,8 @@ export default function NewSale() {
         <SectionHead title="Find product" />
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1.5 flex-1 min-w-[220px]">
-            <span className="text-xs font-bold">HUID or Serial No. *</span>
-            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="HUID for jewellery, serial number for a gold bar" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
+            <span className="text-xs font-bold">HUID, Item Code or Serial No. *</span>
+            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="HUID or Item Code for jewellery, serial number for a gold bar" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
           </label>
           <Button size="sm" className="bg-accent hover:bg-accent-strong h-10 px-6" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
           <Button size="sm" variant="outline" className="h-10 px-5" onClick={openDrafts}>Unfinished bills</Button>
@@ -1134,7 +1143,7 @@ export default function NewSale() {
             <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">How a bill is made</div>
             <ol className="mt-2 space-y-1.5">
               {[
-                "Find the piece by its HUID, or a bar by its serial number.",
+                "Find the piece by its HUID or Item Code, or a bar by its serial number.",
                 "Choose Online (live rate) or Offline (editable rate).",
                 "Adjust rate, profit % and charges — or type the customer's price.",
                 "Identify the buyer and redeem any schemes they hold.",
@@ -1243,21 +1252,7 @@ export default function NewSale() {
       )}
       </div>
 
-      {/* Product found: the ONLY thing on screen is the payment-mode choice. */}
-      {product && !saleMode && (
-        <Card data-motion="reveal" className="mt-5 p-6">
-          <h3 className="text-sm font-extrabold">Choose payment mode</h3>
-          <p className="mt-1 text-xs text-muted">Both modes bill the same way. Offline lets you edit the gold rate; Online keeps the live purity rate.</p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {[["ONLINE", "Online", "Live gold rate — rate locked."], ["OFFLINE", "Offline", "Full cash — gold rate editable."]].map(([val, title, desc]) => (
-              <button key={val} type="button" onClick={() => selectMode(val)} className="rounded-2xl border border-line p-6 text-left transition hover:border-accent hover:bg-accent-soft/30 hover:shadow-md">
-                <div className="text-base font-extrabold">{title}</div>
-                <div className="mt-1 text-xs text-muted">{desc}</div>
-              </button>
-            ))}
-          </div>
-        </Card>
-      )}
+      {/* No mode picker: the piece's identifier sets the mode on lookup. */}
 
       {product && saleMode && (
         <div className="mt-5 grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]" data-motion="reveal">
@@ -1269,7 +1264,7 @@ export default function NewSale() {
                 <div className="min-w-0">
                   <SectionHead step={1} title={product.name || "Not provided"} />
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
-                    <span className="num font-bold">HUID {product.huid || "Not provided"}</span>
+                    <span className="num font-bold">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "Not provided"}`}</span>
                     <span aria-hidden="true" className="text-line">|</span>
                     <span>{[product.category, product.subcategory].filter(Boolean).join(" · ") || "Not provided"}</span>
                   </div>
@@ -1293,13 +1288,8 @@ export default function NewSale() {
                   <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white">{saleMode === "OFFLINE" ? "Offline" : "Online"}</span>
                   <span className="text-[11px] text-muted">{saleMode === "OFFLINE" ? "Gold rate editable" : "Gold rate locked to live"}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => selectMode(saleMode === "OFFLINE" ? "ONLINE" : "OFFLINE")}
-                  className="rounded-lg px-2 py-1 text-[11px] font-bold text-accent-strong underline decoration-accent-line underline-offset-2 transition-colors hover:bg-accent-soft"
-                >
-                  Switch to {saleMode === "OFFLINE" ? "Online" : "Offline"}
-                </button>
+                {/* Fixed by the piece, not switchable: HUID = Online, Item Code = Offline. */}
+                <span className="text-[11px] text-muted">{saleMode === "OFFLINE" ? "Item Code piece" : "HUID piece"}</span>
               </div>
             </Card>
 

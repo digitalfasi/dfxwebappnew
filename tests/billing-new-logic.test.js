@@ -115,6 +115,13 @@ describe("Online actually charges the tax-inclusive rate", () => {
     // bill still charged 14 g x Rs 14,125 - the mode was decoration.
     expect(ns).toMatch(/appliedRatePerGram: rate !== "" && !rateOutOfBand \? num\(rate\) : undefined,/);
   });
+  it("the saved sale sends the same rate as the quote, in both modes", () => {
+    // The quote was fixed but createSale/generateQuotation (baseInputs) still
+    // sent the rate only for OFFLINE, so an Online bill saved ex-tax.
+    const base = ns.slice(ns.indexOf("const baseInputs = () => {"), ns.indexOf("const onlineRateFactor"));
+    expect(base).toMatch(/appliedRatePerGram: rate !== "" && !rateOutOfBand \? num\(rate\) : undefined,/);
+    expect(base).not.toMatch(/offline && rate/);
+  });
   it("the tax is applied to the published rate, never to an already-taxed one", () => {
     expect(ns).toMatch(/const modeRate = \(m\) => \{/);
     expect(ns).toMatch(/const base = publishedRate;/);
@@ -138,7 +145,7 @@ describe("the tunch a piece was bought at is visible in stock", () => {
     // there as a permanent zero for someone to fill in.
     expect(svc).not.toMatch(/tunch: r\.tunch_percent/);
     expect(inv).not.toMatch(/<th className="px-4 py-2.5 text-right">Tunch<\/th>/);
-    expect(inv).toMatch(/\{bulkType === "JEWELLERY" && <th className="py-2 w-\[90px\]">Tunch %<\/th>\}/);
+    expect(inv).toMatch(/\{bulkType === "JEWELLERY" && <th className="py-2 w-\[80px\]">Tunch %<\/th>\}/);
     // and the tunch leg is zero in every raw-gold total on the screen
     expect(inv).toMatch(/bulkType === "JEWELLERY" && r\.tunch !== "" && r\.tunch != null \? Number\(r\.tunch\) \|\| 0 : 0;/);
   });
@@ -169,7 +176,15 @@ describe("a wallet enrollment is not counted in installments", () => {
     // Behaviour, not layout: a free-amount plan reports the money it has
     // taken, never a count of months it never agreed to. Pinning the exact
     // markup made an ordinary restyle of the cell look like a regression.
-    expect(sm).toMatch(/isFreeAmountScheme\(r\.schemeType\) \? money\(r\.totalPaid\)/);
+    // The column no longer special-cases free-amount plans, because no plan
+    // shows a month count here any more: PAID is money for every row, and the
+    // "n of term" counter moved into the PLAN cell where a term belongs.
+    // Windowed, it reports what the window collected; otherwise the lifetime
+    // figure. Either way a wallet reports money it holds, never months.
+    expect(sm).toMatch(/money\(activity\.get\(r\.enrollment\)\?\.amount \?\? 0\)/);
+    expect(sm).toMatch(/<span className="font-bold">\{money\(r\.totalPaid\)\}<\/span>/);
+    // ...and the counter lives in PlanCell.
+    expect(sm).toMatch(/\{done\}\/\{term\}/);
   });
 });
 
@@ -252,8 +267,9 @@ describe("one lookup box for both trades", () => {
     // The shop holds jewellery, found by HUID, and bullion, found by serial
     // number. Naming only the HUID told the counter a bar could not be sold
     // here, when typing its serial has always worked.
-    expect(ns).toMatch(/HUID or Serial No\. \*/);
-    expect(ns).toMatch(/placeholder="HUID for jewellery, serial number for a gold bar"/);
+    // Phase 3: a piece is found by HUID OR by its Item Code.
+    expect(ns).toMatch(/HUID, Item Code or Serial No\. \*/);
+    expect(ns).toMatch(/placeholder="HUID or Item Code for jewellery, serial number for a gold bar"/);
     expect(ns).not.toMatch(/placeholder="Enter HUID"/);
     // including the empty-field toast, which is the one place the old wording
     // survived a bundle check

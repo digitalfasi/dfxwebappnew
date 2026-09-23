@@ -8,9 +8,12 @@ import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { billingService } from "@/modules/billing/billingService";
 import { money, istToday } from "@/_shared/utils";
+import { PURITY_OPTIONS, purityLabel } from "@/_shared/purity";
 import { goldRateService } from "@/modules/gold-rate/goldRateService";
 import { masterInventoryService } from "@/modules/procurement/master-inventory/masterInventoryService";
 import { useAuth } from "@/_shared/AuthContext";
+import { loadDraft, saveDraft, clearDraft } from "@/_shared/purchaseDraft";
+import { VendorForm } from "@/modules/procurement/purchase-history/Vendors";
 
 // A purchase is ALWAYS priced at the 24K (pure gold) rate — the purity only
 // converts the net weight into the pure gold it contains, it never changes the
@@ -24,8 +27,9 @@ function rate24kPerGram(rateObj) {
 // Categories and subcategories come from the Master Inventory the store
 // maintains under Procurement. They used to be two hardcoded arrays of six
 // invented names, so the pickers here never matched the store's real taxonomy.
-// Backend Purity contract (app/schemas/billing.py Purity literal).
-const PURITIES = ["24K","22K","20K","18K","14K","9K"];
+// Backend Purity contract (app/schemas/billing.py Purity literal) — the karat
+// string is what is STORED and sent. PURITY_OPTIONS carries the same values
+// with the fineness ("22K – 916") as a DISPLAY label only; see _shared/purity.js.
 const STATUS_OPTS = ["All statuses","In Stock","Sold","Inactive"];
 const PAYMENT_MODES = ["CASH","CREDIT","PARTIAL"];
 // Mode of payment (how the money actually moved) — separate from settlement
@@ -46,21 +50,58 @@ const PAY_METHOD_OPTS = [
 // seeded from today's published rate by newBulkRow below — editable, because a
 // vendor invoice can be struck at a rate agreed earlier in the day.
 const DEFAULT_TUNCH_PERCENT = "4";
-const emptyBulkRow = () => ({ ident: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", net: "", rate: "", tunch: DEFAULT_TUNCH_PERCENT, stone: "" });
+// A row states what the SLIP states: gross and stone weight. Net is derived
+// (rowWeights) and never typed, so the two weights can never disagree with a
+// third field. `stone` is the stone CHARGE in rupees and `other` the rest of
+// the V/A card - both money, never metal.
+const emptyBulkRow = () => ({ ident: "", itemCode: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", stoneWt: "", rate: "", tunch: DEFAULT_TUNCH_PERCENT, stone: "", other: "" });
 
 // Real inventory loads from the DFX backend via billingService. No mock items.
 
 const EMPTY_PURCHASE = {
-  photoFile: null, photo: null, huid: "", name: "", category: "Rings", subCategory: "Traditional",
-  purity: "22K", gross: "", net: "", vendor: "", purchaseDate: "", invoice: "", rate: "",
-  tunch: "4", stone: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
+  // Item Code XOR HUID: itemCode blank = auto-generated; a HUID replaces it.
+  photoFile: null, photo: null, itemCode: "", huid: "", name: "", category: "Rings", subCategory: "Traditional",
+  // gross + stoneWt are entered; net is DERIVED from them. netOverride holds a
+  // hand-corrected net for the real case where the piece weighs differently
+  // from gross - stone; the computed figure is kept beside it and both are
+  // shown, so an override is never silent.
+  purity: "22K", gross: "", stoneWt: "", netOverride: "", netOverridden: false,
+  vendor: "", deliveredBy: "", purchaseDate: "", invoice: "", referenceType: "INVOICE", rate: "",
+  tunch: "4", stone: "", other: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
 };
+
+// The four document types a purchase can arrive on. A Delivery Challan is not a
+// tax invoice and a slip is neither, but a purchase carries exactly ONE
+// document - hence a type beside the one number, never four number fields.
+const REFERENCE_TYPES = [
+  { value: "INVOICE", label: "Invoice" },
+  { value: "REFERENCE", label: "Reference" },
+  { value: "SLIP", label: "Slip" },
+  { value: "DC", label: "Delivery Challan" },
+];
+const REFERENCE_LABEL = (v) => (REFERENCE_TYPES.find((t) => t.value === v)?.label ?? "Invoice");
+
+// A local datetime string for <input type="datetime-local">, which has no
+// timezone and therefore must be built from LOCAL parts - toISOString() would
+// shift a 6pm slip to the previous day for any negative-offset shop.
+const nowLocalInput = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+// "2026-09-22T18:15" -> "2026-09-22", the DATE the backend keeps indexed.
+const dateOnly = (v) => (v ? String(v).slice(0, 10) : "");
 
 export default function Inventory({ onNavigate }) {
   const scope = useRef(null);
   // Store pricing defaults are Admin-only server-side; mirror that here so the
   // button is not offered to someone the API will refuse.
-  const { backendRole } = useAuth();
+  const { backendRole, user } = useAuth();
+  // Who keyed the entry. Display only: the backend stamps created_by from the
+  // access token (service.py, created_by=current_user.id), so this is shown to
+  // confirm WHO the entry will be recorded against — it is never sent, and
+  // typing a different name here must never become possible.
+  const staffName = user?.name || user?.email || "";
   const seesStoreDefaults = backendRole === "Admin" || backendRole === "SuperAdmin";
   usePressFeedback(scope);
 
@@ -100,8 +141,6 @@ export default function Inventory({ onNavigate }) {
   // Inline "add new vendor" inside the Add Purchase vendor section (replaces the
   // separate Manage Vendors button — a vendor is created without leaving the form).
   const [showAddVendor, setShowAddVendor] = useState(false);
-  const [newVendor, setNewVendor] = useState({ name: "", phone: "" });
-  const [vendorSaving, setVendorSaving] = useState(false);
 
   // Add-to-Catalogue / Update-Listing modal. mode "add" or "update"; both hit the
   // same idempotent publish endpoint (re-publish updates the linked product).
@@ -117,7 +156,7 @@ export default function Inventory({ onNavigate }) {
 
   // Bulk receiving — Phase 4. Two types: Jewellery (HUID) / Raw Gold (Serial).
   const [bulkType, setBulkType] = useState("JEWELLERY");
-  const [bulkHeader, setBulkHeader] = useState({ vendor: "", date: "", invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
+  const [bulkHeader, setBulkHeader] = useState({ vendor: "", deliveredBy: "", date: "", invoice: "", referenceType: "INVOICE", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
   // Each type keeps its OWN rows. They used to share one array, so switching
   // from Jewellery to Raw Gold showed the jewellery rows still sitting there -
   // and submitting then sent HUIDs, categories and stone charges to the raw-gold
@@ -137,6 +176,46 @@ export default function Inventory({ onNavigate }) {
     }));
   }, [bulkType]);
   const [bulkSaving, setBulkSaving] = useState(false);
+
+  // Auto-save (5.9): an unfinished Add / Bulk Purchase survives a reload or
+  // navigating away. Restored once on mount (the photo never — re-attach it),
+  // saved ~1s after typing stops, cleared on a successful save or Discard.
+  const [addDraftAt, setAddDraftAt] = useState(null);
+  const [bulkDraftAt, setBulkDraftAt] = useState(null);
+  useEffect(() => {
+    const a = loadDraft("add");
+    if (a?.form) { setAddForm({ ...EMPTY_PURCHASE, ...a.form, photoFile: null, photo: null }); setAddDraftAt(a.savedAt); }
+    const b = loadDraft("bulk");
+    if (b?.header && b?.rows) {
+      setBulkHeader((h) => ({ ...h, ...b.header }));
+      setBulkRowsByType((r) => ({ ...r, ...b.rows }));
+      if (b.type) setBulkType(b.type);
+      setBulkDraftAt(b.savedAt);
+    }
+  }, []);
+  useEffect(() => {
+    if (!showAdd) return;
+    const { photoFile, photo, ...form } = addForm;
+    if (!form.name.trim() && !form.gross && !form.huid.trim() && !form.itemCode.trim()) return;
+    const t = setTimeout(() => { if (saveDraft("add", { form })) setAddDraftAt(Date.now()); }, 1000);
+    return () => clearTimeout(t);
+  }, [addForm, showAdd]);
+  useEffect(() => {
+    if (!showBulk) return;
+    const typed = Object.values(bulkRowsByType).some((rows) => rows.some((r) => r.name.trim() || r.gross || r.ident.trim()));
+    if (!typed) return;
+    const t = setTimeout(() => {
+      if (saveDraft("bulk", { header: bulkHeader, rows: bulkRowsByType, type: bulkType })) setBulkDraftAt(Date.now());
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [bulkHeader, bulkRowsByType, bulkType, showBulk]);
+  const discardAddDraft = () => { clearDraft("add"); setAddDraftAt(null); setAddForm({ ...EMPTY_PURCHASE, purchaseDate: nowLocalInput() }); };
+  const discardBulkDraft = () => {
+    clearDraft("bulk"); setBulkDraftAt(null);
+    setBulkHeader({ vendor: "", deliveredBy: "", date: nowLocalInput(), invoice: "", referenceType: "INVOICE", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
+    setBulkRowsByType({ JEWELLERY: [newBulkRow()], RAW_GOLD: [newBulkRow()] });
+  };
+  const draftStamp = (at) => at ? `Draft saved ${new Date(at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : "";
 
   usePageMotion(scope, [loading]);
 
@@ -297,6 +376,30 @@ export default function Inventory({ onNavigate }) {
     return [...new Set(masterCats.flatMap((c) => c.subcategories.filter((sc) => sc.isActive).map((sc) => sc.name)))].sort();
   }, [masterCats]);
 
+  // THE derivation for a single purchase - the mirror of rowWeights for a bulk
+  // row. The slip states gross and stone, so net is what is left: a 45 g piece
+  // carrying 5 g of stones is 40 g of gold. The operator may override the net
+  // when the scale disagrees, and then BOTH figures are kept and shown - an
+  // override is never silent, and never quietly becomes the computed one.
+  const addWeights = useMemo(() => {
+    const gross = Number(addForm.gross) || 0;
+    const stone = Math.max(0, Number(addForm.stoneWt) || 0);
+    const computedNet = Math.max(0, gross - stone);
+    const overrideNet = Number(addForm.netOverride) || 0;
+    const overridden = !!addForm.netOverridden && addForm.netOverride !== "";
+    return {
+      gross,
+      stone,
+      computedNet,
+      net: overridden ? overrideNet : computedNet,
+      overridden,
+      // Only a DIFFERENCE is worth reporting; an override that happens to equal
+      // the computed figure is not a discrepancy.
+      differs: overridden && Math.abs(overrideNet - computedNet) > 0.0005,
+    };
+  }, [addForm.gross, addForm.stoneWt, addForm.netOverride, addForm.netOverridden]);
+  const stoneWeight = addWeights.stone;
+
   // Add Purchase amount preview, in the vendor's own terms: everything is
   // priced at the 24K rate and the purity only converts the weight.
   //   490 g of 18K  →  490 × 18/24 = 367.500 g of pure gold
@@ -307,8 +410,15 @@ export default function Inventory({ onNavigate }) {
   // Rate/g is ALWAYS the 24K rate (editable), never a per-purity rate. Mirrors
   // the backend payable formula (backend stays authoritative); the final figure
   // is also the item's purchase_cost so create satisfies that required field.
+  //
+  // addWeights is declared ABOVE this on purpose. Both are `const` and both are
+  // evaluated during the SAME render pass, and this one names addWeights in its
+  // dependency array — an array that is built immediately, not on a click. The
+  // other way round it threw "Cannot access 'addWeights' before initialization"
+  // on first render. Same rule as rowWeights/bulkRowBase and rowTunchPct below:
+  // in this file, a derivation is declared before whatever reads it.
   const addAmounts = useMemo(() => {
-    const net = Number(addForm.net) || 0;
+    const net = addWeights.net;
     const rate24 = Number(addForm.rate) || 0;
     const karat = parseInt(addForm.purity, 10) || 0;
     const tunchPct = addForm.tunch !== "" ? Number(addForm.tunch) || 0 : 4;
@@ -320,17 +430,17 @@ export default function Inventory({ onNavigate }) {
     // piece with 5 g of stones is 40 g of gold (that is the gross/net split)
     // plus a flat rupee cost for the stones themselves.
     const stone = Number(addForm.stone) || 0;
+    const other = Number(addForm.other) || 0;
+    // The V/A card total. Money, never metal: it enters no gram figure, is
+    // never purity-converted, and carries no Tunch.
+    const valueAddition = stone + other;
     return {
-      base, rate24, fineGrams, tunchGrams, stone,
+      base, rate24, fineGrams, tunchGrams, stone, other, valueAddition,
       payableGrams: fineGrams + tunchGrams,
-      tunchAmt, final: base + tunchAmt + stone,
+      tunchAmt, final: base + tunchAmt + valueAddition,
     };
-  }, [addForm.net, addForm.rate, addForm.purity, addForm.tunch, addForm.stone]);
+  }, [addWeights.net, addForm.rate, addForm.purity, addForm.tunch, addForm.stone, addForm.other]);
 
-  // The non-gold part of the piece is simply what gross carries over net: a
-  // 45 g piece with 40 g of gold holds 5 g of stones. Stated rather than asked
-  // for, so the two weights can never disagree with a third field.
-  const stoneWeight = Math.max(0, (Number(addForm.gross) || 0) - (Number(addForm.net) || 0));
 
   const openDefaults = async () => {
     setShowDefaults(true);
@@ -351,13 +461,15 @@ export default function Inventory({ onNavigate }) {
   const handleAdd = async () => {
     const f = addForm;
     if (!(f.photoFile instanceof File)) { toast("Product photo is required"); return; }
-    if (!f.huid.trim()) { toast("HUID is required"); return; }
     if (!f.name.trim()) { toast("Product Name is required"); return; }
     const matchedVendor = vendorList.find(v => v.name === f.vendor);
     if (!matchedVendor) { toast("Select a vendor"); return; }
     if (!f.purchaseDate) { toast("Purchase Date is required"); return; }
-    if (!(Number(f.gross) > 0) || !(Number(f.net) > 0)) { toast("Gross and Net weight required"); return; }
-    if (Number(f.net) > Number(f.gross)) { toast("Net weight cannot exceed gross"); return; }
+    if (!(Number(f.gross) > 0)) { toast("Gross Weight is required"); return; }
+    // The rule read from the direction the slip is now typed in. Net is derived,
+    // so what can actually be wrong is the stone weight.
+    if (addWeights.stone > addWeights.gross) { toast("Stone weight cannot exceed gross"); return; }
+    if (!(addWeights.net > 0)) { toast("Net gold weight must be greater than zero"); return; }
     if (!(Number(f.rate) > 0)) { toast("Purchase Rate/g is required"); return; }
     if (f.paymentMode === "PARTIAL" && !(Number(f.paidNow) > 0)) { toast("Enter the amount paid now"); return; }
 
@@ -366,23 +478,29 @@ export default function Inventory({ onNavigate }) {
     let publishFailed = "";
     try {
       const imageStoragePath = await billingService.uploadStagingImage(f.photoFile);
-      // HUID is the primary identifier. Product Code is no longer collected in the
-      // Purchase UI; the backend column still exists, so the HUID is used as the
-      // item's product_code. Selling-price rules (making/wastage/profit/tax/
-      // pricing) are omitted → backend inherits the store's configured defaults.
+      // Item Code XOR HUID. A HUID piece bills Online (rate locked) and the
+      // server uses the HUID as its product_code; otherwise the typed Item Code
+      // is kept, or the server allocates one - that piece bills Offline.
+      // Selling-price rules (making/wastage/profit/tax/pricing) are omitted →
+      // backend inherits the store's configured defaults.
       const created = await billingService.createInventoryItem({
-        productCode: f.huid.trim().toUpperCase(),
+        productCode: f.huid.trim() ? undefined : (f.itemCode.trim().toUpperCase() || undefined),
         productName: f.name.trim(),
         category: f.category,
         subcategory: f.subCategory,
-        huid: f.huid.trim(),
+        huid: f.huid.trim() || undefined,
         purity: f.purity,
-        grossWeightGrams: Number(f.gross),
-        netGoldWeightGrams: Number(f.net),
+        grossWeightGrams: addWeights.gross,
+        // Derived, not typed (or the operator's explicit override - see
+        // addWeights). The gold math has always run on net, and still does.
+        netGoldWeightGrams: addWeights.net,
+        stoneWeightGrams: addWeights.stone,
         vendorId: matchedVendor.id,
         vendorName: matchedVendor.name,
-        purchaseDate: f.purchaseDate,
+        purchaseDate: dateOnly(f.purchaseDate),
+        purchaseAt: f.purchaseDate || undefined,
         purchaseInvoiceRef: f.invoice || undefined,
+        purchaseReferenceType: f.referenceType || undefined,
         purchaseRatePerGram: Number(f.rate),
         // Final Purchase Amount (Base + Tunch) — required purchase_cost. The
         // vendor payable below re-derives the same figure authoritatively.
@@ -390,6 +508,9 @@ export default function Inventory({ onNavigate }) {
         // Carried onto the item so the sell side bills the stones back instead
         // of the store absorbing their cost.
         stoneChargeAmount: f.stone !== "" ? Number(f.stone) : 0,
+        // V/A "Other" is NOT carried onto the item: it is a purchase cost on the
+        // vendor payable only (below), exactly as Bulk Purchase does. Sending it
+        // here would add it to the customer's bill as "Other Charges".
         // Required by the inventory contract; store-default GST (not a Purchase
         // selling field). Sale-time GST is still resolved by the backend.
         taxRatePercent: storeTax,
@@ -404,19 +525,24 @@ export default function Inventory({ onNavigate }) {
         // Vendor Payment ledger. Purity is required for the Tunch leg.
         await billingService.createVendorPurchase({
           vendorId: matchedVendor.id,
-          purchaseDate: f.purchaseDate,
+          purchaseDate: dateOnly(f.purchaseDate),
+          purchaseAt: f.purchaseDate || undefined,
           invoiceRef: f.invoice || undefined,
-          weightGrams: Number(f.net),
+          referenceType: f.referenceType || undefined,
+          deliveredBy: f.deliveredBy.trim() || undefined,
+          weightGrams: addWeights.net,
+          stoneWeightGrams: addWeights.stone,
           ratePerGram: Number(f.rate),
           purity: f.purity,
           vendorChargePercent: f.tunch !== "" ? Number(f.tunch) : undefined,
           stoneChargeAmount: f.stone !== "" ? Number(f.stone) : 0,
+          otherChargesAmount: f.other !== "" ? Number(f.other) : 0,
           inventoryItemId: created.id,
           paymentMode: f.paymentMode,
           paidNow: f.paymentMode === "PARTIAL" ? Number(f.paidNow) : undefined,
           // Mode of payment for the initial settlement; CREDIT moves no money.
           paymentMethod: f.paymentMode === "CREDIT" ? "CASH" : f.paymentMethod,
-          paymentDate: f.purchaseDate,
+          paymentDate: dateOnly(f.purchaseDate),
         });
         // The publish is a SEPARATE call from the purchase. Swallowing its
         // failure and then reporting "published" told the user something that
@@ -433,6 +559,7 @@ export default function Inventory({ onNavigate }) {
 
       setShowAdd(false);
       setAddForm(EMPTY_PURCHASE);
+      clearDraft("add"); setAddDraftAt(null);
       await load();
       // The purchase itself IS recorded, so say so either way - only the
       // publish is in doubt.
@@ -449,11 +576,28 @@ export default function Inventory({ onNavigate }) {
   };
 
   const bulkIdentLabel = bulkType === "RAW_GOLD" ? "Serial Number" : "HUID";
+  // THE one place a bulk row's three weights are derived. The slip states GROSS
+  // and STONE weight, so the net is what is left — derived, never typed, which
+  // is why two weights can never disagree with a third field. Every total,
+  // card, row hint and payload reads from HERE and nowhere else.
+  //
+  // Declared ABOVE bulkRowBase on purpose, for exactly the reason rowTunchPct
+  // records below: as a `const` arrow it sits in the temporal dead zone until
+  // this line runs, and bulkRowBase is evaluated in the same render pass.
+  // Declared after, the first render threw "Cannot access 'rowWeights' before
+  // initialization".
+  const rowWeights = (r) => {
+    const gross = Number(r.gross) || 0;
+    // Clamped to gross: a stone cannot outweigh the piece it is set in, and a
+    // typo must not produce a negative net that then prices as negative gold.
+    // The row is still REJECTED on submit (see handleBulkAdd) - the clamp only
+    // keeps the live preview sane while the operator is still typing.
+    const stone = Math.min(Math.max(0, Number(r.stoneWt) || 0), gross);
+    return { gross, stone, net: Math.max(0, gross - stone) };
+  };
   // Each row's Cost/g is the 24K rate, so the row's base is its PURE gold
   // content (net × karat/24) at that rate — the purity never changes the rate.
-  const bulkRowBase = (r) => (Number(r.net) || 0) * ((parseInt(r.purity, 10) || 0) / 24) * (Number(r.rate) || 0);
-  // Non-gold weight of a bulk row - gross minus net, exactly as in Add Purchase.
-  const rowStoneWeight = (r) => Math.max(0, (Number(r.gross) || 0) - (Number(r.net) || 0));
+  const bulkRowBase = (r) => rowWeights(r).net * ((parseInt(r.purity, 10) || 0) / 24) * (Number(r.rate) || 0);
   // A new row opens with today's 24K rate already in it, so the common case
   // needs no typing at all; the field stays editable for a back-dated invoice.
   const newBulkRow = useCallback(() => {
@@ -475,6 +619,18 @@ export default function Inventory({ onNavigate }) {
   }, [showBulk, bulkType, newBulkRow, setBulkRows]);
 
 
+  // Tunch percentage for one row. Zero for bullion, whatever the row happens to
+  // be carrying: a bar has no tunch, so it must not appear in a raw-gold line
+  // total or its summary.
+  //
+  // Declared ABOVE bulkBreakdown on purpose. As a `const` arrow it lives in the
+  // temporal dead zone until this line runs, and bulkBreakdown's useMemo factory
+  // runs during the same render pass — declared after, the first render threw
+  // "Cannot access 'rowTunchPct' before initialization" the moment a bulk row
+  // had a net weight and purity.
+  const rowTunchPct = (r) =>
+    bulkType === "JEWELLERY" && r.tunch !== "" && r.tunch != null ? Number(r.tunch) || 0 : 0;
+
   // Purity-wise settlement. Every figure here mirrors what the backend
   // derives, so the preview and the recorded payable agree to the paisa:
   //   fine (24K equivalent) = net x karat/24
@@ -487,10 +643,12 @@ export default function Inventory({ onNavigate }) {
   const bulkBreakdown = useMemo(() => {
     const groups = new Map();
     let netTotal = 0, fineTotal = 0, tunchGTotal = 0, baseTotal = 0, tunchAmtTotal = 0, stoneTotal = 0, stoneGTotal = 0;
+    let grossTotal = 0, qty = 0, otherChargesTotal = 0;
     const rates = new Set();
 
     for (const r of bulkRows) {
-      const net = Number(r.net) || 0;
+      const { gross, net, stone: stoneG } = rowWeights(r);
+      const other = Number(r.other) || 0;
       const karat = parseInt(r.purity, 10) || 0;
       const rate = Number(r.rate) || 0;
       if (net <= 0 || karat <= 0) continue;
@@ -501,11 +659,13 @@ export default function Inventory({ onNavigate }) {
       const tunchG = fine * pct / 100;
 
       // Stones are money, not metal: they never enter a GOLD gram total. Their
-      // own weight is tracked separately so the receipt can state both.
+      // own weight is tracked separately (rowWeights) so the receipt can state
+      // both. `stone` here is the RUPEE charge and is a different thing.
       const stone = Number(r.stone) || 0;
-      const stoneG = Math.max(0, (Number(r.gross) || 0) - net);
 
       if (rate > 0) rates.add(rate);
+      otherChargesTotal += other;
+      grossTotal += gross; qty += 1;
       netTotal += net; fineTotal += fine; tunchGTotal += tunchG;
       baseTotal += base; tunchAmtTotal += tunchAmt; stoneTotal += stone; stoneGTotal += stoneG;
 
@@ -522,35 +682,44 @@ export default function Inventory({ onNavigate }) {
     );
     return {
       groups: rowsOut,
+      // qty counts the rows that actually carry a weight and a purity — the
+      // same rows every money total above is built from. An empty row the
+      // operator has not filled in yet is not a piece of stock.
+      grossTotal, qty,
       netTotal, fineTotal, tunchGTotal, baseTotal, tunchAmtTotal, stoneTotal, stoneGTotal,
+      otherChargesTotal,
+      // The V/A card total for the whole receipt: stones plus everything else
+      // non-gold. Money, never metal - it is in no gram figure above.
+      valueAdditionTotal: stoneTotal + otherChargesTotal,
       payableGrams: fineTotal + tunchGTotal,
-      finalAmount: baseTotal + tunchAmtTotal + stoneTotal,
+      finalAmount: baseTotal + tunchAmtTotal + stoneTotal + otherChargesTotal,
       // One rate across the receipt is the normal case; a mixed receipt shows
       // the blended rate instead of pretending there was a single one.
       singleRate: rates.size === 1 ? [...rates][0] : null,
       blendedRate: fineTotal > 0 ? baseTotal / fineTotal : 0,
     };
-  }, [bulkRows]);
-
-  // Tunch percentage for one row. Resolved per row now that each row carries
-  // its own; bulkBreakdown above aggregates them.
-  // Zero for bullion, whatever the row happens to be carrying: a bar has no
-  // tunch, so it must not appear in a raw-gold line total or its summary.
-  const rowTunchPct = (r) =>
-    bulkType === "JEWELLERY" && r.tunch !== "" && r.tunch != null ? Number(r.tunch) || 0 : 0;
+    // bulkType matters: rowTunchPct returns 0 for anything that is not
+    // JEWELLERY, so switching type has to recompute the whole settlement.
+  }, [bulkRows, bulkType]);
 
   const handleBulkAdd = async () => {
     const h = bulkHeader;
     const matchedVendor = vendorList.find(v => v.name === h.vendor);
     if (!matchedVendor) { toast("Select a vendor"); return; }
     if (!h.date) { toast("Purchase Date is required"); return; }
-    const rows = bulkRows.filter(r => r.ident.trim() || r.name.trim() || r.gross || r.net || r.rate);
+    const rows = bulkRows.filter(r => r.ident.trim() || r.itemCode.trim() || r.name.trim() || r.gross || r.stoneWt || r.rate);
     if (!rows.length) { toast("Add at least one row"); return; }
     for (const r of rows) {
-      if (!r.ident.trim()) { toast(`${bulkIdentLabel} is required on every row`); return; }
+      // Only a raw-gold bar must carry its identifier (the serial). A jewellery
+      // row's HUID is optional - without one it gets an Item Code.
+      if (bulkType === "RAW_GOLD" && !r.ident.trim()) { toast(`${bulkIdentLabel} is required on every row`); return; }
       if (r.name.trim().length < 2) { toast("Product Name required (min 2 chars)"); return; }
-      if (!(Number(r.gross) > 0) || !(Number(r.net) > 0)) { toast("Gross and Net weight required on every row"); return; }
-      if (Number(r.net) > Number(r.gross)) { toast("Net weight cannot exceed gross"); return; }
+      if (!(Number(r.gross) > 0)) { toast("Gross Weight is required on every row"); return; }
+      // Read from the stone side, the direction the grid is now typed in. The
+      // live preview clamps a too-heavy stone so the figures stay sane while
+      // typing; submitting one is still an error rather than a silent clamp.
+      if ((Number(r.stoneWt) || 0) > Number(r.gross)) { toast("Stone weight cannot exceed gross on any row"); return; }
+      if (!(rowWeights(r).net > 0)) { toast("Net gold weight must be greater than zero on every row"); return; }
       if (!(Number(r.rate) > 0)) { toast("24K Cost/g is required on every row"); return; }
     }
     if (h.paymentMode === "PARTIAL" && !(Number(h.paidNow) > 0)) { toast("Enter the amount paid now"); return; }
@@ -559,14 +728,17 @@ export default function Inventory({ onNavigate }) {
     try {
       const payload = {
         vendorId: matchedVendor.id,
-        purchaseDate: h.date,
+        purchaseDate: dateOnly(h.date),
+        purchaseAt: h.date || undefined,
         invoiceRef: h.invoice || undefined,
+        referenceType: h.referenceType || undefined,
+        deliveredBy: h.deliveredBy.trim() || undefined,
         // No header Tunch any more — every row sends its own and the server
         // sums them, so a mixed-Tunch receipt is priced correctly.
         paymentMode: h.paymentMode,
         paidNow: h.paidNow,
         paymentMethod: h.paymentMode === "CREDIT" ? "CASH" : h.paymentMethod,
-        paymentDate: h.date,
+        paymentDate: dateOnly(h.date),
         // Only the fields this kind of stock actually has. Raw gold has no
         // HUID, no category and no stone: sending them anyway is how jewellery
         // fields end up recorded against a bar of bullion.
@@ -576,20 +748,24 @@ export default function Inventory({ onNavigate }) {
             name: r.name.trim(),
             purity: r.purity,
             gross: r.gross,
-            net: r.net,
+            // Derived from gross and the stone weight, never typed.
+            net: rowWeights(r).net,
             rate: r.rate,
           }
           : {
-            huid: r.ident.trim(),
+            huid: r.ident.trim() || undefined,
+            itemCode: r.ident.trim() ? undefined : (r.itemCode.trim().toUpperCase() || undefined),
             name: r.name.trim(),
             category: r.category || undefined,
             subCategory: r.subCategory || undefined,
             purity: r.purity,
             gross: r.gross,
-            net: r.net,
+            net: rowWeights(r).net,
+            stoneWt: rowWeights(r).stone,
             rate: r.rate,
             tunch: r.tunch,
             stone: r.stone,
+            other: r.other,
           })),
       };
       const res = bulkType === "RAW_GOLD"
@@ -600,7 +776,8 @@ export default function Inventory({ onNavigate }) {
       // Both grids, not just the one submitted - a stale draft of the other
       // kind reappearing after a completed receipt is the same confusion.
       setBulkRowsByType({ JEWELLERY: [newBulkRow()], RAW_GOLD: [newBulkRow()] });
-      setBulkHeader({ vendor: "", date: "", invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
+      clearDraft("bulk"); setBulkDraftAt(null);
+      setBulkHeader({ vendor: "", deliveredBy: "", date: nowLocalInput(), invoice: "", referenceType: "INVOICE", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
       await load();
       // Grouped like every other money figure — this was the one place a raw
       // number still reached the screen.
@@ -664,30 +841,15 @@ export default function Inventory({ onNavigate }) {
     }
   };
 
-  // Create a vendor inline from the Add Purchase form and select it immediately.
-  const addVendorInline = async () => {
-    const name = newVendor.name.trim();
-    if (name.length < 2) { toast("Vendor name required (min 2 chars)"); return; }
-    // Mirrors the server rule so a number the form accepts cannot be rejected
-    // by the API a second later.
-    if (newVendor.phone && !/^[6-9]\d{9}$/.test(newVendor.phone)) {
-      toast("Enter a 10-digit Indian mobile number starting 6-9");
-      return;
-    }
-    setVendorSaving(true);
-    try {
-      const v = await billingService.createVendor({ name, phone: newVendor.phone.trim() || undefined });
-      setVendorList(prev => [...prev, v]);
-      setAddForm(f => ({ ...f, vendor: v.name }));
-      setBulkHeader(h => ({ ...h, vendor: v.name }));
-      setNewVendor({ name: "", phone: "" });
-      setShowAddVendor(false);
-      toast(`Vendor added — ${v.name}`);
-    } catch (err) {
-      toast(err?.message || "Could not add vendor");
-    } finally {
-      setVendorSaving(false);
-    }
+  // The add-vendor link (Add + Bulk) opens the ONE supplier form (the same one Purchase
+  // History uses), so a store added mid-purchase gets its code name and owner
+  // too, and the new store is selected on the open purchase.
+  const onVendorCreated = (v) => {
+    setShowAddVendor(false);
+    if (!v) return;
+    setVendorList(prev => [...prev, v]);
+    setAddForm(f => ({ ...f, vendor: v.name }));
+    setBulkHeader(h => ({ ...h, vendor: v.name }));
   };
 
   return (
@@ -695,7 +857,7 @@ export default function Inventory({ onNavigate }) {
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Inventory</h2>
-          <p className="mt-1 text-sm text-muted">Receive finished jewellery / artefacts into stock — <span className="font-mono text-xs">HUID</span> tracked per piece.</p>
+          <p className="mt-1 text-sm text-muted">Receive finished jewellery / artefacts into stock — every piece carries an <span className="font-mono text-xs">Item Code</span> (Offline) or a <span className="font-mono text-xs">HUID</span> (Online).</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {/* The store's pricing defaults are its costs and its margin - what
@@ -706,8 +868,12 @@ export default function Inventory({ onNavigate }) {
           {seesStoreDefaults && (
             <Button variant="outline" size="sm" onClick={openDefaults}>Store Pricing Defaults</Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>Bulk Purchase</Button>
-          <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => setShowAdd(true)}>Add Purchase</Button>
+          {/* Both forms open stamped with NOW, date and time. Still editable:
+              back-dating a slip that arrived yesterday is ordinary retail
+              practice, so the field is defaulted, never locked. An already
+              half-filled form keeps whatever the operator typed. */}
+          <Button variant="outline" size="sm" onClick={() => { setBulkHeader(h => ({ ...h, date: h.date || nowLocalInput() })); setShowBulk(true); }}>Bulk Purchase</Button>
+          <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => { setAddForm(f => ({ ...f, purchaseDate: f.purchaseDate || nowLocalInput() })); setShowAdd(true); }}>Add Purchase</Button>
         </div>
       </div>
 
@@ -773,7 +939,7 @@ export default function Inventory({ onNavigate }) {
           <Select value={vendor} onValueChange={setVendor} options={["All Vendors", ...vendorNames]} className="w-[160px]" />
           <Select value={category} onValueChange={setCategory} options={["All Categories", ...catOptions]} className="w-[140px]" />
           <Select value={subCategory} onValueChange={setSubCategory} options={["All Sub-categories", ...subOptions]} className="w-[170px]" />
-          <Select value={purity} onValueChange={setPurity} options={["All Purity", ...PURITIES]} className="w-[130px]" />
+          <Select value={purity} onValueChange={setPurity} options={["All Purity", ...PURITY_OPTIONS]} className="w-[140px]" />
           {/* Clear used to call setProductName, which does not exist on this
               component, so the click threw a ReferenceError and nothing reset.
               Every filter this screen owns is listed here, and the control is
@@ -863,13 +1029,18 @@ export default function Inventory({ onNavigate }) {
             </colgroup>
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left align-middle text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Vendor</th><th className="px-3 py-3 text-right">Tunch</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
+                <th className="px-6 py-3">Item Code / HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Vendor</th><th className="px-3 py-3 text-right">Tunch</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(p => (
                 <tr key={p.id || p.code} className="border-b border-line-soft align-middle last:border-0 hover:bg-canvas/60 transition-colors">
-                  <td className="px-6 py-3.5 font-mono text-xs font-semibold whitespace-nowrap">{p.huid || p.code || "Not provided"}</td>
+                  <td className="px-6 py-3.5 whitespace-nowrap">
+                    <div className="font-mono text-xs font-semibold">{p.huid || p.code || "Not provided"}</div>
+                    <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-muted" title={p.tag ? `Tag ${p.tag}` : undefined}>
+                      {p.huid ? "HUID · Online" : "Item Code · Offline"}
+                    </div>
+                  </td>
                   <td className="px-3 py-3.5"><span className="block truncate font-semibold leading-snug" title={p.name}>{p.name}</span></td>
                   <td className="px-3 py-3.5"><span className="block truncate" title={p.category || ""}>{p.category || "—"}</span></td>
                   <td className="px-3 py-3.5"><span className="block truncate text-muted" title={p.sub || ""}>{p.sub || "—"}</span></td>
@@ -911,44 +1082,8 @@ export default function Inventory({ onNavigate }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={()=>setShowAdd(false)} aria-label="Close" />
           <div className="relative w-full max-w-[720px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">Add Purchase</h3><button onClick={()=>setShowAdd(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
+            <div className="flex items-center justify-between border-b border-line px-6 py-4"><div className="flex items-center gap-3"><h3 className="text-base font-extrabold">Add Purchase</h3>{addDraftAt && <span className="text-[11px] text-muted">{draftStamp(addDraftAt)} · <button type="button" onClick={discardAddDraft} className="font-bold text-danger underline underline-offset-2">Discard</button></span>}</div><button onClick={()=>setShowAdd(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-              <div>
-                <div className="text-xs font-bold">Photo *</div>
-                <label className="mt-1.5 flex h-28 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 text-xs text-muted hover:border-accent"><input type="file" accept="image/*" className="hidden" onChange={e=>{ const file=e.target.files?.[0]; if(file) setAddForm({...addForm, photoFile: file, photo: URL.createObjectURL(file)});}} />{addForm.photo ? <img src={addForm.photo} alt="photo" className="h-full w-full rounded-xl object-cover" /> : <span>Upload Photo</span>}</label>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-1.5"><span className="text-xs font-bold">HUID *</span><Input placeholder="Hallmark Unique ID" value={addForm.huid} onChange={e=>setAddForm({...addForm, huid:e.target.value})} /></label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name *</span><Input placeholder="e.g. Gold Bangle" value={addForm.name} onChange={e=>setAddForm({...addForm, name:e.target.value})} /></label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><Select value={addForm.category} onValueChange={v=>setAddForm({...addForm, category:v, subCategory:""})} options={catChoices} placeholder={catChoices.length ? "Select category" : "Add categories in Master Inventory"} /></label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category</span><Select value={addForm.subCategory} onValueChange={v=>setAddForm({...addForm, subCategory:v})} options={subChoicesFor(addForm.category)} placeholder={addForm.category ? "Select sub-category" : "Pick a category first"} /></label>
-                {/* Both cells in this row carry one helper line, so the two
-                    controls sit on the same baseline and the row below starts
-                    level - the grid used to pair Purity with an empty cell. */}
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Purity</span><Select value={addForm.purity} onValueChange={v=>setAddForm({...addForm, purity:v})} options={PURITIES} />
-                  <span className="text-[11px] text-muted">Converts the net weight into pure gold — {addForm.purity} = {((parseInt(addForm.purity,10)||0)*100/24).toFixed(2)}% of net.</span>
-                </label>
-                {/* Stones are priced, not weighed: one flat rupee figure for the
-                    whole piece. Their WEIGHT is already described by gross minus
-                    net, so nothing here converts grams. */}
-                <label className="grid gap-1.5">
-                  <span className="text-xs font-bold">Stone Charge (₹) <span className="font-normal text-muted">— whole piece</span></span>
-                  <MoneyInput value={addForm.stone} onValueChange={v=>setAddForm({...addForm, stone:v})} maxDigits={8} placeholder="0" />
-                  <span className="text-[11px] text-muted">Flat cost of the stones. No purity conversion and no Tunch — they are not gold.</span>
-                </label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Gross Weight (g) *</span><Input type="number" value={addForm.gross} onChange={e=>setAddForm({...addForm, gross:e.target.value})} />
-                  {stoneWeight > 0
-                    ? <span className="text-[11px] font-semibold text-accent-strong">{stoneWeight.toFixed(3)} g is stone / non-gold (gross − net)</span>
-                    : <span className="text-[11px] text-muted">Whole piece, stones included.</span>}
-                </label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Net Gold Weight (g) *</span><Input type="number" value={addForm.net} onChange={e=>setAddForm({...addForm, net:e.target.value})} />
-                  {addAmounts.fineGrams > 0
-                    ? <span className="text-[11px] font-semibold text-accent-strong">≈ {addAmounts.fineGrams.toFixed(3)} g pure gold (24K equivalent = Net × {addForm.purity}/24) · + Tunch {addAmounts.tunchGrams.toFixed(3)} g = <strong>{addAmounts.payableGrams.toFixed(3)} g payable</strong></span>
-                    : <span className="text-[11px] text-muted">Gold only — the pure-gold (24K) equivalent appears here.</span>}
-                </label>
-              </div>
-
               <div className="rounded-xl border border-line bg-canvas/40 p-4 space-y-3">
                 <h4 className="text-xs font-extrabold uppercase tracking-widest">Vendor / Purchase</h4>
                 <div className="grid gap-1.5">
@@ -959,42 +1094,120 @@ export default function Inventory({ onNavigate }) {
                     )}
                   </div>
                   <Select value={addForm.vendor} onValueChange={v=>setAddForm({...addForm, vendor:v})} options={vendorNames} placeholder={vendorNames.length ? "Select vendor…" : "No vendors — add one below"} />
-                  {showAddVendor && (
-                    <div className="mt-1 grid gap-3 rounded-xl border border-line bg-surface p-4">
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="grid gap-1.5"><span className="text-xs font-bold">New vendor name<span className="text-danger">*</span></span><Input value={newVendor.name} onChange={e=>setNewVendor({...newVendor, name:e.target.value})} placeholder="e.g. Sri Balaji Gold" /></label>
-                        {/* Same +91 prefix and 10-digit rule as a customer's phone,
-                            so the two modules validate and store identically. */}
-                        <label className="grid gap-1.5">
-                          <span className="text-xs font-bold">Phone <span className="font-normal text-muted">— 10 digits</span></span>
-                          <div className="flex h-10 items-stretch overflow-hidden rounded-xl border border-line bg-surface transition focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]">
-                            <span className="grid w-11 shrink-0 place-items-center border-r border-line-soft bg-canvas/60 text-sm font-bold text-muted" aria-hidden="true">+91</span>
-                            <DigitsInput
-                              value={newVendor.phone}
-                              onValueChange={v=>setNewVendor({...newVendor, phone:v})}
-                              maxDigits={10}
-                              placeholder="98765 43210"
-                              aria-label="Vendor mobile number"
-                              className="min-w-0 flex-1 rounded-none border-0 bg-transparent shadow-none focus:shadow-none"
-                            />
-                          </div>
-                          {newVendor.phone && !/^[6-9]\d{9}$/.test(newVendor.phone) && (
-                            <span className="text-[11px] font-semibold text-danger">Enter a 10-digit number starting 6-9.</span>
-                          )}
-                        </label>
-                      </div>
-                      {/* Shared buttons, primary action last: Add is the primary,
-                          Cancel is the secondary, both the standard size. */}
-                      <div className="flex justify-end gap-2.5">
-                        <Button variant="outline" size="sm" disabled={vendorSaving} onClick={()=>{setShowAddVendor(false);setNewVendor({ name: "", phone: "" });}}>Cancel</Button>
-                        <Button size="sm" disabled={vendorSaving} onClick={addVendorInline}>{vendorSaving ? "Adding…" : "Add vendor"}</Button>
-                      </div>
-                    </div>
-                  )}
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date *</span><Input type="date" value={addForm.purchaseDate} onChange={e=>setAddForm({...addForm, purchaseDate:e.target.value})} /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Invoice / Reference</span><Input value={addForm.invoice} onChange={e=>setAddForm({...addForm, invoice:e.target.value})} placeholder="INV-..." /></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date &amp; Time *</span><Input type="datetime-local" value={addForm.purchaseDate} onChange={e=>setAddForm({...addForm, purchaseDate:e.target.value})} />
+                    <span className="text-[11px] text-muted">Defaults to now. Change it for a slip received earlier.</span>
+                  </label>
+                  {/* One document per purchase: its TYPE, then its number. The
+                      label follows the type, so a Delivery Challan is never
+                      filed on screen as a tax invoice. */}
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Document Type</span><Select value={addForm.referenceType} onValueChange={v=>setAddForm({...addForm, referenceType:v})} options={REFERENCE_TYPES} /></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">{REFERENCE_LABEL(addForm.referenceType)} Number</span><Input value={addForm.invoice} onChange={e=>setAddForm({...addForm, invoice:e.target.value})} placeholder={addForm.referenceType === "DC" ? "DC-..." : "INV-..."} /></label>
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Delivered By</span><Input placeholder="Salesman from the store" value={addForm.deliveredBy} onChange={e=>setAddForm({...addForm, deliveredBy:e.target.value})} /></label>
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-bold">Photo *</div>
+                <label className="mt-1.5 flex h-28 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 text-xs text-muted hover:border-accent"><input type="file" accept="image/*" className="hidden" onChange={e=>{ const file=e.target.files?.[0]; if(file) setAddForm({...addForm, photoFile: file, photo: URL.createObjectURL(file)});}} />{addForm.photo ? <img src={addForm.photo} alt="photo" className="h-full w-full rounded-xl object-cover" /> : <span>Upload Photo</span>}</label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* Item Code XOR HUID. Entering a HUID erases the Item Code:
+                    the piece then bills Online at the locked rate. */}
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">Item Code</span>
+                  <Input placeholder={addForm.huid.trim() ? "Not used — HUID piece" : "Auto-generated"} value={addForm.itemCode} disabled={!!addForm.huid.trim()} onChange={e=>setAddForm({...addForm, itemCode:e.target.value})} />
+                  <span className="text-[11px] text-muted">Leave blank to generate. Bills <b>Offline</b> — rate/g editable.</span>
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold">HUID</span>
+                  <Input placeholder="Hallmark Unique ID (optional)" value={addForm.huid} onChange={e=>setAddForm({...addForm, huid:e.target.value, itemCode: e.target.value.trim() ? "" : addForm.itemCode})} />
+                  <span className="text-[11px] text-muted">If entered, replaces the Item Code. Bills <b>Online</b> — rate/g locked.</span>
+                </label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name *</span><Input placeholder="e.g. Gold Bangle" value={addForm.name} onChange={e=>setAddForm({...addForm, name:e.target.value})} /></label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><Select value={addForm.category} onValueChange={v=>setAddForm({...addForm, category:v, subCategory:""})} options={catChoices} placeholder={catChoices.length ? "Select category" : "Add categories in Master Inventory"} /></label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category</span><Select value={addForm.subCategory} onValueChange={v=>setAddForm({...addForm, subCategory:v})} options={subChoicesFor(addForm.category)} placeholder={addForm.category ? "Select sub-category" : "Pick a category first"} /></label>
+                {/* Both cells in this row carry one helper line, so the two
+                    controls sit on the same baseline and the row below starts
+                    level - the grid used to pair Purity with an empty cell. */}
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Purity</span><Select value={addForm.purity} onValueChange={v=>setAddForm({...addForm, purity:v})} options={PURITY_OPTIONS} />
+                  <span className="text-[11px] text-muted">Converts the net weight into pure gold — {addForm.purity} = {((parseInt(addForm.purity,10)||0)*100/24).toFixed(2)}% of net.</span>
+                </label>
+                {/* The slip states GROSS and STONE WEIGHT. Net is what is left
+                    and is derived, never typed, so two weights can never
+                    disagree with a third field. */}
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Gross Weight (g) *</span><Input type="number" value={addForm.gross} onChange={e=>setAddForm({...addForm, gross:e.target.value})} />
+                  <span className="text-[11px] text-muted">Whole piece, stones included.</span>
+                </label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Stone Weight (g)</span><Input type="number" value={addForm.stoneWt} onChange={e=>setAddForm({...addForm, stoneWt:e.target.value})} placeholder="0" />
+                  {addWeights.stone > addWeights.gross && addWeights.gross > 0
+                    ? <span className="text-[11px] font-semibold text-danger">Stone weight cannot exceed gross.</span>
+                    : <span className="text-[11px] text-muted">Deducted from gross to give the net gold. Weight only — its cost goes in Value Addition.</span>}
+                </label>
+              </div>
+
+              {/* Net gold: computed, shown, and overridable — a locked field
+                  makes the operator abandon the form when the scale disagrees,
+                  but an override is never silent: both figures stay on screen. */}
+              <div className="rounded-xl border border-accent-line bg-accent-soft/25 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] font-extrabold uppercase tracking-[0.07em] text-accent-strong">Net Gold Weight</div>
+                    <div className="num mt-1 text-2xl font-extrabold">{addWeights.net.toFixed(3)} <span className="text-base font-bold">g</span></div>
+                    <div className="text-[11px] text-muted">Gross {addWeights.gross.toFixed(3)} g − Stone {addWeights.stone.toFixed(3)} g</div>
+                  </div>
+                  <label className="flex items-center gap-2 text-[11px] font-bold">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-[var(--color-accent)]"
+                      checked={!!addForm.netOverridden}
+                      onChange={e=>setAddForm({...addForm, netOverridden: e.target.checked, netOverride: e.target.checked ? String(addWeights.computedNet || "") : ""})}
+                    />
+                    <span title="Tick only if the scale shows a different net than Gross − Stone. Normally leave it unticked.">Scale net differs</span>
+                  </label>
+                </div>
+                {addForm.netOverridden && (
+                  <div className="mt-3 grid gap-1.5 sm:max-w-[240px]">
+                    <Input type="number" value={addForm.netOverride} onChange={e=>setAddForm({...addForm, netOverride:e.target.value})} placeholder="Weighed net" />
+                    {addWeights.differs
+                      ? <span className="text-[11px] font-semibold text-warning">Differs from the computed {addWeights.computedNet.toFixed(3)} g by {Math.abs(addWeights.net - addWeights.computedNet).toFixed(3)} g. The entered figure is used.</span>
+                      : <span className="text-[11px] text-muted">Same as the computed figure.</span>}
+                  </div>
+                )}
+                {addAmounts.fineGrams > 0 && (
+                  <div className="mt-3 border-t border-accent-line/60 pt-3 text-[11px] font-semibold text-accent-strong">
+                    ≈ {addAmounts.fineGrams.toFixed(3)} g pure gold (24K equivalent = Net × {addForm.purity}/24) · + Tunch {addAmounts.tunchGrams.toFixed(3)} g = <strong>{addAmounts.payableGrams.toFixed(3)} g payable</strong>
+                  </div>
+                )}
+              </div>
+
+              {/* Value Addition (V/A) — every non-gold RUPEE cost on the slip.
+                  The rule that must not be broken: nothing in this card is
+                  metal. It enters no gram total, is never purity-converted, and
+                  Tunch is never charged on it. */}
+              <div className="rounded-xl border border-line bg-canvas/40 p-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-extrabold uppercase tracking-widest">Value Addition (V/A)</h4>
+                  <span className="num text-sm font-extrabold">{money(addAmounts.valueAddition)}</span>
+                </div>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-bold">Stone Charges (₹)</span>
+                    <MoneyInput value={addForm.stone} onValueChange={v=>setAddForm({...addForm, stone:v})} maxDigits={8} placeholder="0" />
+                    <span className="text-[11px] text-muted">Flat cost of the stones in the piece.</span>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-bold">Other Charges (₹)</span>
+                    <MoneyInput value={addForm.other} onValueChange={v=>setAddForm({...addForm, other:v})} maxDigits={8} placeholder="0" />
+                    <span className="text-[11px] text-muted">Polish, certification, packing — anything non-gold.</span>
+                  </label>
+                </div>
+                <p className="mt-3 text-[11px] text-muted">Money, not metal: no purity conversion and no Tunch on anything in this card.</p>
+              </div>
+
+              <div className="rounded-xl border border-line bg-canvas/40 p-4">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Rate (₹/g) — 24K *</span><Input type="number" value={addForm.rate} onChange={e=>setAddForm({...addForm, rate:e.target.value})} /><span className="text-[11px] text-muted">{rate24kPerGram(todayRate) != null ? (rateIsCarriedForward ? `Always the 24K (pure gold) rate — auto-filled from the rate published on ${rateEffectiveLabel}, as today's is not published yet. Check it before saving.` : "Always the 24K (pure gold) rate — auto-filled from today's 24K rate, editable. Purity only converts the net weight.") : "No live 24K rate set today — enter the 24K rate manually."}</span></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Tunch (%)</span><Input type="number" value={addForm.tunch} onChange={e=>setAddForm({...addForm, tunch:e.target.value})} /><span className="text-[11px] text-muted">Percent of the 24K-equivalent gold value ({addForm.purity} = {((parseInt(addForm.purity,10)||0)*100/24).toFixed(2)}% of net, then + Tunch {addForm.tunch || 0}% on that). Never added to the rate/g.</span></label>
                 </div>
@@ -1052,7 +1265,7 @@ export default function Inventory({ onNavigate }) {
           <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={()=>setShowBulk(false)} aria-label="Close" />
           <div className="relative w-full max-w-[1440px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-line px-6 py-4">
-              <h3 className="text-base font-extrabold">Bulk Purchase Receiving</h3>
+              <div className="flex items-center gap-3"><h3 className="text-base font-extrabold">Bulk Purchase Receiving</h3>{bulkDraftAt && <span className="text-[11px] text-muted">{draftStamp(bulkDraftAt)} · <button type="button" onClick={discardBulkDraft} className="font-bold text-danger underline underline-offset-2">Discard</button></span>}</div>
               <button onClick={()=>setShowBulk(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
@@ -1073,28 +1286,18 @@ export default function Inventory({ onNavigate }) {
                     )}
                   </div>
                   <Select value={bulkHeader.vendor} onValueChange={v=>setBulkHeader({...bulkHeader, vendor:v})} options={vendorNames} placeholder={vendorNames.length ? "Select vendor…" : "No vendors — add one"} />
-                  {showAddVendor && (
-                    <div className="mt-1 grid gap-3 rounded-xl border border-line bg-surface p-4">
-                      <label className="grid gap-1.5"><span className="text-xs font-bold">New vendor name<span className="text-danger">*</span></span><Input value={newVendor.name} onChange={e=>setNewVendor({...newVendor, name:e.target.value})} placeholder="e.g. Sri Balaji Gold" /></label>
-                      <label className="grid gap-1.5">
-                        <span className="text-xs font-bold">Phone <span className="font-normal text-muted">— 10 digits</span></span>
-                        <div className="flex h-10 items-stretch overflow-hidden rounded-xl border border-line bg-surface transition focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]">
-                          <span className="grid w-11 shrink-0 place-items-center border-r border-line-soft bg-canvas/60 text-sm font-bold text-muted" aria-hidden="true">+91</span>
-                          <DigitsInput value={newVendor.phone} onValueChange={v=>setNewVendor({...newVendor, phone:v})} maxDigits={10} placeholder="98765 43210" aria-label="Vendor mobile number" className="min-w-0 flex-1 rounded-none border-0 bg-transparent shadow-none focus:shadow-none" />
-                        </div>
-                        {newVendor.phone && !/^[6-9]\d{9}$/.test(newVendor.phone) && (
-                          <span className="text-[11px] font-semibold text-danger">Enter a 10-digit number starting 6-9.</span>
-                        )}
-                      </label>
-                      <div className="flex justify-end gap-2.5">
-                        <Button variant="outline" size="sm" disabled={vendorSaving} onClick={()=>{setShowAddVendor(false);setNewVendor({ name: "", phone: "" });}}>Cancel</Button>
-                        <Button size="sm" disabled={vendorSaving} onClick={addVendorInline}>{vendorSaving ? "Adding…" : "Add vendor"}</Button>
-                      </div>
-                    </div>
-                  )}
                 </div>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date *</span><Input type="date" value={bulkHeader.date} onChange={e=>setBulkHeader({...bulkHeader, date:e.target.value})} /></label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Invoice Number</span><Input value={bulkHeader.invoice} onChange={e=>setBulkHeader({...bulkHeader, invoice:e.target.value})} placeholder="INV-..." /></label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date &amp; Time *</span><Input type="datetime-local" value={bulkHeader.date} onChange={e=>setBulkHeader({...bulkHeader, date:e.target.value})} />
+                  <span className="text-[11px] text-muted">Defaults to now; editable for a back-dated slip.</span>
+                </label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Document Type</span><Select value={bulkHeader.referenceType} onValueChange={v=>setBulkHeader({...bulkHeader, referenceType:v})} options={REFERENCE_TYPES} /></label>                <label className="grid gap-1.5"><span className="text-xs font-bold">{REFERENCE_LABEL(bulkHeader.referenceType)} Number</span><Input value={bulkHeader.invoice} onChange={e=>setBulkHeader({...bulkHeader, invoice:e.target.value})} placeholder={bulkHeader.referenceType === "DC" ? "DC-..." : "INV-..."} /></label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Delivered By</span><Input placeholder="Salesman from the store" value={bulkHeader.deliveredBy} onChange={e=>setBulkHeader({...bulkHeader, deliveredBy:e.target.value})} /></label>
+                <div className="grid gap-1.5"><span className="text-xs font-bold">Entered By</span>
+                  <div className="flex h-10 min-h-[44px] items-center rounded-xl border border-line bg-canvas/50 px-3.5 text-sm font-semibold text-ink-soft">
+                    {staffName || "Signed-in user"}
+                  </div>
+                  <span className="text-[11px] text-muted">Recorded automatically against your sign-in</span>
+                </div>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Payment Type</span><Select value={bulkHeader.paymentMode} onValueChange={v=>setBulkHeader({...bulkHeader, paymentMode:v})} options={PAYMENT_MODES} /></label>
                 {bulkHeader.paymentMode !== "CREDIT" && (
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Mode of Payment</span><Select value={bulkHeader.paymentMethod} onValueChange={v=>setBulkHeader({...bulkHeader, paymentMethod:v})} options={PAY_METHOD_OPTS} /></label>
@@ -1104,22 +1307,70 @@ export default function Inventory({ onNavigate }) {
                 )}
               </div>
 
+              {/* Totals for the whole receipt, above the grid where the eye
+                  lands before it starts keying. Gross, stone and net are all
+                  three shown on purpose: "total weight" on a slip is ambiguous,
+                  and the gold total is the NET one — the stone weight is not
+                  gold and is never priced as gold. Every figure comes from
+                  bulkBreakdown, which reads rowWeights, so the cards and the
+                  settlement below can never disagree. */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-accent-line bg-accent-soft/25 p-3.5">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent-strong">Total Gold Weight</div>
+                  <div className="num mt-1 text-2xl font-extrabold">{bulkBreakdown.netTotal.toFixed(3)} <span className="text-base font-bold">g</span></div>
+                  <div className="text-xs text-muted">Net — the metal being priced</div>
+                </div>
+                <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Gross Weight</div>
+                  <div className="num mt-1 text-2xl font-extrabold">{bulkBreakdown.grossTotal.toFixed(3)} <span className="text-base font-bold">g</span></div>
+                  <div className="text-xs text-muted">As weighed, stones included</div>
+                </div>
+                <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Stone Weight</div>
+                  <div className="num mt-1 text-2xl font-extrabold">{bulkBreakdown.stoneGTotal.toFixed(3)} <span className="text-base font-bold">g</span></div>
+                  <div className="text-xs text-muted">Deducted from gross · not gold</div>
+                </div>
+                <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Qty</div>
+                  <div className="num mt-1 text-2xl font-extrabold">{bulkBreakdown.qty}</div>
+                  <div className="text-xs text-muted">{bulkBreakdown.qty === 1 ? "item with a weight & purity" : "items with a weight & purity"}</div>
+                </div>
+                {/* The V/A total sits with the weights but is deliberately
+                    styled as money, not metal - it is in none of the three
+                    gram figures beside it. */}
+                {bulkType === "JEWELLERY" && (
+                  <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Value Addition (V/A)</div>
+                    <div className="num mt-1 text-2xl font-extrabold">{money(bulkBreakdown.valueAdditionTotal)}</div>
+                    <div className="text-xs text-muted">Stones {money(bulkBreakdown.stoneTotal)} · Other {money(bulkBreakdown.otherChargesTotal)}</div>
+                  </div>
+                )}
+              </div>
+
               <div className="overflow-x-auto rounded-xl border border-line">
-                <table className="w-full min-w-[1260px] border-collapse text-sm">
+                <table className={`table-fixed ${bulkType === "JEWELLERY" ? "w-[1980px]" : "w-[1520px]"} border-collapse text-sm`}>
                   <thead><tr className="bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                    <th className="px-3 py-2 w-[150px]">{bulkIdentLabel} *</th>
-                    <th className="py-2 w-[160px]">Product Name *</th>
-                    <th className="py-2 w-[130px]">Category</th>
-                    <th className="py-2 w-[140px]">Sub-category</th>
-                    <th className="py-2 w-[100px]">Purity</th>
+                    {/* Jewellery: Item Code (blank = auto, Offline) XOR HUID
+                        (Online, replaces the Item Code). Raw gold: serial. */}
+                    {bulkType === "JEWELLERY" && <th className="px-3 py-2 w-[140px]">Item Code</th>}
+                    <th className="px-3 py-2 w-[150px]">{bulkIdentLabel}{bulkType === "RAW_GOLD" ? " *" : ""}</th>
+                    <th className="px-2 py-2 w-[180px]">Product Name *</th>
+                    <th className="px-2 py-2 w-[170px]">Category</th>
+                    <th className="px-2 py-2 w-[190px]">Sub-category</th>
+                    <th className="px-2 py-2 w-[130px]">Purity</th>
                     <th className="py-2 w-[100px]">Gross (g) *</th>
-                    <th className="py-2 w-[100px]">Net (g) *</th>
+                    <th className="py-2 w-[100px]">Stone (g)</th>
+                    {/* Derived, not typed - see rowWeights. */}
+                    <th className="py-2 w-[100px]">Net (g)</th>
                     <th className="py-2 w-[120px]">24K Cost/g (₹) *</th>
                     {/* Bullion has no tunch. It is bought at rate x weight:
                         there is no craftsman's charge on a bar. */}
-                    {bulkType === "JEWELLERY" && <th className="py-2 w-[90px]">Tunch %</th>}
+                    {bulkType === "JEWELLERY" && <th className="py-2 w-[80px]">Tunch %</th>}
                     {/* Jewellery only: bullion is gold and nothing else. */}
                     {bulkType === "JEWELLERY" && <th className="py-2 w-[120px]">Stone (₹)</th>}
+                    {/* The V/A card, per row: the non-gold rupees that are not
+                        stones. Money, never metal. */}
+                    {bulkType === "JEWELLERY" && <th className="py-2 w-[120px]">Other (₹)</th>}
                     <th className="py-2 w-[130px] text-right">Total Cost</th>
                     <th className="py-2 w-[44px]"></th>
                   </tr></thead>
@@ -1129,7 +1380,10 @@ export default function Inventory({ onNavigate }) {
                       const lineTotal = bulkRowBase(r);
                       return (
                         <tr key={i} className="border-t border-line-soft align-top">
-                          <td className="px-2 py-2"><Input value={r.ident} onChange={e=>setCell("ident",e.target.value)} placeholder={bulkIdentLabel} className="h-9 text-sm" /></td>
+                          {bulkType === "JEWELLERY" && (
+                            <td className="px-2 py-2"><Input value={r.itemCode} disabled={!!r.ident.trim()} onChange={e=>setCell("itemCode",e.target.value)} placeholder={r.ident.trim() ? "HUID piece" : "Auto"} className="h-9 text-sm" /></td>
+                          )}
+                          <td className="px-2 py-2"><Input value={r.ident} onChange={e=>{ const v=e.target.value; setBulkRows(bulkRows.map((row,ix)=>ix===i?{...row, ident:v, itemCode: bulkType==="JEWELLERY" && v.trim() ? "" : row.itemCode}:row)); }} placeholder={bulkType === "RAW_GOLD" ? bulkIdentLabel : "Optional"} className="h-9 text-sm" /></td>
                           <td className="px-2 py-2"><Input value={r.name} onChange={e=>setCell("name",e.target.value)} placeholder="Name" className="h-9 text-sm" /></td>
                           <td className="px-2 py-2">{bulkType==="JEWELLERY"
                             ? <Select value={r.category||""} onValueChange={v=>setCell("category",v)} options={catChoices} placeholder="Category" />
@@ -1137,9 +1391,23 @@ export default function Inventory({ onNavigate }) {
                           <td className="px-2 py-2">{bulkType==="JEWELLERY"
                             ? <Select value={r.subCategory||""} onValueChange={v=>setCell("subCategory",v)} options={subChoicesFor(r.category)} placeholder="Sub-category" />
                             : <Input value={r.subCategory} onChange={e=>setCell("subCategory",e.target.value)} placeholder="Optional" className="h-9 text-sm" />}</td>
-                          <td className="px-2 py-2"><Select value={r.purity} onValueChange={v=>setCell("purity",v)} options={PURITIES} /></td>
+                          <td className="px-2 py-2"><Select value={r.purity} onValueChange={v=>setCell("purity",v)} options={PURITY_OPTIONS} /></td>
                           <td className="px-2 py-2"><Input type="number" value={r.gross} onChange={e=>setCell("gross",e.target.value)} className="h-9" /></td>
-                          <td className="px-2 py-2"><Input type="number" value={r.net} onChange={e=>setCell("net",e.target.value)} className="h-9" /></td>
+                          <td className="px-2 py-2"><Input type="number" value={r.stoneWt} onChange={e=>setCell("stoneWt",e.target.value)} placeholder="0" className="h-9" />
+                            {(Number(r.stoneWt) || 0) > (Number(r.gross) || 0) && (Number(r.gross) || 0) > 0 && (
+                              <span className="mt-1 block text-[10px] font-semibold text-danger">Exceeds gross</span>
+                            )}
+                          </td>
+                          {/* Net is stated, not asked for: gross minus stone.
+                              Read-only here on purpose - the bulk grid has no
+                              room for an override control, and a row whose
+                              scale disagrees belongs in Add Purchase, which
+                              has one. */}
+                          <td className="px-2 py-2">
+                            <div className="num flex h-9 items-center justify-end rounded-xl border border-line bg-canvas/60 px-3 font-mono text-sm tabular-nums">
+                              {rowWeights(r).net.toFixed(3)}
+                            </div>
+                          </td>
                           <td className="px-2 py-2"><Input type="number" value={r.rate} onChange={e=>setCell("rate",e.target.value)} className="h-9" /></td>
                           {/* One digit only: Tunch is quoted in whole single digits. */}
                           {/* maxDigits was 1, so a 12% lot could not be typed at
@@ -1150,16 +1418,17 @@ export default function Inventory({ onNavigate }) {
                           {/* Flat rupees for this row's stones: no purity, no Tunch. */}
                           {bulkType === "JEWELLERY" && (
                             <td className="px-2 py-2">
+                              {/* Rupees only. The stone WEIGHT has its own column;
+                                  repeating it here read as a second stone entry. */}
                               <MoneyInput value={r.stone} onValueChange={v=>setCell("stone",v)} maxDigits={8} placeholder="0" className="h-9" />
-                              {/* The same figure Add Purchase states: whatever
-                                  gross carries over net is the stone / non-gold
-                                  part of the piece. */}
-                              {rowStoneWeight(r) > 0 && (
-                                <span className="mt-1 block text-[10px] font-semibold text-accent-strong">{rowStoneWeight(r).toFixed(3)} g stone</span>
-                              )}
                             </td>
                           )}
-                          <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(lineTotal + lineTotal * rowTunchPct(r) / 100 + (Number(r.stone) || 0)) : "—"}</td>
+                          {bulkType === "JEWELLERY" && (
+                            <td className="px-2 py-2">
+                              <MoneyInput value={r.other} onValueChange={v=>setCell("other",v)} maxDigits={8} placeholder="0" className="h-9" />
+                            </td>
+                          )}
+                          <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(lineTotal + lineTotal * rowTunchPct(r) / 100 + (Number(r.stone) || 0) + (Number(r.other) || 0)) : "—"}</td>
                           <td className="px-2 py-2"><Button size="sm" variant="outline" onClick={()=>setBulkRows(bulkRows.length>1 ? bulkRows.filter((_,ix)=>ix!==i) : [emptyBulkRow()])}>×</Button></td>
                         </tr>
                       );
@@ -1195,7 +1464,7 @@ export default function Inventory({ onNavigate }) {
                           return (
                             <tr key={g.purity} className="border-b border-accent-line/40 last:border-0">
                               <td className="py-2 pr-3">
-                                <span className="font-bold">{g.purity}</span>
+                                <span className="font-bold">{purityLabel(g.purity)}</span>
                                 <span className="ml-1.5 text-[11px] text-muted">{g.rows} {g.rows === 1 ? "item" : "items"}</span>
                               </td>
                               <td className="num py-2 pr-3 text-right font-mono tabular-nums">{g.net.toFixed(3)} g</td>
@@ -1448,6 +1717,7 @@ export default function Inventory({ onNavigate }) {
           </div>
         </div>
       )}
+      {showAddVendor && <VendorForm vendor={null} onClose={() => setShowAddVendor(false)} onSaved={onVendorCreated} />}
     </div>
   );
 }

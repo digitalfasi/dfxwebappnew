@@ -318,7 +318,7 @@ export default function SalesHistory() {
                 <th className="!pl-5">Invoice No.</th>
                 <th>Date</th>
                 <th>Customer</th>
-                <th>HUID</th>
+                <th>Item Code / HUID</th>
                 <th>Category</th>
                 <th>Sub-category</th>
                 <th className="text-right">Items</th>
@@ -354,7 +354,7 @@ export default function SalesHistory() {
                     <div className="font-bold">{b.customer}</div>
                     {b.customerCode && <div className="font-mono text-[11px] text-muted">{b.customerCode}</div>}
                   </td>
-                  <td className="whitespace-nowrap font-mono text-xs text-muted">{b.huid || "—"}</td>
+                  <td className="whitespace-nowrap font-mono text-xs text-muted">{b.huid || b.productCode || "—"}</td>
                   <td className="text-muted">{b.category || "—"}</td>
                   <td className="text-muted">{b.subcategory || "—"}</td>
                   <td className="num text-right">{b.items}</td>

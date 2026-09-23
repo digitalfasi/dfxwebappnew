@@ -170,7 +170,7 @@ export default function Vendors() {
   const filteredVendors = useMemo(() => {
     const q = query.trim().toLowerCase();
     return vendors.filter((v) => {
-      const matchesQ = !q || v.name.toLowerCase().includes(q) || v.phone.toLowerCase().includes(q) || (v.gstNumber || "").toLowerCase().includes(q);
+      const matchesQ = !q || v.name.toLowerCase().includes(q) || v.phone.toLowerCase().includes(q) || (v.code || "").toLowerCase().includes(q) || (v.gstNumber || "").toLowerCase().includes(q);
       const matchesStatus = statusFilter === "All" || (statusFilter === "Active" ? v.isActive : !v.isActive);
       return matchesQ && matchesStatus;
     });
@@ -193,6 +193,9 @@ export default function Vendors() {
           <h2 className="text-2xl font-extrabold tracking-tight">Purchase History</h2>
           <p className="mt-1 text-sm text-muted">Vendor purchase payables and the vendor payment ledger — clear outstanding balances here.</p>
         </div>
+        {/* The vendor list below IS the supplier (store) master - add stores here
+            too, not only from Add Purchase. Same form as Edit. */}
+        <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => { setEditVendor(null); setShowVendorForm(true); }}>+ Add Vendor / Store</Button>
       </div>
 
       {/* KPI cards — backend-authoritative vendor summary */}
@@ -230,7 +233,14 @@ export default function Vendors() {
       <Card data-motion="reveal" className="overflow-hidden">
         <div className="border-b border-line px-6 py-3"><h3 className="text-sm font-extrabold">Vendor list</h3></div>
         <CardContent className="overflow-x-auto px-0 pb-0">
-          <table className="w-full min-w-[1180px] border-collapse text-sm">  {/* 1180px is the sum of the column minimums below plus their padding. Leaving it at 900 would have let the browser start squeezing again before the wrapper scrolled. */}
+          {/* 1180px is the sum of the column minimums below plus their padding.
+              Leaving it at 900 would have let the browser start squeezing again
+              before the wrapper scrolled.
+              This comment sits ABOVE the tag, not after it: trailing it on the
+              same line left two spaces between <table> and the comment, and a
+              whitespace text node is not a legal child of <table> — React
+              reported it as a hydration error on every render of this page. */}
+          <table className="w-full min-w-[1180px] border-collapse text-sm">
             <thead>
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                 {/* PH-UI-001. Every column but the first and last carried
@@ -252,6 +262,7 @@ export default function Vendors() {
                   <tr key={v.id} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
                     <td className="px-6 py-3.5">
                       <button className="font-bold text-ink hover:text-accent hover:underline" onClick={() => { setDetailTab("overview"); setDetailVendor(v); }}>{v.name}</button>
+                      {(v.code || v.ownerName) && <div className="text-[11px] text-muted">{[v.code, v.ownerName && `Owner ${v.ownerName}`].filter(Boolean).join(" · ")}</div>}
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="num text-xs font-semibold">{v.phone ? `+91 ${v.phone}` : "No phone"}</div>
@@ -418,6 +429,8 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
                 <MiniStat label="Outstanding" value={money(totals.outstanding)} tone="text-accent" />
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Code name" value={vendor.code || "Not provided"} />
+                <Field label="Owner" value={vendor.ownerName ? `${vendor.ownerName}${vendor.ownerPhone ? `  ·  +91 ${vendor.ownerPhone}` : ""}` : "Not provided"} />
                 <Field label="Phone" value={vendor.phone ? `+91 ${vendor.phone}` : "Not provided"} />
                 <Field label="Email" value={vendor.email || "Not provided"} />
                 <Field label="GST number" value={vendor.gstNumber || "Not provided"} />
@@ -439,7 +452,7 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
                   {!ledgerLoading && (ledger || []).map((p) => (
                     <tr key={p.id} className="border-t border-line-soft">
                       <td className="px-4 py-2.5">{fmtDate(p.paymentDate)}</td>
-                      <td className="py-2.5 text-xs">{p.invoiceRef || "Not provided"}</td>
+                      <td className="py-2.5 text-xs">{p.invoiceRef || "Not provided"}{p.deliveredBy && <div className="text-[11px] text-muted">By {p.deliveredBy}</div>}</td>
                       <td className="py-2.5">{methodToMode(p.paymentMethod) === "OFFLINE" ? "Offline" : "Online"}</td>
                       <td className="py-2.5 text-xs text-muted">{p.referenceNo || "Not provided"}</td>
                       <td className="py-2.5 text-right num font-semibold pr-4">{money(p.amount)}</td>
@@ -481,7 +494,7 @@ function PurchaseTable({ rows, loading, onRecordPayment, emptyHint, hideOutstand
           {!loading && rows.map((p) => (
             <tr key={p.id} className="border-t border-line-soft align-middle">
               <td className="px-4 py-2.5 whitespace-nowrap">{fmtDate(p.purchaseDate)}</td>
-              <td className="py-2.5 text-xs">{p.invoiceRef || "Not provided"}</td>
+              <td className="py-2.5 text-xs">{p.invoiceRef || "Not provided"}{p.deliveredBy && <div className="text-[11px] text-muted">By {p.deliveredBy}</div>}</td>
               {/* Both figures, because they answer different questions: what
                   came into the safe, and what the vendor was paid for. A row
                   written before net weight was recorded shows the equivalent
@@ -528,12 +541,18 @@ const Field = ({ label, value, className }) => (
 /* ------------------------------------------------------------------ */
 /* Add / Edit vendor                                                  */
 /* ------------------------------------------------------------------ */
-function VendorForm({ vendor, onClose, onSaved }) {
+// The ONE supplier (store) form - Purchase History and the "+ Add new vendor"
+// link in Add / Bulk Purchase both open this, so a store is never created
+// through a second, thinner form.
+export function VendorForm({ vendor, onClose, onSaved }) {
   const editing = !!vendor;
   // Contact Person is gone: the vendor's own phone and GST are what the store
   // actually deals with, and a second free-text name only ever went stale.
   const [f, setF] = useState({
     name: vendor?.name || "", phone: onlyTenDigits(vendor?.phone || ""),
+    // Supplier Master: the store's code name and its owner (the permanent
+    // contact when the salesman who delivers changes).
+    code: vendor?.code || "", ownerName: vendor?.ownerName || "", ownerPhone: onlyTenDigits(vendor?.ownerPhone || ""),
     email: vendor?.email || "", gstNumber: normalizeGst(vendor?.gstNumber || ""), address: vendor?.address || "",
     vendorChargePercent: vendor ? String(vendor.vendorChargePercent) : "4", isActive: vendor ? vendor.isActive : true,
   });
@@ -548,6 +567,7 @@ function VendorForm({ vendor, onClose, onSaved }) {
     const e = {};
     if (f.name.trim().length < 2) e.name = "Vendor name needs at least 2 characters";
     if (f.phone.length !== 10) e.phone = "Enter the 10-digit mobile number";
+    if (f.ownerPhone && f.ownerPhone.length !== 10) e.ownerPhone = "Enter the owner's 10-digit mobile number";
     if (f.email.trim() && !VENDOR_EMAIL_RE.test(f.email.trim())) e.email = "Use a valid @gmail.com address";
     if (f.gstNumber && f.gstNumber.length !== GSTIN_LEN) e.gstNumber = `A GSTIN is ${GSTIN_LEN} characters`;
     setErrors(e);
@@ -558,7 +578,7 @@ function VendorForm({ vendor, onClose, onSaved }) {
     if (!validate()) { toast("Check the highlighted fields"); return; }
     setSaving(true);
     try {
-      const payload = { ...f, name: f.name.trim(), email: f.email.trim(), gstNumber: normalizeGst(f.gstNumber) };
+      const payload = { ...f, name: f.name.trim(), email: f.email.trim(), gstNumber: normalizeGst(f.gstNumber), code: f.code.replace(/[^A-Za-z0-9]/g, "").toUpperCase(), ownerName: f.ownerName.trim() };
       const saved = editing ? await billingService.updateVendor(vendor.id, payload) : await billingService.createVendor(payload);
       toast(editing ? "Vendor updated" : "Vendor created");
       await onSaved(saved);
@@ -570,13 +590,31 @@ function VendorForm({ vendor, onClose, onSaved }) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
       <div className="relative w-full max-w-[560px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">{editing ? "Edit Vendor" : "Add Vendor"}</h3><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
+        <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">{editing ? "Edit Vendor / Store" : "Add Vendor / Store"}</h3><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
         <div className="flex-1 overflow-y-auto px-6 py-5 grid gap-4">
-          <label className="grid gap-1.5">
-            <span className="text-xs font-bold">Vendor Name *</span>
-            <Input value={f.name} onChange={set("name")} placeholder="e.g. Malabar Gold" error={errors.name} />
-            {errors.name && <span className="text-[11px] font-semibold text-danger">{errors.name}</span>}
-          </label>
+          <div className="grid items-start gap-4 sm:grid-cols-[1fr_150px]">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Store Full Name *</span>
+              <Input value={f.name} onChange={set("name")} placeholder="e.g. Mahalaxmi Jewellers" error={errors.name} />
+              {errors.name && <span className="text-[11px] font-semibold text-danger">{errors.name}</span>}
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Code Name</span>
+              <Input value={f.code} onChange={(e) => setField("code", e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 20))} placeholder="e.g. MJ" />
+            </label>
+          </div>
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Owner Name</span>
+              <Input value={f.ownerName} onChange={set("ownerName")} placeholder="Store owner" />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Owner Phone</span>
+              <PhoneInput value={f.ownerPhone} onValueChange={(v) => setField("ownerPhone", v)} error={!!errors.ownerPhone} />
+              {errors.ownerPhone && <span className="text-[11px] font-semibold text-danger">{errors.ownerPhone}</span>}
+            </label>
+          </div>
+          <p className="-mt-2 text-[11px] text-muted">The store stays the same; the salesman who delivers is entered on each purchase.</p>
           <div className="grid items-start gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5">
               <span className="text-xs font-bold">Phone * <span className="font-normal text-muted">— 10 digits</span></span>
