@@ -190,35 +190,41 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
           </div>
         )}
 
-        {/* Phone rail. The scrolling desk board above is far too wide for a
-            handset, so the space between the menu and the account button sat
-            empty on every screen. The two purities a counter actually quotes
-            fit, and they are the same figures, from the same payload — a phone
-            is not shown a different rate from the desk. */}
+        {/* Phone rail. The desk board above is far too wide for a handset, so
+            the space between the menu and the account button sat empty on every
+            screen. Same feed, same payload, same endless scroll - two identical
+            runs travelling exactly one run width - just sized for a thumb. A
+            phone is never shown a different rate from the desktop. */}
         {!showSearch && (
-          <div className="ml-auto flex min-w-0 shrink items-center gap-2 overflow-hidden rounded-full border border-accent-line bg-surface px-2.5 py-1 lg:hidden">
+          <div className="group ml-auto flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-full border border-accent-line bg-surface py-1 pl-2.5 pr-2 lg:hidden">
             <span
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${bullion && bullion.isToday === false ? "bg-muted" : "bg-accent"}`}
               title={bullion && bullion.isToday === false
                 ? `Last published ${fmtDateShort(bullion.effective_date)}`
                 : "Today's published rate"}
             />
-            {[["24K", bullion?.rate_24k, true], ["22K", bullion?.rate_22k, false]].map(([label, value, always]) => (
-              <span
-                key={label}
-                /* A 375px phone fits the menu, Back, one rate, the bell and the
-                   account button — and no more. The second purity appears only
-                   once there is room for it, rather than being clipped. */
-                className={`items-baseline gap-1 whitespace-nowrap ${always ? "flex" : "hidden min-[430px]:flex"}`}
-              >
-                <span className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-muted">{label}</span>
-                <span className="num text-[12px] font-extrabold tabular-nums text-ink">
-                  {value != null
-                    ? Number(value).toLocaleString("en-IN", { maximumFractionDigits: 0 })
-                    : "—"}
-                </span>
-              </span>
-            ))}
+            <div className="relative min-w-0 flex-1 overflow-hidden">
+              {/* Figures dissolve at the edges instead of clipping mid-digit. */}
+              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-surface to-transparent" />
+              <div className="flex w-max animate-ticker items-center group-hover:[animation-play-state:paused]">
+                {[0, 1].map((run) => (
+                  <div key={run} className="flex items-center" aria-hidden={run === 1}>
+                    {[["Silver", bullion?.silver_999], ["9K", bullion?.rate_9k],
+                      ["14K", bullion?.rate_14k], ["18K", bullion?.rate_18k],
+                      ["22K", bullion?.rate_22k], ["24K", bullion?.rate_24k]].map(([label, value]) => (
+                      <span key={label} className="flex items-baseline gap-1 whitespace-nowrap pr-4">
+                        <span className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-muted">{label}</span>
+                        <span className="num text-[12px] font-extrabold tabular-nums text-ink">
+                          {value != null
+                            ? Number(value).toLocaleString("en-IN", { maximumFractionDigits: 0 })
+                            : "—"}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
