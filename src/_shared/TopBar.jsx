@@ -62,14 +62,34 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [menuOpen]);
 
+  // Phone back affordance. The app routes on the URL hash and App.jsx listens
+  // for hashchange, so the browser's own history is already correct — going
+  // back is history.back(), not a second navigation stack to keep in sync.
+  // Resolved in an effect, never during render, because the page is
+  // prerendered and reading location.hash while rendering mismatches hydration.
+  // On desktop this never shows: the sidebar is always visible, so there is
+  // nothing to go back from.
+  const [canGoBack, setCanGoBack] = useState(false);
+  useEffect(() => {
+    const sync = () => {
+      const here = window.location.hash.replace(/^#\/?/, "").trim();
+      setCanGoBack(Boolean(here) && here !== "dashboard" && window.history.length > 1);
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
   const showSearch = typeof onSearch === "function";
 
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-[#efe7d3] shadow-sm backdrop-blur-xl">
       <div className="flex items-center gap-3 px-4 py-3 sm:gap-4 sm:px-8">
         <div className="flex shrink-0 items-center gap-3">
+          {/* 44px on touch, 36px once there's a mouse: below 44 a thumb starts
+              catching the edge of the next control. */}
           <button
-            className="grid h-9 w-9 place-items-center rounded-full border border-line bg-surface text-ink lg:hidden"
+            className="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-ink lg:hidden"
             onClick={onMenu}
             aria-label="Open menu"
           >
@@ -77,6 +97,19 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
+          {/* Phone-only Back. Without it the drawer was the only way out of a
+              deep screen, which on a phone reads as being stuck. */}
+          {canGoBack && (
+            <button
+              className="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-ink transition-colors duration-150 active:bg-accent-soft lg:hidden"
+              onClick={() => window.history.back()}
+              aria-label="Go back"
+            >
+              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+          )}
           {/* Compact context breadcrumb. The page title itself lives once, in
               the body — never duplicated here. */}
           {(crumb || (!hideTitle && title)) && (
@@ -157,7 +190,36 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
           </div>
         )}
 
-        <div className={`flex shrink-0 items-center gap-2.5 ${showSearch ? "" : "ml-auto"}`}>
+        {/* Phone rail. The scrolling desk board above is far too wide for a
+            handset, so the space between the menu and the account button sat
+            empty on every screen. The two purities a counter actually quotes
+            fit, and they are the same figures, from the same payload — a phone
+            is not shown a different rate from the desk. */}
+        {!showSearch && (
+          <div className="ml-auto flex min-w-0 items-center gap-2 overflow-hidden rounded-full border border-accent-line bg-surface px-2.5 py-1 lg:hidden">
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${bullion && bullion.isToday === false ? "bg-muted" : "bg-accent"}`}
+              title={bullion && bullion.isToday === false
+                ? `Last published ${fmtDateShort(bullion.effective_date)}`
+                : "Today's published rate"}
+            />
+            {[["24K", bullion?.rate_24k], ["22K", bullion?.rate_22k]].map(([label, value]) => (
+              <span key={label} className="flex items-baseline gap-1 whitespace-nowrap">
+                <span className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-muted">{label}</span>
+                <span className="num text-[12px] font-extrabold tabular-nums text-ink">
+                  {value != null
+                    ? Number(value).toLocaleString("en-IN", { maximumFractionDigits: 0 })
+                    : "—"}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* On a phone the rate chip above already carries the ml-auto, so this
+            group must not also claim it or the two fight for the gap. On
+            desktop that chip is hidden, so the push-right lives here as before. */}
+        <div className={`flex shrink-0 items-center gap-2.5 ${showSearch ? "" : "lg:ml-auto"}`}>
           {action}
           {/* Current-day indicator (auto-updates; no dropdown, no From/To). */}
           <div className="hidden h-9 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-xs font-bold text-ink md:flex">
@@ -167,7 +229,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
             <span className="whitespace-nowrap">Today, {today}</span>
           </div>
           <button
-            className="relative grid h-9 w-9 place-items-center rounded-full border border-line bg-surface text-ink-soft transition-colors duration-150 hover:border-accent-line hover:text-accent-strong"
+            className="relative grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-ink-soft lg:h-9 lg:w-9 transition-colors duration-150 hover:border-accent-line hover:text-accent-strong"
             aria-label="Notifications"
             onClick={onNavigate ? () => onNavigate("notifications") : undefined}
           >
@@ -181,7 +243,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
           {onLogout && (
             <div className="relative" ref={menuRef}>
               <button
-                className="flex h-9 items-center gap-2 rounded-full border border-line bg-surface py-0 pl-1 pr-2.5 transition-colors duration-150 hover:border-accent-line"
+                className="flex h-11 items-center gap-2 rounded-full border border-line bg-surface py-0 pl-1 pr-2.5 lg:h-9 transition-colors duration-150 hover:border-accent-line"
                 onClick={() => setMenuOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
