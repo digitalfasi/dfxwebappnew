@@ -196,15 +196,21 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
             fit, and they are the same figures, from the same payload — a phone
             is not shown a different rate from the desk. */}
         {!showSearch && (
-          <div className="ml-auto flex min-w-0 items-center gap-2 overflow-hidden rounded-full border border-accent-line bg-surface px-2.5 py-1 lg:hidden">
+          <div className="ml-auto flex min-w-0 shrink items-center gap-2 overflow-hidden rounded-full border border-accent-line bg-surface px-2.5 py-1 lg:hidden">
             <span
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${bullion && bullion.isToday === false ? "bg-muted" : "bg-accent"}`}
               title={bullion && bullion.isToday === false
                 ? `Last published ${fmtDateShort(bullion.effective_date)}`
                 : "Today's published rate"}
             />
-            {[["24K", bullion?.rate_24k], ["22K", bullion?.rate_22k]].map(([label, value]) => (
-              <span key={label} className="flex items-baseline gap-1 whitespace-nowrap">
+            {[["24K", bullion?.rate_24k, true], ["22K", bullion?.rate_22k, false]].map(([label, value, always]) => (
+              <span
+                key={label}
+                /* A 375px phone fits the menu, Back, one rate, the bell and the
+                   account button — and no more. The second purity appears only
+                   once there is room for it, rather than being clipped. */
+                className={`items-baseline gap-1 whitespace-nowrap ${always ? "flex" : "hidden min-[430px]:flex"}`}
+              >
                 <span className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-muted">{label}</span>
                 <span className="num text-[12px] font-extrabold tabular-nums text-ink">
                   {value != null
