@@ -17,6 +17,7 @@ import Branches from "@/modules/branches/Branches";
 import StaffUsers from "@/modules/staff/StaffUsers";
 import Support from "@/modules/support/Support";
 import Notifications from "@/modules/notifications/Notifications";
+import Inbox from "@/modules/inbox/Inbox";
 import Settings from "@/modules/settings/Settings";
 import Inventory from "@/modules/procurement/inventory/Inventory";
 import MasterInventory from "@/modules/procurement/master-inventory/MasterInventory";
@@ -47,7 +48,8 @@ const PAGES = {
   branches: { title: "Branches", component: Branches },
   "staff-users": { title: "Staff Users", component: StaffUsers },
   support: { title: "Support", component: Support },
-  notifications: { title: "Notifications", component: Notifications },
+  notifications: { title: "Send Notifications", component: Notifications },
+  inbox: { title: "All notifications", component: Inbox },
   settings: { title: "Settings", component: Settings },
 };
 

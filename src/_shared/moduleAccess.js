@@ -23,6 +23,9 @@
  *  backend vocabulary but their routes are require_admin, so a staff member
  *  holding "marketing" would still be refused — the menu follows the route. */
 export const ADMIN_ONLY = "ADMIN_ONLY";
+// Every shop account (Admin, SuperAdmin, Staff) may open it; the server still
+// filters what is inside by module grant — the bell's inbox does exactly that.
+export const ANY_SHOP_USER = "ANY_SHOP_USER";
 
 export const PAGE_MODULE = {
   // Overview
@@ -60,6 +63,7 @@ export const PAGE_MODULE = {
   "staff-users": ADMIN_ONLY,
   support: "support",
   notifications: ADMIN_ONLY,
+  inbox: ANY_SHOP_USER,
   settings: ADMIN_ONLY,
 };
 
@@ -86,6 +90,7 @@ export function canOpen(pageId, role, permissions) {
   // An unmapped page is not silently opened. A new page added without a mapping
   // must be a deliberate decision, not an accident of omission.
   if (!needed || needed === ADMIN_ONLY) return false;
+  if (needed === ANY_SHOP_USER) return role === "Staff";
   return expandPermissions(permissions).has(needed);
 }
 

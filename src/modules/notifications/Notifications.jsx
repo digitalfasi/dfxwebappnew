@@ -172,7 +172,7 @@ export default function Notifications() {
     <div ref={scope} className="mx-auto max-w-[1100px]">
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-extrabold tracking-tight">Notifications</h2>
+          <h2 className="text-2xl font-extrabold tracking-tight">Send Notifications</h2>
           <p className="mt-1 max-w-[60ch] text-sm text-muted">Create and manage customer notifications across all channels.</p>
         </div>
         <Button size="sm" className="bg-accent hover:bg-accent-strong shrink-0" onClick={() => setShowForm(true)}>

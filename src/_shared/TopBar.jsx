@@ -4,6 +4,7 @@ import { SearchInput } from "@/_shared/ui/input";
 import { fmtDateShort } from "@/_shared/utils";
 import { useAuth } from "@/_shared/AuthContext";
 import { BUILD_SHA } from "@/_shared/utils";
+import NotificationBell from "@/_shared/NotificationBell";
 
 /* One purity's cell in the rate rail. Each purity gets its own bounded cell
    rather than sharing one run of text, so the eye lands on a single figure
@@ -240,17 +241,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
             </svg>
             <span className="whitespace-nowrap">Today, {today}</span>
           </div>
-          <button
-            className="relative grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-ink-soft lg:h-9 lg:w-9 transition-colors duration-150 hover:border-accent-line hover:text-accent-strong"
-            aria-label="Notifications"
-            onClick={onNavigate ? () => onNavigate("notifications") : undefined}
-          >
-            <svg viewBox="0 0 24 24" className="h-[17px] w-[17px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-            </svg>
-            <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-surface bg-danger" />
-          </button>
+          <NotificationBell onNavigate={onNavigate} />
           {/* Settings lives in the sidebar — no duplicate header gear. */}
           {onLogout && (
             <div className="relative" ref={menuRef}>

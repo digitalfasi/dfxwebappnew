@@ -82,7 +82,7 @@ export const NAV_SECTIONS = [
     label: "",
     items: [
       { id: "support", name: "Support", icon: <Icon d={<><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" /><path d="M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10A15 15 0 0 1 12 2z" /></>} /> },
-      { id: "notifications", name: "Notifications", icon: <Icon d={<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>} /> },
+      { id: "notifications", name: "Send Notifications", icon: <Icon d={<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>} /> },
       { id: "settings", name: "Settings", icon: <Icon d={<><circle cx="12" cy="12" r="3" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></>} /> },
     ],
   },
