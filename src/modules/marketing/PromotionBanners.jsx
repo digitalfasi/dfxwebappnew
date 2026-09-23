@@ -8,12 +8,37 @@ import { promotionService, promotionStatus } from "@/modules/marketing/promotion
 
 const STATUS_TONE = { Active: "success", Scheduled: "info", Expired: "neutral", Disabled: "neutral" };
 
+/** Row thumbnail: the image, or the video's first frame with a play mark. */
+function MediaThumb({ p }) {
+  const isVideo = p.mediaType === "VIDEO";
+  return (
+    <div className="relative h-12 shrink-0 overflow-hidden rounded-lg border border-line bg-canvas" style={{ aspectRatio: 1.22 }}>
+      {isVideo && p.videoUrl ? (
+        // #t=0.1 asks the browser for the first frame; metadata only, no autoplay.
+        <video src={`${p.videoUrl}#t=0.1`} muted playsInline preload="metadata" className="h-full w-full bg-black object-cover" />
+      ) : p.imageUrl ? (
+        <img src={p.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+      ) : (
+        <div className="grid h-full w-full place-items-center text-[10px] font-bold text-faint">No file</div>
+      )}
+      {isVideo && (
+        <span className="absolute inset-0 grid place-items-center bg-black/25">
+          <span className="grid h-6 w-6 place-items-center rounded-full bg-white/90 shadow">
+            <svg viewBox="0 0 24 24" className="ml-0.5 h-3 w-3 text-ink" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+          </span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function PromotionBanners({ onNavigate, setEditingPromo }) {
   const scope = useRef(null);
   const [promotions, setPromotions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
   usePageMotion(scope, [loading]);
   usePressFeedback(scope);
 
@@ -31,7 +56,7 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Only Image-Only banners are supported now. Create goes straight to the form.
+  // Image or video is chosen inside the form. Create goes straight to it.
   const openCreate = () => { setEditingPromo(null); onNavigate("promotion-create"); };
   const handleEdit = (p) => { setEditingPromo(p); onNavigate("promotion-create"); };
 
@@ -49,8 +74,12 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
     }
   };
 
+  // Two-step delete: the first click arms the button, the second deletes.
+  // Deleting removes the banner record only — uploaded files stay in storage.
   const handleDelete = async (p) => {
     if (busyId) return;
+    if (confirmId !== p.id) { setConfirmId(p.id); return; }
+    setConfirmId(null);
     setBusyId(p.id);
     try {
       await promotionService.deletePromotion(p.id);
@@ -72,7 +101,7 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Promotion Banners</h2>
-          <p className="mt-1 max-w-[60ch] text-sm text-muted">Create and manage promotional banners shown to customers on app and web.</p>
+          <p className="mt-1 max-w-[60ch] text-sm text-muted">Image and video banners slide together in the app, in priority order.</p>
         </div>
         <Button size="sm" className="bg-accent hover:bg-accent-strong shrink-0" onClick={openCreate}>
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
@@ -86,7 +115,7 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
           <table className="w-full min-w-[820px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted [&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-3">
-                <th className="!pl-6">Title</th><th>Priority</th><th>Active Window</th><th>Status</th><th className="!pr-6 text-right">Actions</th>
+                <th className="!pl-6">Banner</th><th>Priority</th><th>Active Window</th><th>Status</th><th className="!pr-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -95,8 +124,16 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
                 return (
                   <tr key={p.id} className="border-b border-line-soft align-middle last:border-0 hover:bg-canvas/60 transition-colors [&>td]:px-3 [&>td]:py-3.5">
                     <td className="!pl-6">
-                      <div className="font-bold">{p.title || "Untitled banner"}</div>
-                      {p.subtitle && <div className="text-xs text-muted">{p.subtitle}</div>}
+                      <div className="flex items-center gap-3">
+                        <MediaThumb p={p} />
+                        <div className="min-w-0">
+                          <div className="truncate font-bold">{p.title || "Untitled banner"}</div>
+                          <div className="mt-0.5 flex items-center gap-1.5">
+                            <Badge tone={p.mediaType === "VIDEO" ? "info" : "neutral"}>{p.mediaType === "VIDEO" ? "Video" : "Image"}</Badge>
+                            {p.subtitle && <span className="truncate text-xs text-muted">{p.subtitle}</span>}
+                          </div>
+                        </div>
+                      </div>
                     </td>
                     <td className="num font-mono text-xs">{p.priority}</td>
                     <td className="whitespace-nowrap font-mono text-xs text-muted">{p.startDate || "—"} → {p.endDate || "—"}</td>
@@ -105,7 +142,7 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
                       <div className="flex justify-end gap-1.5">
                         <Button size="sm" variant="outline" onClick={() => handleEdit(p)}>Edit</Button>
                         <Button size="sm" variant={p.isActive ? "outline" : "default"} className={p.isActive ? "" : "bg-accent hover:bg-accent-strong"} disabled={busyId === p.id} onClick={() => toggleEnabled(p)}>{p.isActive ? "Disable" : "Enable"}</Button>
-                        <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => handleDelete(p)} className="text-danger hover:bg-danger-soft">Delete</Button>
+                        <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => handleDelete(p)} onBlur={() => confirmId === p.id && setConfirmId(null)} className={confirmId === p.id ? "border-danger bg-danger text-white hover:bg-danger" : "text-danger hover:bg-danger-soft"}>{confirmId === p.id ? "Confirm delete" : "Delete"}</Button>
                       </div>
                     </td>
                   </tr>

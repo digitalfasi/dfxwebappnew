@@ -8,11 +8,22 @@
 import { apiClient } from "@/_shared/apiClient";
 import { istToday } from "@/_shared/utils";
 
+/** The backend stores the window as timestamps ("2026-09-23T00:00:00Z") but the
+ *  form sends and edits plain dates. Kept as YYYY-MM-DD so a date input can show
+ *  it and promotionStatus compares like with like — "2026-09-23" sorted before
+ *  "2026-09-23T00:00:00Z", which made a banner starting today read Scheduled. */
+function toDateOnly(v) {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : v ?? null;
+}
+
 /** GET /admin/promotions item -> the row/edit shape the Marketing views render. */
 function mapPromotion(raw = {}) {
   return {
     id: raw.id,
     bannerType: raw.banner_type ?? "STANDARD",
+    // Rows saved before video existed carry no media_type — they are images.
+    mediaType: raw.media_type ?? "IMAGE",
+    videoUrl: raw.video_url ?? "",
     title: raw.title ?? "",
     subtitle: raw.subtitle ?? "",
     description: raw.description ?? "",
@@ -23,8 +34,8 @@ function mapPromotion(raw = {}) {
     textColor: raw.text_color ?? "",
     priority: raw.priority ?? 1,
     isActive: raw.is_active ?? false,
-    startDate: raw.start_date ?? null,
-    endDate: raw.end_date ?? null,
+    startDate: toDateOnly(raw.start_date),
+    endDate: toDateOnly(raw.end_date),
     createdAt: raw.created_at ?? null,
     updatedAt: raw.updated_at ?? null,
   };
@@ -35,6 +46,7 @@ function mapPromotion(raw = {}) {
 function toBody(data = {}) {
   const b = {};
   if (data.bannerType !== undefined) b.banner_type = data.bannerType;
+  if (data.mediaType !== undefined) b.media_type = data.mediaType;
   if (data.title !== undefined) b.title = data.title;
   if (data.subtitle !== undefined) b.subtitle = data.subtitle;
   if (data.description !== undefined) b.description = data.description;
@@ -76,6 +88,22 @@ export const promotionService = {
     fd.append("file", file);
     const res = await apiClient.post(`/admin/promotions/${id}/image`, fd, { auth: true });
     return mapPromotion(res.data?.promotion ?? {});
+  },
+
+  /** POST /api/v1/admin/promotions/{id}/video — MP4 for a VIDEO banner, with
+   *  upload progress (0–100). The backend verifies the file and may rewrite it
+   *  for fast start; `video` in the result reports what it found. */
+  async uploadPromotionVideo(id, file, { onProgress, signal } = {}) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await apiClient.upload(`/admin/promotions/${id}/video`, fd, {
+      onProgress,
+      signal,
+      // 20 MB on a slow shop connection can take minutes; the default 45 s
+      // request timeout would cut off an upload that is still progressing.
+      timeoutMs: 10 * 60 * 1000,
+    });
+    return { promotion: mapPromotion(res.data?.promotion ?? {}), video: res.data?.video ?? null };
   },
 
   /** DELETE /api/v1/admin/promotions/{id} — permanent delete. */

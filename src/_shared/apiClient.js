@@ -442,6 +442,80 @@ export async function openInNewTab(path) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+/**
+ * Authenticated multipart upload that reports progress. fetch() cannot observe
+ * upload bytes, so this uses XMLHttpRequest — for files large enough that the
+ * admin needs to see it moving (banner videos). Same session rules as
+ * apiRequest: one refresh on 401, then the session is treated as expired.
+ */
+function xhrUpload(path, formData, token, { onProgress, timeoutMs, signal }) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE_URL}${path}`);
+    xhr.setRequestHeader("Accept", "application/json");
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    if (timeoutMs) xhr.timeout = timeoutMs;
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)));
+      };
+    }
+    const onAbort = () => xhr.abort();
+    if (signal) {
+      if (signal.aborted) { reject(new DOMException("Aborted", "AbortError")); return; }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+    const done = () => signal?.removeEventListener("abort", onAbort);
+    xhr.onload = () => {
+      done();
+      let payload = null;
+      try { payload = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { payload = null; }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(payload ?? { success: true, message: "", data: null });
+      } else if (xhr.status === 413) {
+        reject(new ApiError("That file is larger than the server accepts.", 413, []));
+      } else {
+        reject(new ApiError(extractErrorMessage(payload, xhr.status), xhr.status,
+          Array.isArray(payload?.errors) ? payload.errors : []));
+      }
+    };
+    xhr.onerror = () => {
+      done();
+      reject(new ApiError(
+        `Upload interrupted — the connection to ${API_BASE_URL} was lost. Check your internet and try again.`,
+        0, [{ code: "NETWORK_ERROR", message: "Upload failed" }]));
+    };
+    xhr.ontimeout = () => {
+      done();
+      reject(new ApiError("The upload took too long and was stopped. Try a smaller file or a faster connection.",
+        0, [{ code: "TIMEOUT", message: "Upload timed out" }]));
+    };
+    xhr.onabort = () => { done(); reject(new DOMException("Aborted", "AbortError")); };
+    xhr.send(formData);
+  });
+}
+
+export async function uploadWithProgress(path, formData, options = {}) {
+  const token = tokenStore.getAccessToken();
+  if (!token) {
+    notifySessionExpired();
+    throw new ApiError("Your session has expired. Please sign in again.", 401);
+  }
+  try {
+    return await xhrUpload(path, formData, token, options);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) throw error;
+    const newToken = await refreshAccessToken();
+    if (!newToken) {
+      tokenStore.clear();
+      notifySessionExpired();
+      throw new ApiError("Your session has expired. Please sign in again.", 401);
+    }
+    options.onProgress?.(0);
+    return xhrUpload(path, formData, newToken, options);
+  }
+}
+
 export const apiClient = {
   get: (path, options = {}) => apiRequest(path, { ...options, method: "GET" }),
   post: (path, body, options = {}) => apiRequest(path, { ...options, method: "POST", body }),
@@ -449,5 +523,6 @@ export const apiClient = {
   patch: (path, body, options = {}) => apiRequest(path, { ...options, method: "PATCH", body }),
   delete: (path, options = {}) => apiRequest(path, { ...options, method: "DELETE" }),
   download: downloadFile,
+  upload: uploadWithProgress,
   openInNewTab,
 };
