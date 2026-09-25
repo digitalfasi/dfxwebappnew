@@ -392,13 +392,13 @@ export default function NewSale() {
       setProduct(q);
       setProductCode(q.productCode);
       // The piece decides the mode; the cashier does not. HUID = ONLINE (rate
-      // locked, quoted tax-inclusive); Item Code = OFFLINE (rate editable). The
+      // locked at the published rate before tax); Item Code = OFFLINE (rate
+      // editable). The
       // backend refuses an edited rate on a HUID piece as well.
       const mode = (q.huid || "").trim() ? "ONLINE" : "OFFLINE";
       const published = q.goldRateApplied != null ? q.goldRateApplied : null;
-      const factor = 1 + (Number(q.taxRatePercent) || 0) / 100;
       setSaleMode(mode);
-      setRate(published == null ? "" : String(round2(mode === "ONLINE" ? published * factor : published)));
+      setRate(published == null ? "" : String(round2(published)));
       setPublishedRate(published);
       // The list percentage for THIS piece: the shop's base plus its running
       // cost plus the tunch of the lot this piece was received on. It was a
@@ -464,10 +464,8 @@ export default function NewSale() {
           // discount line would take it off the bill twice.
           discountAmount: 0,
           gstApplied: gst,
-          // ONLINE quotes the metal tax-inclusive, and that rate has to REACH
-          // the backend or the mode is decoration: the field read Rs 14,548.75
-          // while the bill still charged 14 g x Rs 14,125. Both modes send the
-          // rate they display; only OFFLINE lets it be edited.
+          // Both modes send the rate they display (ex-tax published rate for
+          // ONLINE); only OFFLINE lets it be edited.
           appliedRatePerGram: rate !== "" && !rateOutOfBand ? num(rate) : undefined,
           makingChargeValue: makingVal !== "" ? num(makingVal) : undefined,
           makingChargeType: product?.makingChargeType || undefined,
@@ -652,9 +650,8 @@ export default function NewSale() {
       // replays the sale's own discount, so it survives the carve-out.
       discountAmount: 0,   // in the making charge already - see the quote effect
       gstApplied: gst,
-      // Both modes, exactly as the quote sends it. Gating this on OFFLINE saved
-      // every Online bill at the ex-tax rate while the screen had quoted the
-      // tax-inclusive one - the customer was shown one price and billed another.
+      // Both modes, exactly as the quote sends it, so the bill charges the rate
+      // the screen showed.
       appliedRatePerGram: rate !== "" && !rateOutOfBand ? num(rate) : undefined,
       makingChargeValue: makingVal !== "" ? num(makingVal) : undefined,
       makingChargeType: product.makingChargeType || undefined,
@@ -671,26 +668,13 @@ export default function NewSale() {
     };
   };
 
-  // The metal rate the two modes quote. This is the METAL rate only - the
-  // product's own tax is a separate line on the bill and is untouched by this.
-  //
-  //   OFFLINE  the published rate, ex-tax. What the shop pays for metal.
-  //   ONLINE   the same rate tax-inclusive, because an online price is quoted
-  //            all-in. 22K published at Rs 14,125 quotes at Rs 14,549.
-  //
-  // Stated plainly because it is easy to misread: the bill's own GST line is
-  // NOT removed in Online. The two are different taxes on the screen - one is
-  // baked into the quoted metal rate, the other is the invoice's tax on the
-  // product - and the brief is explicit that they are not to be mixed.
-  const onlineRateFactor = 1 + (Number(product?.taxRatePercent) || 0) / 100;
-  // Anchored on the PUBLISHED rate captured by the first lookup, never on the
-  // quote's goldRateApplied. Now that ONLINE actually sends its rate, the quote
-  // echoes the tax-inclusive figure back - and taxing that again on the next
-  // mode switch would compound 3% on 3%.
+  // The metal rate both modes quote: the published rate for the purity, BEFORE
+  // tax (owner decision 2026-09-25). Online locks it; Offline lets it be edited.
+  // The bill's own GST line is separate and applies in both modes.
   const modeRate = (m) => {
     const base = publishedRate;
     if (base == null) return "";
-    return String(round2(m === "ONLINE" ? base * onlineRateFactor : base));
+    return String(round2(base));
   };
 
   // Pick the mode. It changes the metal rate and nothing else; every other
@@ -1581,7 +1565,7 @@ export default function NewSale() {
                     <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
                       <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
-                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Published ${product.purity || ""} rate ${publishedRate != null ? money(publishedRate) : "—"} + ${product.taxRatePercent || 0}% = ${money(round2((publishedRate || 0) * onlineRateFactor))} — Online quotes the metal rate tax-inclusive, and is locked. The bill's own GST line is separate.` : `Editable. Default ${publishedRate != null ? money(publishedRate) : "—"} — the published ${product.purity || ""} rate, before tax.`}</span>
+                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Locked at the published ${product.purity || ""} rate ${publishedRate != null ? money(publishedRate) : "—"}, before tax. GST is added on the bill.` : `Editable. Default ${publishedRate != null ? money(publishedRate) : "—"} — the published ${product.purity || ""} rate, before tax.`}</span>
                       {/* The backend refuses a rate more than 50% either side of
                           the published one — a tamper/typo net, not a haggling
                           limit. Stating the range here means the counter never

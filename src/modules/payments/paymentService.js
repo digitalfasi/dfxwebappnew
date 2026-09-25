@@ -25,6 +25,7 @@ function mapRow(raw) {
     id: raw.payment_reference,
     paymentId: raw.id,
     enrollment: raw.enrollment_number,
+    enrollmentId: raw.enrollment_id,
     customer: raw.customer_name,
     // Mobile is not on the payment payload; left blank, not faked.
     mobile: "",

@@ -21,7 +21,10 @@ import { isWalletScheme, isFreeAmountScheme, NOT_APPLICABLE, SCHEME_TYPE, DIGI_M
 // field, so enrollmentService derives overdueDays/overdueAmount from status +
 // next_due_date; this filter reads that. (It previously read raw API fields that
 // never existed, so the filter always came back empty.)
-const FILTERS = ["All", "Active", "Overdue", "Completed", "Cancelled"];
+// Closing a plan writes CLOSED (older records may say CANCELLED); both land
+// under "Closed". A filter named "Cancelled" matched nothing a close produced.
+const FILTERS = ["All", "Active", "Overdue", "Completed", "Closed", "Redeemed"];
+const isClosedStatus = (s) => s === "Closed" || s === "Cancelled";
 const ROWS_PER_PAGE = 20;
 const isOverdue = (r) => (r.overdueDays || 0) > 0;
 const TABS = ["Enrollment Details", "Passbook & Payments", "Remarks"];
@@ -105,7 +108,7 @@ function periodRange(period, custom) {
 }
 
 function statusTone(s) {
-  return s === "Active" ? "info" : s === "Completed" ? "success" : "danger";
+  return s === "Active" ? "info" : s === "Completed" || s === "Redeemed" ? "success" : "danger";
 }
 // These wrap the shared formatters rather than re-implementing them: local
 // copies here printed whole rupees and 3 fixed decimals, so the same figure
@@ -332,10 +335,11 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
       if (!(p.status === "SUCCESS" || p.status === "COMPLETED")) continue;
       const day = istDay(p.ts);
       if (range && (!day || day < range.start || day > range.end)) continue;
-      const cur = m.get(p.enrollment) || { amount: 0, count: 0 };
+      const key = p.enrollmentId || p.enrollment;
+      const cur = m.get(key) || { amount: 0, count: 0 };
       cur.amount += Number(p.amount) || 0;
       cur.count += 1;
-      m.set(p.enrollment, cur);
+      m.set(key, cur);
     }
     return m;
   }, [ledger, range?.start, range?.end]);
@@ -346,7 +350,8 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
     const m = new Map();
     for (const p of ledger) {
       if (!(p.status === "SUCCESS" || p.status === "COMPLETED")) continue;
-      m.set(p.enrollment, (m.get(p.enrollment) || 0) + 1);
+      const key = p.enrollmentId || p.enrollment;
+      m.set(key, (m.get(key) || 0) + 1);
     }
     return m;
   }, [ledger]);
@@ -365,17 +370,17 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
   // collections the moment they were made against last month's enrollments.
   const inWindow = useMemo(() => {
     if (!windowed) return rows;
-    return rows.filter((r) => joinedInWindow(r) || activity.has(r.enrollment));
+    return rows.filter((r) => joinedInWindow(r) || activity.has(r.id));
   }, [rows, windowed, joinedInWindow, activity]);
 
   const filtered = useMemo(() => {
     if (filter === "All") return inWindow;
     if (filter === "Overdue") return inWindow.filter(isOverdue);
+    if (filter === "Closed") return inWindow.filter((r) => isClosedStatus(r.status));
     return inWindow.filter((r) => r.status === filter);
   }, [inWindow, filter]);
 
-  // Text search over the already-loaded rows — customer name or enrollment
-  // number only. A pure display filter for the table; it never touches KPIs
+  // Text search over the already-loaded rows — customer or scheme name. A pure display filter for the table; it never touches KPIs
   // (which stay backend-summary/status driven) and computes no financial value.
   const searched = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -383,7 +388,7 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
     return filtered.filter(
       (r) =>
         (r.customer || "").toLowerCase().includes(q) ||
-        (r.enrollment || "").toLowerCase().includes(q)
+        (r.scheme || "").toLowerCase().includes(q)
     );
   }, [filtered, query]);
 
@@ -405,7 +410,7 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
   // slice, since every overdue enrollment is by definition still active.
   // (The KPI money figure is amount still due to maturity, which is why it is
   // labelled Outstanding and not Overdue.)
-  const FILTER_TO_SLICE = { All: "all", Active: "active", Overdue: "active", Completed: "completed", Cancelled: "cancelled" };
+  const FILTER_TO_SLICE = { All: "all", Active: "active", Overdue: "active", Completed: "completed", Closed: "cancelled" };
   const kpis = summary?.[FILTER_TO_SLICE[filter]] ?? null;
   // The backend's summary slices carry no overdue total - only a per-enrollment
   // overdue_amount, which it computes from the oldest unpaid due date. Summing
@@ -444,14 +449,15 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
     setConfirmClose(false);
     setDetailLoading(true);
     try {
-      const [bal, pb, pays] = await Promise.all([
+      // Payments come from the ledger the list already loaded, not a second
+      // fetch of every scheme payment the shop has.
+      const [bal, pb] = await Promise.all([
         enrollmentService.getBalance(r.id).catch(() => null),
         passbookService.getAdminPassbook(r.id).catch(() => null),
-        paymentService.getSchemePayments().catch(() => []),
       ]);
       setBalance(bal);
       setPassbook(pb);
-      setPayments((pays || []).filter((p) => p.enrollment === r.enrollment));
+      setPayments(ledger.filter((p) => (p.enrollmentId ? p.enrollmentId === r.id : p.enrollment === r.enrollment)));
     } finally {
       setDetailLoading(false);
     }
@@ -503,7 +509,7 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
       await enrollmentService.updateRemarks(manage.id, remark.trim() || null);
       setRows((prev) => prev.map((x) => (x.id === manage.id ? { ...x, remarks: remark.trim() } : x)));
       setManage((prev) => (prev ? { ...prev, remarks: remark.trim() } : prev));
-      toast(`Remarks saved — ${manage.enrollment}`);
+      toast(`Remarks saved — ${manage.customer}`);
     } catch (err) {
       toast(err?.message || "Could not save remarks");
     } finally {
@@ -527,7 +533,7 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
     setClosingScheme(true);
     try {
       await enrollmentService.closeEnrollment(manage.id, reason);
-      const nm = manage.enrollment;
+      const nm = `${manage.customer} · ${manage.scheme}`;
       setConfirmClose(false);
       setCloseReason("");
       closeManage();
@@ -617,7 +623,7 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
       <div data-motion="toolbar" className="mb-4 flex flex-wrap items-center gap-2">
         <SearchInput
           className="w-full max-w-xs sm:max-w-sm sm:flex-1"
-          placeholder="Search customers or enrollment..."
+          placeholder="Search customer or scheme..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search enrollments"
@@ -638,15 +644,15 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
 
       <Card data-motion="reveal" className="overflow-hidden">
         <CardContent className="overflow-x-auto px-0 pb-0">
-          <table className="w-full min-w-[1160px] border-collapse text-sm">
+          <table className="w-full min-w-[1040px] border-collapse text-sm">
             <thead>
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Enrollment #</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3">Plan</th><th className="px-4 py-3 text-right">{windowed ? `Paid ${windowPfx.replace("'s", "")}` : "Paid"}</th><th className="px-4 py-3 text-right">Overdue</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
+                <th className="px-6 py-3">Customer</th><th className="px-4 py-3">Scheme</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Maturity</th><th className="px-4 py-3">Plan</th><th className="px-4 py-3 text-right">{windowed ? `Paid ${windowPfx.replace("'s", "")}` : "Paid"}</th><th className="px-4 py-3 text-right">Overdue</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right pr-6">Action</th>
               </tr>
             </thead>
             <tbody>
               {paged.map((r) => (
-                <tr key={r.enrollment} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
+                <tr key={r.id} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
                   {/* In a window the list mixes plans STARTED in it with older
                       plans merely paid into, so the ones the "New Enrollments"
                       card counted are marked — otherwise the count and the
@@ -660,7 +666,6 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
                     </div>
                   </td>
                   <td className="px-4 py-3.5 font-medium">{r.scheme}</td>
-                  <td className="px-4 py-3.5 font-mono text-xs font-semibold whitespace-nowrap">{r.enrollment}</td>
                   <td className="px-4 py-3.5 text-muted whitespace-nowrap">{fmtDate(r.joined)}</td>
                   {/* A wallet matures on a WEIGHT, not a date. The date the
                       backend sends for one is joined + 12 months, inherited
@@ -681,7 +686,7 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
                       terms: an instalment for Monthly, the locked purity for
                       Fixed Gold Rate, the deposit range for a wallet. */}
                   <td className="px-4 py-3.5 whitespace-nowrap">
-                    <PlanCell row={r} deposits={depositCount.get(r.enrollment) || 0} />
+                    <PlanCell row={r} deposits={depositCount.get(r.id) || 0} />
                   </td>
                   {/* A wallet has no instalments to count, so "0/12" was a lie
                       told beside a funded enrollment: Raiyan Abbas had paid
@@ -707,14 +712,14 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
                     <span className="inline-flex flex-col items-end leading-tight">
                       {windowed ? (
                         <>
-                          <span className={`font-bold ${activity.get(r.enrollment)?.amount ? "text-emerald-600" : "text-muted"}`}>
-                            {money(activity.get(r.enrollment)?.amount ?? 0)}
+                          <span className={`font-bold ${activity.get(r.id)?.amount ? "text-emerald-600" : "text-muted"}`}>
+                            {money(activity.get(r.id)?.amount ?? 0)}
                           </span>
                           {/* Only when the window figure is NOT the whole
                               story. When every payment a customer has made
                               falls inside the window the two are the same
                               number, and printing it twice said nothing. */}
-                          {lifetimeDiffers(r, activity.get(r.enrollment)) && (
+                          {lifetimeDiffers(r, activity.get(r.id)) && (
                             <span className="text-[10px] font-semibold text-muted">of {money(r.totalPaid)} lifetime</span>
                           )}
                         </>
@@ -743,13 +748,13 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
                 </tr>
               ))}
               {loading && (
-                <tr><td colSpan={10} className="px-6 py-14 text-center text-sm font-bold text-muted">Loading…</td></tr>
+                <tr><td colSpan={9} className="px-6 py-14 text-center text-sm font-bold text-muted">Loading…</td></tr>
               )}
               {!loading && loadError && (
-                <tr><td colSpan={10} className="px-6 py-14 text-center"><div className="font-bold text-danger">Couldn’t load enrollments</div><p className="mt-1 text-sm text-muted">{loadError}</p><Button size="sm" variant="outline" className="mt-3" onClick={loadRows}>Retry</Button></td></tr>
+                <tr><td colSpan={9} className="px-6 py-14 text-center"><div className="font-bold text-danger">Couldn’t load enrollments</div><p className="mt-1 text-sm text-muted">{loadError}</p><Button size="sm" variant="outline" className="mt-3" onClick={loadRows}>Retry</Button></td></tr>
               )}
               {!loading && !loadError && searched.length === 0 && (
-                <tr><td colSpan={10} className="px-6 py-14 text-center"><div className="font-bold">No enrollments found</div><p className="mt-1 text-sm text-muted">Nothing matches this {query.trim() ? "search" : "filter"}.</p></td></tr>
+                <tr><td colSpan={9} className="px-6 py-14 text-center"><div className="font-bold">No enrollments found</div><p className="mt-1 text-sm text-muted">Nothing matches this {query.trim() ? "search" : "filter"}.</p></td></tr>
               )}
             </tbody>
           </table>
@@ -779,7 +784,7 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
             <div className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
               <div>
                 <h3 className="text-lg font-extrabold tracking-tight">Manage Scheme</h3>
-                <p className="mt-0.5 text-xs text-muted">{manage.customer} · {manage.scheme} · <span className="font-mono">{manage.enrollment}</span></p>
+                <p className="mt-0.5 text-xs text-muted">{manage.customer} · {manage.scheme}</p>
               </div>
               <button onClick={closeManage} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
             </div>
@@ -799,7 +804,6 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
                     <tbody>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Customer</td><td className="px-4 py-2.5 font-bold">{manage.customer}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Scheme</td><td className="px-4 py-2.5 font-medium">{manage.scheme}</td></tr>
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Enrollment No.</td><td className="px-4 py-2.5 font-mono text-xs font-semibold">{manage.enrollment}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Status</td><td className="px-4 py-2.5"><Badge tone={statusTone(manage.status)} dot>{manage.status}</Badge></td></tr>
                       {/* FDG-002. A Digi Gold wallet takes deposits of any size
                           whenever the customer likes, so there is no instalment
@@ -999,7 +1003,7 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
               <div className="absolute inset-0 z-[70] flex items-center justify-center bg-ink/40 p-4">
                 <div className="w-full max-w-[380px] rounded-2xl border border-line bg-white p-5 shadow-2xl">
                   <h4 className="text-base font-extrabold">Close scheme?</h4>
-                  <p className="mt-1.5 text-sm text-muted"><span className="font-mono">{manage.enrollment}</span> — contributions stop. Paid balance stays redeemable. Cannot be reopened.</p>
+                  <p className="mt-1.5 text-sm text-muted">{manage.customer} · {manage.scheme} — contributions stop. Paid balance stays redeemable. Cannot be reopened.</p>
                   <div className="mt-4 flex justify-end gap-2">
                     <Button size="sm" variant="outline" disabled={closingScheme} onClick={() => setConfirmClose(false)}>Cancel</Button>
                     <Button size="sm" disabled={closingScheme} onClick={doClose} className="border-danger bg-danger text-white hover:bg-danger">{closingScheme ? "Closing…" : "Yes, close"}</Button>

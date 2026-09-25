@@ -13,12 +13,12 @@ function mapProduct(raw) {
     name: raw.name ?? "",
     description: raw.description ?? "",
     category: raw.category ?? "",
-    // Backend product has no sub-category field; UI shows neutral (empty).
-    subCategory: "",
+    subCategory: raw.sub_category ?? "",
     sku: raw.sku ?? "",
     purity: raw.purity ?? "",
     weight: raw.weight_grams ?? "",
-    price: raw.price,
+    price: raw.price != null ? Number(raw.price) : null,
+    isActive: !!raw.is_active,
     // Catalogue product carries no stock linkage in this contract; neutral text.
     stock: "No stock linked",
     status: raw.is_active ? "Active" : "Inactive",
@@ -38,6 +38,7 @@ function toCreatePayload(data) {
     name: data.name,
     ...(data.description ? { description: data.description } : {}),
     ...(data.category ? { category: data.category } : {}),
+    ...(data.subCategory ? { sub_category: data.subCategory } : {}),
     ...(data.sku ? { sku: data.sku } : {}),
     ...(data.purity ? { purity: data.purity } : {}),
     ...(data.price != null ? { price: data.price } : {}),
@@ -60,6 +61,7 @@ function toUpdatePayload(data) {
   if (data.name != null) p.name = data.name;
   if (data.description != null) p.description = data.description;
   if (data.category != null) p.category = data.category;
+  if (data.subCategory != null) p.sub_category = data.subCategory;
   if (data.sku != null) p.sku = data.sku;
   if (data.purity != null) p.purity = data.purity;
   if (data.price != null) p.price = data.price;
@@ -113,6 +115,11 @@ export const catalogueService = {
     fd.append("file", file);
     const res = await apiClient.post(`/catalogue/products/${productId}/images`, fd, { auth: true });
     return res.data?.image;
+  },
+
+  /** PUT /api/v1/catalogue/products/{id}/images/{imageId}/primary — make this the shown image. */
+  async setPrimaryImage(productId, imageId) {
+    await apiClient.put(`/catalogue/products/${productId}/images/${imageId}/primary`, undefined, { auth: true });
   },
 
   /** DELETE /api/v1/catalogue/products/{id} — soft delete (deactivate). */

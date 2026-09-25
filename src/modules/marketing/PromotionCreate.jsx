@@ -146,8 +146,7 @@ export default function PromotionCreate({ onNavigate, editingPromo, setEditingPr
     const e = {};
     if (!form.title.trim()) e.title = "Give the banner a title.";
     if (!form.src) e.media = isVideo ? "Choose a video." : "Choose an image.";
-    if (!form.startDate || !form.endDate) e.dates = "Select start and end date.";
-    else if (form.endDate < form.startDate) e.dates = "End date must be on or after start date.";
+    if (form.startDate && form.endDate && form.endDate < form.startDate) e.dates = "End date must be on or after start date.";
     setErrors(e);
     return !Object.values(e).some(Boolean);
   };
@@ -344,9 +343,10 @@ export default function PromotionCreate({ onNavigate, editingPromo, setEditingPr
 
           <div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5"><span className="text-xs font-bold">Start date *</span><Input type="date" value={form.startDate} aria-invalid={!!errors.dates} onChange={(e) => { set({ startDate: e.target.value }); clearError("dates"); }} /></label>
-              <label className="grid gap-1.5"><span className="text-xs font-bold">End date *</span><Input type="date" value={form.endDate} aria-invalid={!!errors.dates} onChange={(e) => { set({ endDate: e.target.value }); clearError("dates"); }} /></label>
+              <label className="grid gap-1.5"><span className="text-xs font-bold">Start date <span className="font-semibold text-muted">(optional)</span></span><Input type="date" value={form.startDate} aria-invalid={!!errors.dates} onChange={(e) => { set({ startDate: e.target.value }); clearError("dates"); }} /></label>
+              <label className="grid gap-1.5"><span className="text-xs font-bold">End date <span className="font-semibold text-muted">(optional)</span></span><Input type="date" value={form.endDate} aria-invalid={!!errors.dates} onChange={(e) => { set({ endDate: e.target.value }); clearError("dates"); }} /></label>
             </div>
+            {!errors.dates && <p className="mt-1.5 text-xs text-muted">Leave blank to show the banner from today with no end date.</p>}
             <FieldError>{errors.dates}</FieldError>
           </div>
 

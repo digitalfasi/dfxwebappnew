@@ -50,11 +50,22 @@ const PAY_METHOD_OPTS = [
 // seeded from today's published rate by newBulkRow below — editable, because a
 // vendor invoice can be struck at a rate agreed earlier in the day.
 const DEFAULT_TUNCH_PERCENT = "4";
+// The admin types the product's WHOLE price (no separate stone-price box). The
+// part above the gold value + other charges is its value addition (stones,
+// work), carried to the backend as the stone charge. null (never edited) or
+// blank = the auto figure; the box shows that figure as a real, editable value.
+// `below` is true when the typed price is under the auto figure, which the
+// purchase refuses.
+function amountOver(amount, auto) {
+  if (amount === "" || amount == null) return { extra: 0, below: false };
+  const typed = Number(amount) || 0;
+  return { extra: Math.max(0, typed - auto), below: typed < auto - 0.005 };
+}
 // A row states what the SLIP states: gross and stone weight. Net is derived
 // (rowWeights) and never typed, so the two weights can never disagree with a
 // third field. `stone` is the stone CHARGE in rupees and `other` the rest of
 // the V/A card - both money, never metal.
-const emptyBulkRow = () => ({ ident: "", itemCode: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", stoneWt: "", rate: "", tunch: DEFAULT_TUNCH_PERCENT, stone: "", other: "" });
+const emptyBulkRow = () => ({ ident: "", itemCode: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", stoneWt: "", rate: "", tunch: DEFAULT_TUNCH_PERCENT, other: "", amount: null });
 
 // Real inventory loads from the DFX backend via billingService. No mock items.
 
@@ -67,7 +78,7 @@ const EMPTY_PURCHASE = {
   // shown, so an override is never silent.
   purity: "22K", gross: "", stoneWt: "", netOverride: "", netOverridden: false,
   vendor: "", deliveredBy: "", purchaseDate: "", invoice: "", referenceType: "INVOICE", rate: "",
-  tunch: "4", stone: "", other: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
+  tunch: "4", other: "", amount: null, paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
 };
 
 // The four document types a purchase can arrive on. A Delivery Challan is not a
@@ -429,17 +440,22 @@ export default function Inventory({ onNavigate }) {
     // Stones are not gold: no purity conversion, no Tunch. A 45 g stone-set
     // piece with 5 g of stones is 40 g of gold (that is the gross/net split)
     // plus a flat rupee cost for the stones themselves.
-    const stone = Number(addForm.stone) || 0;
     const other = Number(addForm.other) || 0;
-    // The V/A card total. Money, never metal: it enters no gram figure, is
-    // never purity-converted, and carries no Tunch.
+    // Rounded per leg exactly as the backend rounds its payable, so a typed
+    // whole price lands on the paisa instead of one paisa off.
+    const r2 = (x) => Math.round(x * 100) / 100;
+    const goldValue = r2(base) + r2(tunchAmt);
+    const auto = goldValue + other;
+    // `stone` is derived: whatever the typed whole price is above gold + other.
+    // The V/A total is everything non-gold. Money, never metal.
+    const { extra: stone, below } = amountOver(addForm.amount, auto);
     const valueAddition = stone + other;
     return {
-      base, rate24, fineGrams, tunchGrams, stone, other, valueAddition,
+      base, rate24, fineGrams, tunchGrams, stone, other, valueAddition, goldValue, auto, below,
       payableGrams: fineGrams + tunchGrams,
-      tunchAmt, final: base + tunchAmt + valueAddition,
+      tunchAmt, final: goldValue + valueAddition,
     };
-  }, [addWeights.net, addForm.rate, addForm.purity, addForm.tunch, addForm.stone, addForm.other]);
+  }, [addWeights.net, addForm.rate, addForm.purity, addForm.tunch, addForm.other, addForm.amount]);
 
 
   const openDefaults = async () => {
@@ -471,6 +487,7 @@ export default function Inventory({ onNavigate }) {
     if (addWeights.stone > addWeights.gross) { toast("Stone weight cannot exceed gross"); return; }
     if (!(addWeights.net > 0)) { toast("Net gold weight must be greater than zero"); return; }
     if (!(Number(f.rate) > 0)) { toast("Purchase Rate/g is required"); return; }
+    if (addAmounts.below) { toast(`Purchase Amount cannot be less than the gold value + other charges (${money(addAmounts.auto)})`); return; }
     if (f.paymentMode === "PARTIAL" && !(Number(f.paidNow) > 0)) { toast("Enter the amount paid now"); return; }
 
     setSaving(true);
@@ -507,7 +524,7 @@ export default function Inventory({ onNavigate }) {
         purchaseCost: Number(addAmounts.final.toFixed(2)),
         // Carried onto the item so the sell side bills the stones back instead
         // of the store absorbing their cost.
-        stoneChargeAmount: f.stone !== "" ? Number(f.stone) : 0,
+        stoneChargeAmount: Number(addAmounts.stone.toFixed(2)),
         // V/A "Other" is NOT carried onto the item: it is a purchase cost on the
         // vendor payable only (below), exactly as Bulk Purchase does. Sending it
         // here would add it to the customer's bill as "Other Charges".
@@ -535,7 +552,7 @@ export default function Inventory({ onNavigate }) {
           ratePerGram: Number(f.rate),
           purity: f.purity,
           vendorChargePercent: f.tunch !== "" ? Number(f.tunch) : undefined,
-          stoneChargeAmount: f.stone !== "" ? Number(f.stone) : 0,
+          stoneChargeAmount: Number(addAmounts.stone.toFixed(2)),
           otherChargesAmount: f.other !== "" ? Number(f.other) : 0,
           inventoryItemId: created.id,
           paymentMode: f.paymentMode,
@@ -630,6 +647,15 @@ export default function Inventory({ onNavigate }) {
   // had a net weight and purity.
   const rowTunchPct = (r) =>
     bulkType === "JEWELLERY" && r.tunch !== "" && r.tunch != null ? Number(r.tunch) || 0 : 0;
+  // A row's auto price (gold + Tunch + other) and the value addition in the
+  // whole price the admin typed over it. Raw gold has neither.
+  const rowAmounts = (r) => {
+    const base = bulkRowBase(r);
+    const other = bulkType === "JEWELLERY" ? Number(r.other) || 0 : 0;
+    const r2 = (x) => Math.round(x * 100) / 100; // per leg, as the backend rounds
+    const auto = r2(base) + r2(base * rowTunchPct(r) / 100) + other;
+    return { auto, ...(bulkType === "JEWELLERY" ? amountOver(r.amount, auto) : { extra: 0, below: false }) };
+  };
 
   // Purity-wise settlement. Every figure here mirrors what the backend
   // derives, so the preview and the recorded payable agree to the paisa:
@@ -648,7 +674,7 @@ export default function Inventory({ onNavigate }) {
 
     for (const r of bulkRows) {
       const { gross, net, stone: stoneG } = rowWeights(r);
-      const other = Number(r.other) || 0;
+      const other = bulkType === "JEWELLERY" ? Number(r.other) || 0 : 0;
       const karat = parseInt(r.purity, 10) || 0;
       const rate = Number(r.rate) || 0;
       if (net <= 0 || karat <= 0) continue;
@@ -661,7 +687,7 @@ export default function Inventory({ onNavigate }) {
       // Stones are money, not metal: they never enter a GOLD gram total. Their
       // own weight is tracked separately (rowWeights) so the receipt can state
       // both. `stone` here is the RUPEE charge and is a different thing.
-      const stone = Number(r.stone) || 0;
+      const stone = rowAmounts(r).extra;
 
       if (rate > 0) rates.add(rate);
       otherChargesTotal += other;
@@ -692,7 +718,9 @@ export default function Inventory({ onNavigate }) {
       // non-gold. Money, never metal - it is in no gram figure above.
       valueAdditionTotal: stoneTotal + otherChargesTotal,
       payableGrams: fineTotal + tunchGTotal,
-      finalAmount: baseTotal + tunchAmtTotal + stoneTotal + otherChargesTotal,
+      // Base and Tunch rounded as the backend rounds them (each total to the
+      // paisa), so this equals the recorded payable and the row's Total Cost.
+      finalAmount: Math.round(baseTotal * 100) / 100 + Math.round(tunchAmtTotal * 100) / 100 + stoneTotal + otherChargesTotal,
       // One rate across the receipt is the normal case; a mixed receipt shows
       // the blended rate instead of pretending there was a single one.
       singleRate: rates.size === 1 ? [...rates][0] : null,
@@ -721,6 +749,7 @@ export default function Inventory({ onNavigate }) {
       if ((Number(r.stoneWt) || 0) > Number(r.gross)) { toast("Stone weight cannot exceed gross on any row"); return; }
       if (!(rowWeights(r).net > 0)) { toast("Net gold weight must be greater than zero on every row"); return; }
       if (!(Number(r.rate) > 0)) { toast("24K Cost/g is required on every row"); return; }
+      if (rowAmounts(r).below) { toast(`Total Cost for "${r.name.trim()}" cannot be less than its gold value + other (${money(rowAmounts(r).auto)})`); return; }
     }
     if (h.paymentMode === "PARTIAL" && !(Number(h.paidNow) > 0)) { toast("Enter the amount paid now"); return; }
 
@@ -764,7 +793,7 @@ export default function Inventory({ onNavigate }) {
             stoneWt: rowWeights(r).stone,
             rate: r.rate,
             tunch: r.tunch,
-            stone: r.stone,
+            stone: Number(rowAmounts(r).extra.toFixed(2)),
             other: r.other,
           })),
       };
@@ -1192,11 +1221,11 @@ export default function Inventory({ onNavigate }) {
                   <span className="num text-sm font-extrabold">{money(addAmounts.valueAddition)}</span>
                 </div>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5">
-                    <span className="text-xs font-bold">Stone Charges (₹)</span>
-                    <MoneyInput value={addForm.stone} onValueChange={v=>setAddForm({...addForm, stone:v})} maxDigits={8} placeholder="0" />
-                    <span className="text-[11px] text-muted">Flat cost of the stones in the piece.</span>
-                  </label>
+                  <div className="grid content-start gap-1.5">
+                    <span className="text-xs font-bold">Over gold value</span>
+                    <div className="num flex h-10 items-center rounded-xl border border-line bg-canvas/60 px-3.5 font-mono text-sm tabular-nums">{money(addAmounts.stone)}</div>
+                    <span className="text-[11px] text-muted">Whatever the Final Purchase Amount below is above the gold value — stones, work.</span>
+                  </div>
                   <label className="grid gap-1.5">
                     <span className="text-xs font-bold">Other Charges (₹)</span>
                     <MoneyInput value={addForm.other} onValueChange={v=>setAddForm({...addForm, other:v})} maxDigits={8} placeholder="0" />
@@ -1224,15 +1253,22 @@ export default function Inventory({ onNavigate }) {
                         OTHER Tunch convention - Tunch on the full net weight - and so
                         contradicted the 42.900 g on the same line. */}
                     <span className="num font-mono tabular-nums text-muted">{(Number(addForm.net) || 0) > 0 ? `${(addAmounts.payableGrams / Number(addForm.net) * 100).toFixed(2)}% of net` : "—"}</span></div>
-                  {addAmounts.stone > 0 && (
+                  {addAmounts.valueAddition > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-muted">Stone charge{stoneWeight > 0 ? ` — ${stoneWeight.toFixed(3)} g of stone` : ""} · no Tunch</span>
-                      <span className="num font-mono tabular-nums">₹{addAmounts.stone.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                      <span className="text-muted">Value addition (V/A){stoneWeight > 0 ? ` — ${stoneWeight.toFixed(3)} g of stone` : ""} · no Tunch</span>
+                      <span className="num font-mono tabular-nums">{money(addAmounts.valueAddition)}</span>
                     </div>
                   )}
-                  <div className="mt-1 flex items-center justify-between border-t border-line pt-1.5"><span className="font-bold">Final Purchase Amount</span><span className="num font-mono font-extrabold tabular-nums">₹{addAmounts.final.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
+                  <label className="mt-1 grid gap-1.5 border-t border-line pt-2">
+                    <span className="font-bold">Final Purchase Amount (₹)</span>
+                    <MoneyInput allowDecimal value={addForm.amount ?? (addAmounts.auto > 0 ? addAmounts.auto.toFixed(2) : "")} onValueChange={v=>setAddForm({...addForm, amount:v})} maxDigits={10} placeholder="0" />
+                    <span className={`text-[11px] ${addAmounts.below ? "font-semibold text-danger" : "text-muted"}`}>
+                      {addAmounts.below ? `Cannot be less than the gold value + other charges (${money(addAmounts.auto)}).` : addForm.amount == null ? "Calculated from gold + Tunch + other. Edit it to the product's whole price — anything above the gold value shows as Value Addition." : `Edited. Calculated price is ${money(addAmounts.auto)}.`}
+                      {addForm.amount != null && <button type="button" onClick={()=>setAddForm({...addForm, amount:null})} className="ml-1.5 font-bold text-accent underline">Use calculated</button>}
+                    </span>
+                  </label>
                 </div>
-                <p className="mt-1.5 text-[11px] text-muted">Purchase Cost = (24K equivalent × 24K rate) + Tunch %{addAmounts.stone > 0 ? " + stone charge" : ""} — Tunch is never added to the per-gram rate{addAmounts.stone > 0 ? ", and never to the stones" : ""}. Backend re-derives this authoritatively.</p>
+                <p className="mt-1.5 text-[11px] text-muted">Gold = (24K equivalent × 24K rate) + Tunch % — Tunch is never added to the per-gram rate, and never to the value addition. Backend re-derives this authoritatively.</p>
               </div>
 
               <div className="rounded-xl border border-line bg-canvas/40 p-4 space-y-3">
@@ -1314,7 +1350,7 @@ export default function Inventory({ onNavigate }) {
                   gold and is never priced as gold. Every figure comes from
                   bulkBreakdown, which reads rowWeights, so the cards and the
                   settlement below can never disagree. */}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={`grid gap-3 sm:grid-cols-2 ${bulkType === "JEWELLERY" ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
                 <div className="rounded-xl border border-accent-line bg-accent-soft/25 p-3.5">
                   <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent-strong">Total Gold Weight</div>
                   <div className="num mt-1 text-2xl font-extrabold">{bulkBreakdown.netTotal.toFixed(3)} <span className="text-base font-bold">g</span></div>
@@ -1342,13 +1378,13 @@ export default function Inventory({ onNavigate }) {
                   <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Value Addition (V/A)</div>
                     <div className="num mt-1 text-2xl font-extrabold">{money(bulkBreakdown.valueAdditionTotal)}</div>
-                    <div className="text-xs text-muted">Stones {money(bulkBreakdown.stoneTotal)} · Other {money(bulkBreakdown.otherChargesTotal)}</div>
+                    <div className="text-xs text-muted">Over gold {money(bulkBreakdown.stoneTotal)} · Other {money(bulkBreakdown.otherChargesTotal)}</div>
                   </div>
                 )}
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-line">
-                <table className={`table-fixed ${bulkType === "JEWELLERY" ? "w-[1980px]" : "w-[1520px]"} border-collapse text-sm`}>
+                <table className={`table-fixed ${bulkType === "JEWELLERY" ? "w-[1880px]" : "w-[1520px]"} border-collapse text-sm`}>
                   <thead><tr className="bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                     {/* Jewellery: Item Code (blank = auto, Offline) XOR HUID
                         (Online, replaces the Item Code). Raw gold: serial. */}
@@ -1367,17 +1403,17 @@ export default function Inventory({ onNavigate }) {
                         there is no craftsman's charge on a bar. */}
                     {bulkType === "JEWELLERY" && <th className="py-2 w-[80px]">Tunch %</th>}
                     {/* Jewellery only: bullion is gold and nothing else. */}
-                    {bulkType === "JEWELLERY" && <th className="py-2 w-[120px]">Stone (₹)</th>}
                     {/* The V/A card, per row: the non-gold rupees that are not
                         stones. Money, never metal. */}
                     {bulkType === "JEWELLERY" && <th className="py-2 w-[120px]">Other (₹)</th>}
-                    <th className="py-2 w-[130px] text-right">Total Cost</th>
+                    <th className="py-2 w-[150px] text-right">{bulkType === "JEWELLERY" ? "Total Cost (₹)" : "Total Cost"}</th>
                     <th className="py-2 w-[44px]"></th>
                   </tr></thead>
                   <tbody>
                     {bulkRows.map((r,i)=>{
                       const setCell = (k,v)=>{const c=bulkRows.map((row,ix)=>ix===i?{...row,[k]:v}:row);setBulkRows(c);};
                       const lineTotal = bulkRowBase(r);
+                      const ra = rowAmounts(r);
                       return (
                         <tr key={i} className="border-t border-line-soft align-top">
                           {bulkType === "JEWELLERY" && (
@@ -1415,20 +1451,24 @@ export default function Inventory({ onNavigate }) {
                           {bulkType === "JEWELLERY" && (
                             <td className="px-2 py-2"><DigitsInput value={r.tunch} onValueChange={v=>setCell("tunch",v)} maxDigits={2} className="h-9" /></td>
                           )}
-                          {/* Flat rupees for this row's stones: no purity, no Tunch. */}
-                          {bulkType === "JEWELLERY" && (
-                            <td className="px-2 py-2">
-                              {/* Rupees only. The stone WEIGHT has its own column;
-                                  repeating it here read as a second stone entry. */}
-                              <MoneyInput value={r.stone} onValueChange={v=>setCell("stone",v)} maxDigits={8} placeholder="0" className="h-9" />
-                            </td>
-                          )}
                           {bulkType === "JEWELLERY" && (
                             <td className="px-2 py-2">
                               <MoneyInput value={r.other} onValueChange={v=>setCell("other",v)} maxDigits={8} placeholder="0" className="h-9" />
                             </td>
                           )}
-                          <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(lineTotal + lineTotal * rowTunchPct(r) / 100 + (Number(r.stone) || 0) + (Number(r.other) || 0)) : "—"}</td>
+                          {bulkType === "JEWELLERY" ? (
+                            <td className="px-2 py-2">
+                              {/* The whole price of this piece. Blank = the auto
+                                  figure (placeholder); anything typed above it is
+                                  the row's value addition. */}
+                              <MoneyInput allowDecimal value={r.amount ?? (ra.auto > 0 ? ra.auto.toFixed(2) : "")} onValueChange={v=>setCell("amount",v)} maxDigits={10} placeholder="0" className={`h-9 ${ra.below ? "border-danger" : ""}`} />
+                              {ra.below && <span className="mt-1 block text-[10px] font-semibold text-danger">Below gold value</span>}
+                              {ra.extra > 0 && <span className="mt-1 block text-[10px] font-semibold text-muted">V/A {money(ra.extra)}</span>}
+                              {r.amount != null && <button type="button" onClick={()=>setCell("amount",null)} className="mt-0.5 block text-[10px] font-bold text-accent underline">Use calculated</button>}
+                            </td>
+                          ) : (
+                            <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(ra.auto) : "—"}</td>
+                          )}
                           <td className="px-2 py-2"><Button size="sm" variant="outline" onClick={()=>setBulkRows(bulkRows.length>1 ? bulkRows.filter((_,ix)=>ix!==i) : [emptyBulkRow()])}>×</Button></td>
                         </tr>
                       );
@@ -1476,7 +1516,7 @@ export default function Inventory({ onNavigate }) {
                                 </span>
                               </td>
                               <td className="num py-2 pr-3 text-right font-mono font-bold tabular-nums">{(g.fine + g.tunchG).toFixed(3)} g</td>
-                              <td className="num py-2 text-right font-mono font-bold tabular-nums">{money(g.base + g.tunchAmt + g.stone)}</td>
+                              <td className="num py-2 text-right font-mono font-bold tabular-nums">{money(Math.round(g.base * 100) / 100 + Math.round(g.tunchAmt * 100) / 100 + g.stone)}</td>
                             </tr>
                           );
                         })}
@@ -1512,17 +1552,17 @@ export default function Inventory({ onNavigate }) {
                     {/* Shown as soon as there IS stone in the receipt, even
                         before it is priced - a row carrying 5 g of stone at Rs 0
                         is a figure the buyer needs to see, not a hidden line. */}
-                    {(bulkBreakdown.stoneTotal > 0 || bulkBreakdown.stoneGTotal > 0) && (
+                    {(bulkBreakdown.valueAdditionTotal > 0 || bulkBreakdown.stoneGTotal > 0) && (
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-muted">
-                          + Stone charges (flat, no Tunch)
+                          + Value addition (V/A, no Tunch)
                           {bulkBreakdown.stoneGTotal > 0 && <span className="num"> — {bulkBreakdown.stoneGTotal.toFixed(3)} g of stone</span>}
                         </span>
-                        <span className={`num font-mono font-bold tabular-nums ${bulkBreakdown.stoneTotal > 0 ? "" : "text-muted"}`}>{money(bulkBreakdown.stoneTotal)}</span>
+                        <span className={`num font-mono font-bold tabular-nums ${bulkBreakdown.valueAdditionTotal > 0 ? "" : "text-muted"}`}>{money(bulkBreakdown.valueAdditionTotal)}</span>
                       </div>
                     )}
                     <div className="flex items-center justify-between gap-3 border-t border-accent-line pt-1.5">
-                      <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold{bulkBreakdown.stoneTotal > 0 ? " + stones" : ""}</span>
+                      <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold{bulkBreakdown.valueAdditionTotal > 0 ? " + V/A" : ""}</span>
                       <span className="num font-mono text-base font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount)}</span>
                     </div>
                     {/* The settlement, on the same slip as the payable. One

@@ -16,6 +16,7 @@ const CAT_QUICK = ["Chains", "Bangles", "Necklaces", "Rings", "Pendants", "Earri
 // ("22K – 916") is a display label only.
 const PURITY_PILLS = PURITY_VALUES;
 const OFFER_QUICK = ["15% Off on Making Value", "Zero Making Charges", "BIG SALE", "Festive Offer"];
+const EMPTY_FORM = { name: "", category: "", subCategory: "", price: "", sku: "", purity: "", weight: "", offerDiscount: "", offerLabel: "", tags: [], customTag: "", description: "", image: null, imageFile: null, isActive: true };
 const TAG_QUICK = ["Bestseller", "New Arrival", "Trending", "Exclusive", "Festive", "Ready to Ship"];
 
 export default function CatalogueStudio() {
@@ -33,9 +34,7 @@ export default function CatalogueStudio() {
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [view, setView] = useState("catalogue");
   const [editId, setEditId] = useState(null);
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [quick, setQuick] = useState({ name: "", price: "", purity: "", category: "", details: "", photo: null });
-  const [form, setForm] = useState({ name: "", category: "", price: "", sku: "", purity: "", weight: "", offerDiscount: "", offerLabel: "", tags: [], customTag: "", description: "", image: null });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [preview, setPreview] = useState(null);
 
@@ -53,6 +52,11 @@ export default function CatalogueStudio() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Filter choices come from the products themselves, so every option matches
+  // at least one product (the old hardcoded lists had "Chain" vs "Chains").
+  const categoryOptions = useMemo(() => ["All Categories", ...[...new Set(products.map(p => p.category).filter(Boolean))].sort()], [products]);
+  const subCategoryOptions = useMemo(() => ["All Sub-categories", ...[...new Set(products.map(p => p.subCategory).filter(Boolean))].sort()], [products]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return products.filter(p => {
@@ -65,44 +69,18 @@ export default function CatalogueStudio() {
     });
   }, [products, search, categoryFilter, subCategoryFilter, purityFilter, statusFilter]);
 
-  function handleImage(e, target) {
+  function handleImage(e) {
     const file = e.target.files?.[0];
+    e.target.value = ""; // lets the same file be picked again after a change
     if (!file) return;
     const url = URL.createObjectURL(file);
-    if (target === "quick") setQuick({ ...quick, photo: url, photoFile: file });
-    else { setForm({ ...form, image: url, imageFile: file }); setPreview(url); }
-  }
-
-  async function saveQuick() {
-    if (!quick.name.trim() || !quick.price) { toast("Fill name and price"); return; }
-    if (saving) return;
-    setSaving(true);
-    try {
-      const created = await catalogueService.createProduct({
-        name: quick.name.trim(),
-        category: quick.category || undefined,
-        purity: quick.purity || undefined,
-        price: Number(quick.price),
-        description: quick.details || undefined,
-      });
-      if (quick.photoFile && created?.id) {
-        try { await catalogueService.uploadImage(created.id, quick.photoFile); }
-        catch { toast("Product saved, image upload failed"); }
-      }
-      setQuick({ name: "", price: "", purity: "", category: "", details: "", photo: null, photoFile: null });
-      setQuickOpen(false);
-      await load();
-      toast("Product saved");
-    } catch (err) {
-      toast(err?.message || "Could not save product");
-    } finally {
-      setSaving(false);
-    }
+    setForm(f => ({ ...f, image: url, imageFile: file }));
+    setPreview(url);
   }
 
   function startCreate() {
     setEditId(null);
-    setForm({ name: "", category: "", price: "", sku: "", purity: "", weight: "", offerDiscount: "", offerLabel: "", tags: [], customTag: "", description: "", image: null, imageFile: null });
+    setForm(EMPTY_FORM);
     setPreview(null);
     setErrors({});
     setView("create");
@@ -113,7 +91,7 @@ export default function CatalogueStudio() {
   function openEdit(p) {
     setEditId(p.id);
     setForm({
-      name: p.name || "", category: p.category || "", price: p.price != null ? String(p.price) : "",
+      name: p.name || "", category: p.category || "", subCategory: p.subCategory || "", isActive: p.isActive, price: p.price != null ? String(p.price) : "",
       sku: p.sku || "", purity: p.purity || "", weight: p.weight !== "" && p.weight != null ? String(p.weight) : "",
       // Seeded from the product, not blanked. These used to be hardcoded ""
       // over whatever the product carried.
@@ -147,6 +125,7 @@ export default function CatalogueStudio() {
       const payload = {
         name: form.name.trim(),
         category: form.category || undefined,
+        subCategory: form.subCategory || undefined,
         sku: form.sku || undefined,
         purity: form.purity || undefined,
         price: Number(form.price),
@@ -160,17 +139,22 @@ export default function CatalogueStudio() {
       };
       let target;
       if (editId) {
-        target = await catalogueService.updateProduct(editId, payload);
+        target = await catalogueService.updateProduct(editId, { ...payload, isActive: form.isActive });
       } else {
         target = await catalogueService.createProduct(payload);
       }
       if (form.imageFile && target?.id) {
-        try { await catalogueService.uploadImage(target.id, form.imageFile); }
+        // A new upload is added to the gallery, not swapped in, so it must be
+        // made primary explicitly or the old photo keeps showing.
+        try {
+          const img = await catalogueService.uploadImage(target.id, form.imageFile);
+          if (img?.id) await catalogueService.setPrimaryImage(target.id, img.id);
+        }
         catch { toast(editId ? "Product saved, image upload failed" : "Product created, image upload failed"); }
       }
       const wasEdit = !!editId;
       setEditId(null);
-      setForm({ name: "", category: "", price: "", sku: "", purity: "", weight: "", offerDiscount: "", offerLabel: "", tags: [], customTag: "", description: "", image: null, imageFile: null });
+      setForm(EMPTY_FORM);
       setPreview(null);
       setErrors({});
       setView("catalogue");
@@ -196,12 +180,11 @@ export default function CatalogueStudio() {
           <Card className="p-5">
             <h3 className="font-bold">Product Image</h3>
             <div className="mt-4">
-              {preview ? <img src={preview} alt="preview" className="h-64 w-full rounded-xl object-cover border border-line" /> : <label className="flex h-64 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 text-sm text-muted hover:border-accent"><input type="file" accept="image/*" className="hidden" onChange={e => handleImage(e, "full")} /><span className="font-bold">Upload Image</span><span className="text-xs">Click to select</span></label>}
-              {!preview && null}
-              {preview && <label className="mt-3 inline-flex cursor-pointer rounded-full border border-line bg-white px-4 py-1.5 text-xs font-bold hover:bg-canvas"><input type="file" accept="image/*" className="hidden" onChange={e => handleImage(e, "full")} />Change Image</label>}
+              {preview ? <img src={preview} alt="preview" className="h-64 w-full rounded-xl object-cover border border-line" /> : <label className="flex h-64 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 text-sm text-muted hover:border-accent"><input type="file" accept="image/*" className="hidden" onChange={handleImage} /><span className="font-bold">Upload Image</span><span className="text-xs">Click to select</span></label>}
+              {preview && <label className="mt-3 inline-flex cursor-pointer rounded-full border border-line bg-white px-4 py-1.5 text-xs font-bold hover:bg-canvas"><input type="file" accept="image/*" className="hidden" onChange={handleImage} />Change Image</label>}
             </div>
             <div className="mt-4 rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">
-              Image is added automatically when the product is created<br />Original photo is kept as uploaded<br />No cropping or resizing
+              {editId ? "A new image replaces the one customers see when you save" : "Image is added when the product is saved"}<br />Original photo is kept as uploaded<br />No cropping or resizing
             </div>
           </Card>
 
@@ -211,6 +194,7 @@ export default function CatalogueStudio() {
               <div className="mt-4 grid gap-4">
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name *</span><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Gold Ring" className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none ${errors.name ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.name && <span className="text-xs font-semibold text-danger">{errors.name}</span>}</label>
                 <div><div className="text-xs font-bold">Category *</div><div className="mt-1.5 flex flex-wrap gap-1.5">{CAT_QUICK.map(c => <button key={c} onClick={() => setForm({ ...form, category: c })} className={`rounded-full border px-3 py-1 text-xs font-bold ${form.category === c ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted hover:border-accent-line"}`}>{c}</button>)}</div><input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Category" className={`mt-2 h-10 w-full rounded-xl border bg-surface px-3.5 text-sm outline-none ${errors.category ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.category && <span className="text-xs font-semibold text-danger">{errors.category}</span>}</div>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category</span><input value={form.subCategory} onChange={e => setForm({ ...form, subCategory: e.target.value })} placeholder="e.g. Bridal" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Price (₹) *</span><input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className={`h-10 rounded-xl border bg-surface px-3.5 text-sm outline-none ${errors.price ? "border-danger" : "border-line focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]"}`} />{errors.price && <span className="text-xs font-semibold text-danger">{errors.price}</span>}</label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">SKU</span><input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="SKU" className="h-10 rounded-xl border border-line bg-surface px-3.5 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--color-accent-soft)]" /></label>
                 <div><div className="text-xs font-bold">Purity *</div><div className="mt-1.5 flex flex-wrap gap-1.5">{PURITY_PILLS.map(p => <button key={p} onClick={() => setForm({ ...form, purity: p })} className={`rounded-full border px-3 py-1 text-xs font-bold ${form.purity === p ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted"}`}>{purityLabel(p)}</button>)}</div>{form.purity && !PURITY_PILLS.includes(form.purity) && <div className="mt-2 rounded-lg border border-warning-line bg-warning-soft px-3 py-2 text-xs font-semibold text-warning">This product is saved as "{form.purity}", which is not one of the standard purities. Pick the correct one above.</div>}{!form.purity && <div className="mt-2 text-xs font-semibold text-muted">Purity not set — choose one above.</div>}{errors.purity && <span className="mt-1 block text-xs font-semibold text-danger">{errors.purity}</span>}</div>
@@ -231,6 +215,9 @@ export default function CatalogueStudio() {
                     </button>
                   </span>
                 ))}</div>}</div>
+                {editId && (
+                  <div><div className="text-xs font-bold">Status</div><div className="mt-1.5 flex gap-1.5">{[["Active", true], ["Inactive", false]].map(([label, val]) => <button key={label} type="button" onClick={() => setForm({ ...form, isActive: val })} className={`rounded-full border px-3 py-1 text-xs font-bold ${form.isActive === val ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted"}`}>{label}</button>)}</div><div className="mt-1 text-xs text-muted">Inactive products are hidden from customers.</div></div>
+                )}
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Description</span><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Product description" className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent" /></label>
               </div>
             </Card>
@@ -299,10 +286,10 @@ export default function CatalogueStudio() {
       {/* Search & filters */}
       <div className="mb-3 flex flex-wrap items-center gap-2" data-motion="toolbar">
         <SearchInput placeholder="Search by name, category, sub-category or SKU" value={search} onChange={e => setSearch(e.target.value)} className="min-w-[260px] flex-1 max-w-md" />
-        <Select value={categoryFilter} onValueChange={setCategoryFilter} options={["All Categories", "Bangles", "Chain", "Rings", "Necklaces", "Pendants", "Earrings", "Coins"]} className="w-[160px]" />
-        <Select value={subCategoryFilter} onValueChange={setSubCategoryFilter} options={["All Sub-categories", "Traditional", "Long Chain", "CHAIN", "Stone Studded", "Bridal", "Jhumka", "Solitaire", "Diamond", "Bracelet", "24K Coin", "Mangalsutra"]} className="w-[170px]" />
+        <Select value={categoryFilter} onValueChange={setCategoryFilter} options={categoryOptions} className="w-[160px]" />
+        <Select value={subCategoryFilter} onValueChange={setSubCategoryFilter} options={subCategoryOptions} className="w-[170px]" />
         <Select value={purityFilter} onValueChange={setPurityFilter} options={["All Purity", ...PURITY_OPTIONS]} className="w-[140px]" />
-        <Select value={statusFilter} onValueChange={setStatusFilter} options={["All Status", "Active", "Draft", "Inactive"]} className="w-[130px]" />
+        <Select value={statusFilter} onValueChange={setStatusFilter} options={["All Status", "Active", "Inactive"]} className="w-[130px]" />
         {(search || categoryFilter !== "All Categories" || subCategoryFilter !== "All Sub-categories" || purityFilter !== "All Purity" || statusFilter !== "All Status") && (
           <button onClick={() => { setSearch(""); setCategoryFilter("All Categories"); setSubCategoryFilter("All Sub-categories"); setPurityFilter("All Purity"); setStatusFilter("All Status"); }} className="text-xs font-bold text-accent underline">Clear</button>
         )}
@@ -326,9 +313,6 @@ export default function CatalogueStudio() {
               ) : (
                 <div className="grid h-48 w-full place-items-center bg-canvas/40 text-xs font-semibold text-muted">No image</div>
               )}
-              <button onClick={(e) => { e.stopPropagation(); toast(`${p.name} images`); }} className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-ink shadow hover:bg-white" aria-label="Images">
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
-              </button>
             </div>
             <div className="p-4 flex flex-1 flex-col">
               <div className="font-bold leading-tight">{p.name || "—"}</div>
@@ -339,9 +323,9 @@ export default function CatalogueStudio() {
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                 <div><span className="text-muted">Purity</span><div className={`font-bold ${p.purity ? "" : "text-warning"}`}>{p.purity || "Not set"}</div></div>
-                <div><span className="text-muted">Weight</span><div className="font-bold">{p.weight} g</div></div>
+                <div><span className="text-muted">Weight</span><div className="font-bold">{p.weight !== "" && p.weight != null ? `${p.weight} g` : "—"}</div></div>
               </div>
-              <div className="mt-2 font-extrabold text-ink">{p.price != null ? `₹${p.price.toLocaleString("en-IN")}` : "—"}</div>
+              <div className="mt-2 font-extrabold text-ink">{p.price != null ? formatINR(p.price) : "—"}</div>
               <div className="mt-3 pt-3 border-t border-line-soft">
                 <Button size="sm" variant="outline" className="w-full" onClick={(e) => { e.stopPropagation(); openEdit(p); }}>Edit</Button>
               </div>

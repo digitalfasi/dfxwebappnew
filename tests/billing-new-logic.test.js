@@ -109,7 +109,7 @@ describe("one concession, three boxes that agree", () => {
   });
 });
 
-describe("Online actually charges the tax-inclusive rate", () => {
+describe("Online charges the rate it displays", () => {
   it("both modes send the rate they display", () => {
     // ONLINE used to send nothing, so the field read Rs 14,548.75 while the
     // bill still charged 14 g x Rs 14,125 - the mode was decoration.
@@ -118,7 +118,7 @@ describe("Online actually charges the tax-inclusive rate", () => {
   it("the saved sale sends the same rate as the quote, in both modes", () => {
     // The quote was fixed but createSale/generateQuotation (baseInputs) still
     // sent the rate only for OFFLINE, so an Online bill saved ex-tax.
-    const base = ns.slice(ns.indexOf("const baseInputs = () => {"), ns.indexOf("const onlineRateFactor"));
+    const base = ns.slice(ns.indexOf("const baseInputs = () => {"), ns.indexOf("const modeRate"));
     expect(base).toMatch(/appliedRatePerGram: rate !== "" && !rateOutOfBand \? num\(rate\) : undefined,/);
     expect(base).not.toMatch(/offline && rate/);
   });
@@ -181,7 +181,7 @@ describe("a wallet enrollment is not counted in installments", () => {
     // "n of term" counter moved into the PLAN cell where a term belongs.
     // Windowed, it reports what the window collected; otherwise the lifetime
     // figure. Either way a wallet reports money it holds, never months.
-    expect(sm).toMatch(/money\(activity\.get\(r\.enrollment\)\?\.amount \?\? 0\)/);
+    expect(sm).toMatch(/money\(activity\.get\(r\.id\)\?\.amount \?\? 0\)/);
     expect(sm).toMatch(/<span className="font-bold">\{money\(r\.totalPaid\)\}<\/span>/);
     // ...and the counter lives in PlanCell.
     expect(sm).toMatch(/\{done\}\/\{term\}/);
@@ -365,14 +365,10 @@ describe("the metal rate the two modes quote", () => {
     expect(ns).toMatch(/the published \$\{product\.purity \|\| ""\} rate, before tax/);
   });
 
-  it("Online quotes the same rate tax-inclusive", () => {
-    expect(ns).toMatch(/const onlineRateFactor = 1 \+ \(Number\(product\?\.taxRatePercent\) \|\| 0\) \/ 100/);
-    expect(ns).toMatch(/m === "ONLINE" \? base \* onlineRateFactor : base/);
-  });
-
-  it("22K at 14,125 with 3% quotes 14,548.75", () => {
-    const f = 1 + 3 / 100;
-    expect(Math.round(14125 * f * 100) / 100).toBe(14548.75);
+  it("Online uses the same published rate, before tax (no tax-inclusive rate)", () => {
+    expect(ns).not.toMatch(/onlineRateFactor/);
+    expect(ns).toMatch(/return String\(round2\(base\)\);/);
+    expect(ns).toMatch(/setRate\(published == null \? "" : String\(round2\(published\)\)\);/);
   });
 
   it("the bill's own GST line is not removed by Online", () => {

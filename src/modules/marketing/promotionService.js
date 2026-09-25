@@ -57,8 +57,11 @@ function toBody(data = {}) {
   if (data.textColor !== undefined) b.text_color = data.textColor;
   if (data.priority !== undefined) b.priority = Number(data.priority);
   if (data.isActive !== undefined) b.is_active = data.isActive;
-  if (data.startDate !== undefined) b.start_date = data.startDate;
-  if (data.endDate !== undefined) b.end_date = data.endDate;
+  // Dates are optional: blank is sent as null (no bound), which also clears a
+  // date on edit. The end date runs to 23:59:59 IST (18:29:59Z) so a banner is
+  // still live on its last day instead of expiring at midnight UTC that morning.
+  if (data.startDate !== undefined) b.start_date = data.startDate || null;
+  if (data.endDate !== undefined) b.end_date = data.endDate ? `${data.endDate}T18:29:59Z` : null;
   return b;
 }
 

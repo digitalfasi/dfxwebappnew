@@ -40,6 +40,18 @@ const API_ORIGIN = (() => {
   }
 })();
 
+// Media origins. Locally the API is reached as 127.0.0.1 but the backend writes
+// image/video URLs as localhost (or the reverse), so both loopback spellings are
+// allowed - otherwise every uploaded picture is CSP-blocked on a dev machine.
+// A non-loopback (deployed) origin is used as-is.
+const MEDIA_ORIGINS = (() => {
+  if (!API_ORIGIN) return "";
+  const twin = API_ORIGIN.replace("//127.0.0.1", "//localhost") === API_ORIGIN
+    ? API_ORIGIN.replace("//localhost", "//127.0.0.1")
+    : API_ORIGIN.replace("//127.0.0.1", "//localhost");
+  return twin === API_ORIGIN ? API_ORIGIN : `${API_ORIGIN} ${twin}`;
+})();
+
 // React's development build uses eval() for its debugging machinery - source
 // mapping, reconstructing a callstack from another environment. Without
 // 'unsafe-eval' the dev server throws "eval() is not supported in this
@@ -60,11 +72,11 @@ const csp = [
   // and the API origin because product and catalogue images are served from it.
   // OpenStreetMap tiles for the branch location picker (BR-001). Without this
   // the map renders as empty grey squares and nothing says why.
-  `img-src 'self' data: blob: https://*.tile.openstreetmap.org ${API_ORIGIN}`.trim(),
+  `img-src 'self' data: blob: https://*.tile.openstreetmap.org ${MEDIA_ORIGINS}`.trim(),
   // Promotion banner videos. Without this, <video> falls back to default-src
   // 'self' and every preview is blocked: blob: for the file the admin just
   // picked, the API origin for a saved video served from /media.
-  `media-src 'self' blob: ${API_ORIGIN}`.trim(),
+  `media-src 'self' blob: ${MEDIA_ORIGINS}`.trim(),
   // ...and the font FILES that stylesheet then requests come from gstatic.
   "font-src 'self' data: https://fonts.gstatic.com",
   // Nominatim answers the address search. Same reason: blocked here, the search
