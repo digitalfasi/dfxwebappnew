@@ -6,6 +6,7 @@ import { Badge } from "@/_shared/ui/badge";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { settingsService } from "@/modules/settings/settingsService";
+import { TENANT_BRAND_EVENT } from "@/_shared/AuthContext";
 import { isValidIndianPhone, isValidGstin, normalizeGstin, onlyTenDigits, PHONE_ERROR, GSTIN_ERROR } from "@/_shared/indianFormats";
 
 // Store configuration — reads and writes the real tenant profile
@@ -90,6 +91,7 @@ export default function Settings() {
       const updated = await settingsService.updateTenantProfile(form);
       setProfile(updated);
       seed(updated);
+      window.dispatchEvent(new CustomEvent(TENANT_BRAND_EVENT, { detail: { logoUrl: updated.logoUrl } }));
       toast("Store and brand information updated");
     } catch (err) {
       toast(err?.message || "Could not save the store profile");

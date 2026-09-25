@@ -11,9 +11,13 @@ import { tokenStore, SESSION_EXPIRED_EVENT } from "@/_shared/apiClient";
  */
 const AuthContext = createContext(null);
 
+/** Fired by Settings after the store profile is saved: { logoUrl }. */
+export const TENANT_BRAND_EVENT = "dfx:tenant-brand";
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [tenantName, setTenantName] = useState(null);
+  const [tenantLogo, setTenantLogo] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // On mount: if a token exists, resolve the current user; drop to signed-out
@@ -27,7 +31,7 @@ export function AuthProvider({ children }) {
       }
       try {
         const u = await authService.fetchCurrentUser();
-        if (alive) setUser(u);
+        if (alive) { setUser(u); setTenantLogo(u?.tenantLogoUrl || null); }
         // /users/me carries the caller's own shop name, so staff are never left
         // with the product name. The admin-only profile is still preferred when
         // it resolves; it is the record the shop edits.
@@ -63,6 +67,8 @@ export function AuthProvider({ children }) {
     const u = await authService.loginWithEmail(username, password);
     setUser(u);
     authService.getTenantName().then((tn) => setTenantName(tn || u?.tenantName || null));
+    // The login response carries no logo; /users/me does. Best-effort.
+    authService.fetchCurrentUser().then((me) => setTenantLogo(me?.tenantLogoUrl || null)).catch(() => {});
     return u;
   }, []);
 
@@ -83,6 +89,15 @@ export function AuthProvider({ children }) {
     }
     setUser(null);
     setTenantName(null);
+    setTenantLogo(null);
+  }, []);
+
+  // Settings saves a new logo: the sidebar follows at once, no reload.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onBrand = (e) => { if (e.detail && "logoUrl" in e.detail) setTenantLogo(e.detail.logoUrl || null); };
+    window.addEventListener(TENANT_BRAND_EVENT, onBrand);
+    return () => window.removeEventListener(TENANT_BRAND_EVENT, onBrand);
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -103,6 +118,7 @@ export function AuthProvider({ children }) {
     backendRole: user?.backendRole ?? null,
     tenantId: user?.tenantId ?? null,
     tenantName,
+    tenantLogo,
     permissions,
     hasPermission,
     isAuthenticated: !!user,

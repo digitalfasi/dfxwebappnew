@@ -28,6 +28,7 @@ function mapBackendUser(raw) {
     memberSince: raw.member_since ?? "",
     permissions: raw.permissions ?? [],
     tenantName: raw.tenant_name ?? null,
+    tenantLogoUrl: raw.tenant_logo_url ?? null,
   };
 }
 

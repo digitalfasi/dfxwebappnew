@@ -72,7 +72,7 @@ const csp = [
   // and the API origin because product and catalogue images are served from it.
   // OpenStreetMap tiles for the branch location picker (BR-001). Without this
   // the map renders as empty grey squares and nothing says why.
-  `img-src 'self' data: blob: https://*.tile.openstreetmap.org ${MEDIA_ORIGINS}`.trim(),
+  `img-src 'self' data: blob: https: ${MEDIA_ORIGINS}`.trim(),
   // Promotion banner videos. Without this, <video> falls back to default-src
   // 'self' and every preview is blocked: blob: for the file the admin just
   // picked, the API origin for a saved video served from /media.

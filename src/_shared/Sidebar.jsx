@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/_shared/utils";
 import { useAuth } from "@/_shared/AuthContext";
 import { canOpen } from "@/_shared/moduleAccess";
@@ -89,7 +89,12 @@ export const NAV_SECTIONS = [
 ];
 
 export default function Sidebar({ page, onNavigate, open, onClose, collapsed = false, onToggleCollapse }) {
-  const { user, tenantName, permissions } = useAuth();
+  const { user, tenantName, tenantLogo, permissions } = useAuth();
+  // The Settings logo. A URL that fails to load falls back to the initial tile
+  // rather than a broken-image icon; a new URL gets a fresh try.
+  const [logoBroken, setLogoBroken] = useState(false);
+  useEffect(() => { setLogoBroken(false); }, [tenantLogo]);
+  const showLogo = !!tenantLogo && !logoBroken;
   // D2: every entry used to render for everyone, so a staff member granted two
   // modules was offered all twenty - and each one he clicked called an API that
   // correctly refused him and painted a red error. Offer only what the server
@@ -132,18 +137,26 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             genuinely needed. */}
         {collapsed ? (
           <div className="flex justify-center border-b border-accent-line/45 px-2 py-4">
-            <div
-              className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm"
-              title={[storeName, roleText(user) || "Admin"].filter(Boolean).join(" · ")}
-            >
-              {storeName[0]?.toUpperCase() ?? "D"}
-            </div>
+            {showLogo ? (
+              <img src={tenantLogo} alt={storeName || "Store logo"} title={[storeName, roleText(user) || "Admin"].filter(Boolean).join(" · ")} onError={() => setLogoBroken(true)} className="h-10 w-10 rounded-xl border border-accent-line/60 bg-white object-contain p-0.5 shadow-sm" />
+            ) : (
+              <div
+                className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm"
+                title={[storeName, roleText(user) || "Admin"].filter(Boolean).join(" · ")}
+              >
+                {storeName[0]?.toUpperCase() ?? "D"}
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex items-start gap-3 border-b border-accent-line/45 px-4 py-4">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm">
+            {showLogo ? (
+              <img src={tenantLogo} alt={storeName || "Store logo"} onError={() => setLogoBroken(true)} className="h-10 w-10 shrink-0 rounded-xl border border-accent-line/60 bg-white object-contain p-0.5 shadow-sm" />
+            ) : (
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm">
               {storeName[0]?.toUpperCase() ?? "D"}
             </div>
+            )}
             <div className="min-w-0 flex-1 leading-tight">
               {/* Wraps rather than truncates. "Test Jewellery Store 02…" in the
                   most prominent position on the screen reads as unfinished, and
