@@ -511,7 +511,10 @@ function PurchaseTable({ rows, loading, onRecordPayment, emptyHint, hideOutstand
                   <div className="num" title="Pure gold the payment was calculated on — this purchase predates the received-weight column">{grams(p.weightGrams)} @ 24K</div>
                 )}
               </td>
-              <td className="py-2.5 text-right num font-semibold whitespace-nowrap">{money(p.purchaseAmount)}</td>
+              <td className="py-2.5 text-right num font-semibold whitespace-nowrap">
+                {money(p.purchaseAmount)}
+                {p.gstApplied && <div className="text-[11px] font-normal text-muted">incl. GST {p.gstPercent}% {money(p.gstAmount)}</div>}
+              </td>
               <td className="py-2.5 text-right num text-emerald-700 whitespace-nowrap">{money(p.amountPaid)}</td>
               {!hideOutstanding && <td className="py-2.5 text-right num font-bold text-accent whitespace-nowrap">{money(p.amountOutstanding)}</td>}
               <td className="py-2.5 pl-6"><Badge tone={STATUS_TONE[p.paymentStatus] || "neutral"}>{STATUS_LABEL[p.paymentStatus] || p.paymentStatus}</Badge></td>

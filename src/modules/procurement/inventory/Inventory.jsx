@@ -56,6 +56,33 @@ const DEFAULT_TUNCH_PERCENT = "4";
 // blank = the auto figure; the box shows that figure as a real, editable value.
 // `below` is true when the typed price is under the auto figure, which the
 // purchase refuses.
+// GST on the vendor's bill — on/off per purchase, 3% by default. Charged on the
+// whole purchase value (gold + Tunch + V/A); the payable includes it, the item's
+// cost does not (input GST is a credit, not a cost of the piece).
+const DEFAULT_PURCHASE_GST = "3";
+const gstOn = (on, pct, subtotal) => (on ? Math.round(subtotal * (Number(pct) || 0)) / 100 : 0);
+function PurchaseGst({ on, pct, onChange }) {
+  return (
+    <div className="grid gap-1.5">
+      <span className="text-xs font-bold">GST on vendor bill</span>
+      <div className="flex h-10 items-center gap-2">
+        <div className="inline-flex rounded-xl border border-line p-1">
+          {[[false, "Off"], [true, "On"]].map(([v, label]) => (
+            <button key={label} type="button" onClick={() => onChange({ on: v, pct })} className={`h-7 rounded-lg px-3 text-xs font-bold transition-colors ${on === v ? "bg-accent text-white" : "text-muted hover:text-ink"}`}>{label}</button>
+          ))}
+        </div>
+        {on && (
+          <div className="flex items-center gap-1">
+            <DigitsInput value={pct} onValueChange={(v) => onChange({ on, pct: v })} maxDigits={2} className="h-9 w-16" />
+            <span className="text-sm font-bold text-muted">%</span>
+          </div>
+        )}
+      </div>
+      <span className="text-[11px] text-muted">{on ? "Added on the whole purchase value; included in the vendor payable." : "The vendor's bill carries no GST."}</span>
+    </div>
+  );
+}
+
 function amountOver(amount, auto) {
   if (amount === "" || amount == null) return { extra: 0, below: false };
   const typed = Number(amount) || 0;
@@ -65,7 +92,7 @@ function amountOver(amount, auto) {
 // (rowWeights) and never typed, so the two weights can never disagree with a
 // third field. `stone` is the stone CHARGE in rupees and `other` the rest of
 // the V/A card - both money, never metal.
-const emptyBulkRow = () => ({ ident: "", itemCode: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", stoneWt: "", rate: "", tunch: DEFAULT_TUNCH_PERCENT, other: "", amount: null });
+const emptyBulkRow = () => ({ ident: "", itemCode: "", name: "", category: "", subCategory: "", purity: "22K", gross: "", stoneWt: "", net: "", rate: "", tunch: DEFAULT_TUNCH_PERCENT, other: "", amount: null });
 
 // Real inventory loads from the DFX backend via billingService. No mock items.
 
@@ -78,7 +105,7 @@ const EMPTY_PURCHASE = {
   // shown, so an override is never silent.
   purity: "22K", gross: "", stoneWt: "", netOverride: "", netOverridden: false,
   vendor: "", deliveredBy: "", purchaseDate: "", invoice: "", referenceType: "INVOICE", rate: "",
-  tunch: "4", other: "", amount: null, paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
+  tunch: "4", other: "", amount: null, gstApplied: false, gstPercent: DEFAULT_PURCHASE_GST, paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
 };
 
 // The four document types a purchase can arrive on. A Delivery Challan is not a
@@ -167,7 +194,7 @@ export default function Inventory({ onNavigate }) {
 
   // Bulk receiving — Phase 4. Two types: Jewellery (HUID) / Raw Gold (Serial).
   const [bulkType, setBulkType] = useState("JEWELLERY");
-  const [bulkHeader, setBulkHeader] = useState({ vendor: "", deliveredBy: "", date: "", invoice: "", referenceType: "INVOICE", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
+  const [bulkHeader, setBulkHeader] = useState({ vendor: "", deliveredBy: "", date: "", invoice: "", referenceType: "INVOICE", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", gstApplied: false, gstPercent: DEFAULT_PURCHASE_GST });
   // Each type keeps its OWN rows. They used to share one array, so switching
   // from Jewellery to Raw Gold showed the jewellery rows still sitting there -
   // and submitting then sent HUIDs, categories and stone charges to the raw-gold
@@ -213,7 +240,7 @@ export default function Inventory({ onNavigate }) {
   }, [addForm, showAdd]);
   useEffect(() => {
     if (!showBulk) return;
-    const typed = Object.values(bulkRowsByType).some((rows) => rows.some((r) => r.name.trim() || r.gross || r.ident.trim()));
+    const typed = Object.values(bulkRowsByType).some((rows) => rows.some((r) => r.name.trim() || r.gross || r.net || r.ident.trim()));
     if (!typed) return;
     const t = setTimeout(() => {
       if (saveDraft("bulk", { header: bulkHeader, rows: bulkRowsByType, type: bulkType })) setBulkDraftAt(Date.now());
@@ -223,7 +250,7 @@ export default function Inventory({ onNavigate }) {
   const discardAddDraft = () => { clearDraft("add"); setAddDraftAt(null); setAddForm({ ...EMPTY_PURCHASE, purchaseDate: nowLocalInput() }); };
   const discardBulkDraft = () => {
     clearDraft("bulk"); setBulkDraftAt(null);
-    setBulkHeader({ vendor: "", deliveredBy: "", date: nowLocalInput(), invoice: "", referenceType: "INVOICE", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
+    setBulkHeader({ vendor: "", deliveredBy: "", date: nowLocalInput(), invoice: "", referenceType: "INVOICE", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", gstApplied: false, gstPercent: DEFAULT_PURCHASE_GST });
     setBulkRowsByType({ JEWELLERY: [newBulkRow()], RAW_GOLD: [newBulkRow()] });
   };
   const draftStamp = (at) => at ? `Draft saved ${new Date(at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : "";
@@ -454,8 +481,9 @@ export default function Inventory({ onNavigate }) {
       base, rate24, fineGrams, tunchGrams, stone, other, valueAddition, goldValue, auto, below,
       payableGrams: fineGrams + tunchGrams,
       tunchAmt, final: goldValue + valueAddition,
+      gst: gstOn(addForm.gstApplied, addForm.gstPercent, goldValue + valueAddition),
     };
-  }, [addWeights.net, addForm.rate, addForm.purity, addForm.tunch, addForm.other, addForm.amount]);
+  }, [addWeights.net, addForm.rate, addForm.purity, addForm.tunch, addForm.other, addForm.amount, addForm.gstApplied, addForm.gstPercent]);
 
 
   const openDefaults = async () => {
@@ -554,6 +582,8 @@ export default function Inventory({ onNavigate }) {
           vendorChargePercent: f.tunch !== "" ? Number(f.tunch) : undefined,
           stoneChargeAmount: Number(addAmounts.stone.toFixed(2)),
           otherChargesAmount: f.other !== "" ? Number(f.other) : 0,
+          gstApplied: f.gstApplied,
+          gstPercent: f.gstPercent,
           inventoryItemId: created.id,
           paymentMode: f.paymentMode,
           paidNow: f.paymentMode === "PARTIAL" ? Number(f.paidNow) : undefined,
@@ -604,6 +634,12 @@ export default function Inventory({ onNavigate }) {
   // Declared after, the first render threw "Cannot access 'rowWeights' before
   // initialization".
   const rowWeights = (r) => {
+    // Bullion has no stones: the bar's weight IS its net gold weight, typed
+    // straight into Net. Gross is recorded equal to it.
+    if (bulkType === "RAW_GOLD") {
+      const net = Math.max(0, Number(r.net) || 0);
+      return { gross: net, stone: 0, net };
+    }
     const gross = Number(r.gross) || 0;
     // Clamped to gross: a stone cannot outweigh the piece it is set in, and a
     // typo must not produce a negative net that then prices as negative gold.
@@ -730,18 +766,26 @@ export default function Inventory({ onNavigate }) {
     // JEWELLERY, so switching type has to recompute the whole settlement.
   }, [bulkRows, bulkType]);
 
+  // GST on the whole receipt, on the same (paisa-rounded) subtotal the server uses.
+  const bulkGst = gstOn(!!bulkHeader.gstApplied, bulkHeader.gstPercent, bulkBreakdown.finalAmount || 0);
+
   const handleBulkAdd = async () => {
     const h = bulkHeader;
     const matchedVendor = vendorList.find(v => v.name === h.vendor);
     if (!matchedVendor) { toast("Select a vendor"); return; }
     if (!h.date) { toast("Purchase Date is required"); return; }
-    const rows = bulkRows.filter(r => r.ident.trim() || r.itemCode.trim() || r.name.trim() || r.gross || r.stoneWt || r.rate);
+    const rows = bulkRows.filter(r => r.ident.trim() || r.itemCode.trim() || r.name.trim() || r.gross || r.stoneWt || r.net || r.rate);
     if (!rows.length) { toast("Add at least one row"); return; }
     for (const r of rows) {
       // Only a raw-gold bar must carry its identifier (the serial). A jewellery
       // row's HUID is optional - without one it gets an Item Code.
       if (bulkType === "RAW_GOLD" && !r.ident.trim()) { toast(`${bulkIdentLabel} is required on every row`); return; }
       if (r.name.trim().length < 2) { toast("Product Name required (min 2 chars)"); return; }
+      if (bulkType === "RAW_GOLD") {
+        if (!(rowWeights(r).net > 0)) { toast("Net Weight is required on every row"); return; }
+        if (!(Number(r.rate) > 0)) { toast("24K Cost/g is required on every row"); return; }
+        continue;
+      }
       if (!(Number(r.gross) > 0)) { toast("Gross Weight is required on every row"); return; }
       // Read from the stone side, the direction the grid is now typed in. The
       // live preview clamps a too-heavy stone so the figures stay sane while
@@ -766,6 +810,8 @@ export default function Inventory({ onNavigate }) {
         // sums them, so a mixed-Tunch receipt is priced correctly.
         paymentMode: h.paymentMode,
         paidNow: h.paidNow,
+        gstApplied: !!h.gstApplied,
+        gstPercent: h.gstPercent,
         paymentMethod: h.paymentMode === "CREDIT" ? "CASH" : h.paymentMethod,
         paymentDate: dateOnly(h.date),
         // Only the fields this kind of stock actually has. Raw gold has no
@@ -775,9 +821,12 @@ export default function Inventory({ onNavigate }) {
           ? {
             serial: r.ident.trim(),
             name: r.name.trim(),
+            // Typed in the grid, and accepted by the raw-gold endpoint - they
+            // used to be dropped here, so a bar's category never saved.
+            category: (r.category || "").trim() || undefined,
+            subCategory: (r.subCategory || "").trim() || undefined,
             purity: r.purity,
-            gross: r.gross,
-            // Derived from gross and the stone weight, never typed.
+            gross: rowWeights(r).gross,
             net: rowWeights(r).net,
             rate: r.rate,
           }
@@ -806,7 +855,7 @@ export default function Inventory({ onNavigate }) {
       // kind reappearing after a completed receipt is the same confusion.
       setBulkRowsByType({ JEWELLERY: [newBulkRow()], RAW_GOLD: [newBulkRow()] });
       clearDraft("bulk"); setBulkDraftAt(null);
-      setBulkHeader({ vendor: "", deliveredBy: "", date: nowLocalInput(), invoice: "", referenceType: "INVOICE", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "" });
+      setBulkHeader({ vendor: "", deliveredBy: "", date: nowLocalInput(), invoice: "", referenceType: "INVOICE", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", gstApplied: false, gstPercent: DEFAULT_PURCHASE_GST });
       await load();
       // Grouped like every other money figure — this was the one place a raw
       // number still reached the screen.
@@ -901,8 +950,8 @@ export default function Inventory({ onNavigate }) {
               back-dating a slip that arrived yesterday is ordinary retail
               practice, so the field is defaulted, never locked. An already
               half-filled form keeps whatever the operator typed. */}
-          <Button variant="outline" size="sm" onClick={() => { setBulkHeader(h => ({ ...h, date: h.date || nowLocalInput() })); setShowBulk(true); }}>Bulk Purchase</Button>
-          <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => { setAddForm(f => ({ ...f, purchaseDate: f.purchaseDate || nowLocalInput() })); setShowAdd(true); }}>Add Purchase</Button>
+          <Button variant="outline" size="sm" onClick={() => { setBulkHeader(h => ({ ...h, date: h.dateEdited && h.date ? h.date : nowLocalInput() })); setShowBulk(true); }}>Bulk Purchase</Button>
+          <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => { setAddForm(f => ({ ...f, purchaseDate: f.purchaseDateEdited && f.purchaseDate ? f.purchaseDate : nowLocalInput() })); setShowAdd(true); }}>Add Purchase</Button>
         </div>
       </div>
 
@@ -1125,7 +1174,7 @@ export default function Inventory({ onNavigate }) {
                   <Select value={addForm.vendor} onValueChange={v=>setAddForm({...addForm, vendor:v})} options={vendorNames} placeholder={vendorNames.length ? "Select vendor…" : "No vendors — add one below"} />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date &amp; Time *</span><Input type="datetime-local" value={addForm.purchaseDate} onChange={e=>setAddForm({...addForm, purchaseDate:e.target.value})} />
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date &amp; Time *</span><Input type="datetime-local" value={addForm.purchaseDate} onChange={e=>setAddForm({...addForm, purchaseDate:e.target.value, purchaseDateEdited:true})} />
                     <span className="text-[11px] text-muted">Defaults to now. Change it for a slip received earlier.</span>
                   </label>
                   {/* One document per purchase: its TYPE, then its number. The
@@ -1268,6 +1317,15 @@ export default function Inventory({ onNavigate }) {
                     </span>
                   </label>
                 </div>
+                <div className="mt-3 grid gap-3 border-t border-accent-line pt-3 sm:grid-cols-2">
+                  <PurchaseGst on={addForm.gstApplied} pct={addForm.gstPercent} onChange={({ on, pct }) => setAddForm({ ...addForm, gstApplied: on, gstPercent: pct })} />
+                  <div className="grid content-end gap-1 text-sm">
+                    {addForm.gstApplied && (
+                      <div className="flex items-center justify-between"><span className="text-muted">+ GST {addForm.gstPercent || 0}%</span><span className="num font-mono tabular-nums">{money(addAmounts.gst)}</span></div>
+                    )}
+                    <div className="flex items-center justify-between"><span className="font-extrabold">Payable to vendor</span><span className="num font-mono font-extrabold tabular-nums">{money(addAmounts.final + addAmounts.gst)}</span></div>
+                  </div>
+                </div>
                 <p className="mt-1.5 text-[11px] text-muted">Gold = (24K equivalent × 24K rate) + Tunch % — Tunch is never added to the per-gram rate, and never to the value addition. Backend re-derives this authoritatively.</p>
               </div>
 
@@ -1323,7 +1381,7 @@ export default function Inventory({ onNavigate }) {
                   </div>
                   <Select value={bulkHeader.vendor} onValueChange={v=>setBulkHeader({...bulkHeader, vendor:v})} options={vendorNames} placeholder={vendorNames.length ? "Select vendor…" : "No vendors — add one"} />
                 </div>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date &amp; Time *</span><Input type="datetime-local" value={bulkHeader.date} onChange={e=>setBulkHeader({...bulkHeader, date:e.target.value})} />
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Date &amp; Time *</span><Input type="datetime-local" value={bulkHeader.date} onChange={e=>setBulkHeader({...bulkHeader, date:e.target.value, dateEdited:true})} />
                   <span className="text-[11px] text-muted">Defaults to now; editable for a back-dated slip.</span>
                 </label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Document Type</span><Select value={bulkHeader.referenceType} onValueChange={v=>setBulkHeader({...bulkHeader, referenceType:v})} options={REFERENCE_TYPES} /></label>                <label className="grid gap-1.5"><span className="text-xs font-bold">{REFERENCE_LABEL(bulkHeader.referenceType)} Number</span><Input value={bulkHeader.invoice} onChange={e=>setBulkHeader({...bulkHeader, invoice:e.target.value})} placeholder={bulkHeader.referenceType === "DC" ? "DC-..." : "INV-..."} /></label>
@@ -1341,6 +1399,7 @@ export default function Inventory({ onNavigate }) {
                 {bulkHeader.paymentMode === "PARTIAL" && (
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Paid Now *</span><MoneyInput value={bulkHeader.paidNow} onValueChange={v=>setBulkHeader({...bulkHeader, paidNow:v})} /></label>
                 )}
+                <PurchaseGst on={!!bulkHeader.gstApplied} pct={bulkHeader.gstPercent ?? DEFAULT_PURCHASE_GST} onChange={({ on, pct }) => setBulkHeader({ ...bulkHeader, gstApplied: on, gstPercent: pct })} />
               </div>
 
               {/* Totals for the whole receipt, above the grid where the eye
@@ -1350,22 +1409,22 @@ export default function Inventory({ onNavigate }) {
                   gold and is never priced as gold. Every figure comes from
                   bulkBreakdown, which reads rowWeights, so the cards and the
                   settlement below can never disagree. */}
-              <div className={`grid gap-3 sm:grid-cols-2 ${bulkType === "JEWELLERY" ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+              <div className={`grid gap-3 sm:grid-cols-2 ${bulkType === "JEWELLERY" ? "lg:grid-cols-5" : "lg:grid-cols-2"}`}>
                 <div className="rounded-xl border border-accent-line bg-accent-soft/25 p-3.5">
                   <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent-strong">Total Gold Weight</div>
                   <div className="num mt-1 text-2xl font-extrabold">{bulkBreakdown.netTotal.toFixed(3)} <span className="text-base font-bold">g</span></div>
                   <div className="text-xs text-muted">Net — the metal being priced</div>
                 </div>
-                <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+                {bulkType === "JEWELLERY" && <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
                   <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Gross Weight</div>
                   <div className="num mt-1 text-2xl font-extrabold">{bulkBreakdown.grossTotal.toFixed(3)} <span className="text-base font-bold">g</span></div>
                   <div className="text-xs text-muted">As weighed, stones included</div>
-                </div>
-                <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+                </div>}
+                {bulkType === "JEWELLERY" && <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
                   <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Stone Weight</div>
                   <div className="num mt-1 text-2xl font-extrabold">{bulkBreakdown.stoneGTotal.toFixed(3)} <span className="text-base font-bold">g</span></div>
                   <div className="text-xs text-muted">Deducted from gross · not gold</div>
-                </div>
+                </div>}
                 <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
                   <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Qty</div>
                   <div className="num mt-1 text-2xl font-extrabold">{bulkBreakdown.qty}</div>
@@ -1384,7 +1443,7 @@ export default function Inventory({ onNavigate }) {
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-line">
-                <table className={`table-fixed ${bulkType === "JEWELLERY" ? "w-[1880px]" : "w-[1520px]"} border-collapse text-sm`}>
+                <table className={`table-fixed ${bulkType === "JEWELLERY" ? "w-[1880px]" : "w-[1330px]"} border-collapse text-sm`}>
                   <thead><tr className="bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                     {/* Jewellery: Item Code (blank = auto, Offline) XOR HUID
                         (Online, replaces the Item Code). Raw gold: serial. */}
@@ -1394,10 +1453,11 @@ export default function Inventory({ onNavigate }) {
                     <th className="px-2 py-2 w-[170px]">Category</th>
                     <th className="px-2 py-2 w-[190px]">Sub-category</th>
                     <th className="px-2 py-2 w-[130px]">Purity</th>
-                    <th className="py-2 w-[100px]">Gross (g) *</th>
-                    <th className="py-2 w-[100px]">Stone (g)</th>
-                    {/* Derived, not typed - see rowWeights. */}
-                    <th className="py-2 w-[100px]">Net (g)</th>
+                    {bulkType === "JEWELLERY" && <th className="py-2 w-[100px]">Gross (g) *</th>}
+                    {bulkType === "JEWELLERY" && <th className="py-2 w-[100px]">Stone (g)</th>}
+                    {/* Jewellery: derived, not typed - see rowWeights. Raw gold:
+                        typed, it is the only weight a bar has. */}
+                    <th className="py-2 w-[110px]">{bulkType === "JEWELLERY" ? "Net (g)" : "Net Weight (g) *"}</th>
                     <th className="py-2 w-[120px]">24K Cost/g (₹) *</th>
                     {/* Bullion has no tunch. It is bought at rate x weight:
                         there is no craftsman's charge on a bar. */}
@@ -1428,21 +1488,29 @@ export default function Inventory({ onNavigate }) {
                             ? <Select value={r.subCategory||""} onValueChange={v=>setCell("subCategory",v)} options={subChoicesFor(r.category)} placeholder="Sub-category" />
                             : <Input value={r.subCategory} onChange={e=>setCell("subCategory",e.target.value)} placeholder="Optional" className="h-9 text-sm" />}</td>
                           <td className="px-2 py-2"><Select value={r.purity} onValueChange={v=>setCell("purity",v)} options={PURITY_OPTIONS} /></td>
-                          <td className="px-2 py-2"><Input type="number" value={r.gross} onChange={e=>setCell("gross",e.target.value)} className="h-9" /></td>
-                          <td className="px-2 py-2"><Input type="number" value={r.stoneWt} onChange={e=>setCell("stoneWt",e.target.value)} placeholder="0" className="h-9" />
-                            {(Number(r.stoneWt) || 0) > (Number(r.gross) || 0) && (Number(r.gross) || 0) > 0 && (
-                              <span className="mt-1 block text-[10px] font-semibold text-danger">Exceeds gross</span>
-                            )}
-                          </td>
+                          {bulkType === "JEWELLERY" && (
+                            <td className="px-2 py-2"><Input type="number" value={r.gross} onChange={e=>setCell("gross",e.target.value)} className="h-9" /></td>
+                          )}
+                          {bulkType === "JEWELLERY" && (
+                            <td className="px-2 py-2"><Input type="number" value={r.stoneWt} onChange={e=>setCell("stoneWt",e.target.value)} placeholder="0" className="h-9" />
+                              {(Number(r.stoneWt) || 0) > (Number(r.gross) || 0) && (Number(r.gross) || 0) > 0 && (
+                                <span className="mt-1 block text-[10px] font-semibold text-danger">Exceeds gross</span>
+                              )}
+                            </td>
+                          )}
                           {/* Net is stated, not asked for: gross minus stone.
                               Read-only here on purpose - the bulk grid has no
                               room for an override control, and a row whose
                               scale disagrees belongs in Add Purchase, which
                               has one. */}
                           <td className="px-2 py-2">
-                            <div className="num flex h-9 items-center justify-end rounded-xl border border-line bg-canvas/60 px-3 font-mono text-sm tabular-nums">
-                              {rowWeights(r).net.toFixed(3)}
-                            </div>
+                            {bulkType === "JEWELLERY" ? (
+                              <div className="num flex h-9 items-center justify-end rounded-xl border border-line bg-canvas/60 px-3 font-mono text-sm tabular-nums">
+                                {rowWeights(r).net.toFixed(3)}
+                              </div>
+                            ) : (
+                              <Input type="number" value={r.net} onChange={e=>setCell("net",e.target.value)} placeholder="0.000" className="h-9" />
+                            )}
                           </td>
                           <td className="px-2 py-2"><Input type="number" value={r.rate} onChange={e=>setCell("rate",e.target.value)} className="h-9" /></td>
                           {/* One digit only: Tunch is quoted in whole single digits. */}
@@ -1561,9 +1629,15 @@ export default function Inventory({ onNavigate }) {
                         <span className={`num font-mono font-bold tabular-nums ${bulkBreakdown.valueAdditionTotal > 0 ? "" : "text-muted"}`}>{money(bulkBreakdown.valueAdditionTotal)}</span>
                       </div>
                     )}
+                    {bulkHeader.gstApplied && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted">+ GST {bulkHeader.gstPercent || 0}% on {money(bulkBreakdown.finalAmount)}</span>
+                        <span className="num font-mono font-bold tabular-nums">{money(bulkGst)}</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between gap-3 border-t border-accent-line pt-1.5">
-                      <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold{bulkBreakdown.valueAdditionTotal > 0 ? " + V/A" : ""}</span>
-                      <span className="num font-mono text-base font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount)}</span>
+                      <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold{bulkBreakdown.valueAdditionTotal > 0 ? " + V/A" : ""}{bulkHeader.gstApplied ? " + GST" : ""}</span>
+                      <span className="num font-mono text-base font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount + bulkGst)}</span>
                     </div>
                     {/* The settlement, on the same slip as the payable. One
                         aggregate vendor_purchases row covers the whole receipt,
@@ -1572,7 +1646,7 @@ export default function Inventory({ onNavigate }) {
                         from the payment ledger; these are the figures it will
                         arrive at, shown before the button is pressed. */}
                     {(() => {
-                      const total = bulkBreakdown.finalAmount || 0;
+                      const total = (bulkBreakdown.finalAmount || 0) + bulkGst;
                       const mode = bulkHeader.paymentMode;
                       const typed = Number(bulkHeader.paidNow);
                       const paid = mode === "CASH" ? total : mode === "CREDIT" ? 0 : (typed > 0 ? typed : 0);

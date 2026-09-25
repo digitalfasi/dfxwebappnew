@@ -208,6 +208,9 @@ export const billingService = {
       invoice_ref: data.invoiceRef || null,
       reference_type: data.referenceType || null,
       delivered_by: data.deliveredBy || null,
+      // GST on the vendor's bill, switched on per purchase (backend default 3%).
+      gst_applied: !!data.gstApplied,
+      gst_percent: data.gstApplied && data.gstPercent !== "" && data.gstPercent != null ? Number(data.gstPercent) : null,
       weight_grams: data.weightGrams,
       rate_per_gram: data.ratePerGram,
       // Purity of the gold bought. Tunch is charged on the net weight at its
@@ -433,6 +436,9 @@ export const billingService = {
       purchase_invoice_ref: data.invoiceRef || null,
       purchase_reference_type: data.referenceType || null,
       delivered_by: data.deliveredBy || null,
+      // GST on the vendor's bill, switched on per purchase (backend default 3%).
+      gst_applied: !!data.gstApplied,
+      gst_percent: data.gstApplied && data.gstPercent !== "" && data.gstPercent != null ? Number(data.gstPercent) : null,
       vendor_charge_percent: data.tunchPercent !== "" && data.tunchPercent != null ? Number(data.tunchPercent) : null,
       payment_mode: data.paymentMode,
       paid_now: data.paymentMode === "PARTIAL" && data.paidNow !== "" && data.paidNow != null ? Number(data.paidNow) : null,
@@ -484,6 +490,9 @@ export const billingService = {
       purchase_invoice_ref: data.invoiceRef || null,
       purchase_reference_type: data.referenceType || null,
       delivered_by: data.deliveredBy || null,
+      // GST on the vendor's bill, switched on per purchase (backend default 3%).
+      gst_applied: !!data.gstApplied,
+      gst_percent: data.gstApplied && data.gstPercent !== "" && data.gstPercent != null ? Number(data.gstPercent) : null,
       vendor_charge_percent: data.tunchPercent !== "" && data.tunchPercent != null ? Number(data.tunchPercent) : null,
       payment_mode: data.paymentMode,
       paid_now: data.paymentMode === "PARTIAL" && data.paidNow !== "" && data.paidNow != null ? Number(data.paidNow) : null,
@@ -943,6 +952,10 @@ function mapVendorPurchase(p = {}) {
     netWeightGrams: p.net_weight_grams ?? null,
     purity: p.purity ?? "",
     stoneChargeAmount: p.stone_charge_amount ?? 0,
+    otherChargesAmount: p.other_charges_amount ?? 0,
+    gstApplied: !!p.gst_applied,
+    gstPercent: p.gst_percent ?? 0,
+    gstAmount: p.gst_amount ?? 0,
     weightGrams: p.weight_grams ?? 0,
     ratePerGram: p.rate_per_gram ?? 0,
     baseGoldAmount: p.base_gold_amount ?? 0,
