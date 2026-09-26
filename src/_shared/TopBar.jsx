@@ -13,7 +13,7 @@ import NotificationBell from "@/_shared/NotificationBell";
    shifts sideways on refresh is what makes a feed look unreliable. */
 function Quote({ label, value, dot }) {
   return (
-    <div className="min-w-[96px] border-r border-[#efe4cb] px-4 py-1.5 transition-colors duration-200 hover:bg-accent-soft">
+    <div className="flex min-w-[118px] flex-col items-center justify-center border-r border-[#efe4cb] px-5 transition-colors duration-200 hover:bg-accent-soft">
       <div className="flex items-center gap-1.5">
         <span
           className="h-1.5 w-1.5 rounded-full"
@@ -28,6 +28,12 @@ function Quote({ label, value, dot }) {
     </div>
   );
 }
+
+// Most-asked first: the counter reads 24K / 22K before anything else.
+const QUOTES = [
+  ["24K", "rate_24k", "#c9a84c"], ["22K", "rate_22k", "#d4b65e"], ["18K", "rate_18k", "#e3cd8a"],
+  ["14K", "rate_14k", "#c9b78c"], ["9K", "rate_9k", "#cfc3a4"], ["Silver", "silver_999", "#a8adb7"],
+];
 
 function roleText(u) {
   return u?.backendRole || u?.role || "Admin";
@@ -85,8 +91,11 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
 
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-[#efe7d3] shadow-sm backdrop-blur-xl">
-      <div className="flex items-center gap-3 px-4 py-3 sm:gap-4 sm:px-8">
-        <div className="flex shrink-0 items-center gap-3">
+      <div className="flex items-center gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:h-[71px] lg:px-4 lg:py-0">
+        {/* Only phone controls live here unless a crumb/title is shown - on
+            desktop the empty box would push the rate rail out of line with
+            the page cards below. */}
+        <div className={`flex shrink-0 items-center gap-3 ${crumb || (!hideTitle && title) ? "" : "lg:hidden"}`}>
           {/* 44px on touch, 36px once there's a mouse: below 44 a thumb starts
               catching the edge of the next control. */}
           <button
@@ -140,7 +149,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
             middle when there's no search. Always shown (—/g until today's rate is
             published). Hidden on small screens to stay clean. */}
         {!showSearch && (
-          <div className="hidden min-w-0 flex-1 items-stretch overflow-hidden rounded-2xl border border-accent-line bg-surface shadow-[0_1px_3px_rgba(30,41,59,0.08),0_6px_16px_-8px_rgba(166,134,49,0.25),inset_0_1px_0_rgba(255,255,255,0.85)] lg:flex">
+          <div className="hidden h-12 min-w-0 flex-1 items-stretch overflow-hidden rounded-2xl border border-accent-line bg-surface shadow-[0_1px_3px_rgba(30,41,59,0.08),0_6px_16px_-8px_rgba(166,134,49,0.25),inset_0_1px_0_rgba(255,255,255,0.85)] lg:flex">
             {/* Which day this rail is showing. "Live" ONLY when today's rate has
                 been published; otherwise the date it is actually from, so a
                 yesterday figure is never read as today's. */}
@@ -170,20 +179,20 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
                 wrap is seamless. Ordered ascending by value (Silver → 24K).
                 Pauses on hover; under reduced-motion it stops moving and
                 becomes a normal horizontal scroll instead. */}
-            <div className="group relative min-w-[120px] max-w-[560px] flex-1 overflow-hidden">
-              {/* Soft edges so figures dissolve in and out rather than clipping
-                  against a hard border. */}
+            {/* The live feed always moves, like a bullion board. Each run holds
+                the six purities three times over (wider than any rail), and
+                the track travels exactly one run, so the loop is seamless and
+                no blank space ever shows - at any screen width or zoom.
+                Pauses on hover. */}
+            <div className="group relative min-w-[120px] flex-1 overflow-hidden">
               <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-surface to-transparent" />
               <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-surface to-transparent" />
-              <div className="flex w-max animate-ticker items-stretch group-hover:[animation-play-state:paused]">
+              <div className="flex h-full w-max animate-ticker ticker-slow items-stretch group-hover:[animation-play-state:paused]">
                 {[0, 1].map((run) => (
                   <div key={run} className="flex items-stretch" aria-hidden={run === 1}>
-                    <Quote label="Silver" value={bullion?.silver_999} dot="#a8adb7" />
-                    <Quote label="9K" value={bullion?.rate_9k} dot="#cfc3a4" />
-                    <Quote label="14K" value={bullion?.rate_14k} dot="#c9b78c" />
-                    <Quote label="18K" value={bullion?.rate_18k} dot="#e3cd8a" />
-                    <Quote label="22K" value={bullion?.rate_22k} dot="#d4b65e" />
-                    <Quote label="24K" value={bullion?.rate_24k} dot="#c9a84c" />
+                    {[0, 1, 2].flatMap((rep) => QUOTES.map(([label, key, dot]) => (
+                      <Quote key={`${rep}-${label}`} label={label} value={bullion?.[key]} dot={dot} />
+                    )))}
                   </div>
                 ))}
               </div>

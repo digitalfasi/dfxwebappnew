@@ -157,3 +157,7 @@ input[type="number"] {
   .animate-ticker { animation: ticker 28s linear infinite !important; }
   .group:hover .animate-ticker { animation-play-state: paused !important; }
 }
+
+/* Desktop rail: each run is 3x the purities, so it travels 3x as far - a
+   longer duration keeps the same calm reading pace. */
+.animate-ticker.ticker-slow { animation-duration: 80s !important; }

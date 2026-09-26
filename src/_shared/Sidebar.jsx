@@ -138,7 +138,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             than part of it. One cream, and a hairline where structure is
             genuinely needed. */}
         {collapsed ? (
-          <div className="flex justify-center border-b border-accent-line/45 px-2 py-4">
+          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-2">
             {showLogo ? (
               <img src={tenantLogo} alt={storeName || "Store logo"} title={[storeName, roleText(user) || "Admin"].filter(Boolean).join(" · ")} onError={() => setLogoBroken(true)} className="h-10 w-10 rounded-xl border border-accent-line/60 bg-white object-contain p-0.5 shadow-sm" />
             ) : (
@@ -151,7 +151,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             )}
           </div>
         ) : (
-          <div className="flex items-start gap-3 border-b border-accent-line/45 px-4 py-4">
+          <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-accent-line/45 px-4">
             {showLogo ? (
               <img src={tenantLogo} alt={storeName || "Store logo"} onError={() => setLogoBroken(true)} className="h-10 w-10 shrink-0 rounded-xl border border-accent-line/60 bg-white object-contain p-0.5 shadow-sm" />
             ) : (
