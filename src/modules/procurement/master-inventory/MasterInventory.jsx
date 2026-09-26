@@ -604,7 +604,7 @@ export default function MasterInventory({ onNavigate, search = "" }) {
                 />
               </label>
               <label className="grid gap-1.5">
-                <span className="text-xs font-bold">Code <span className="font-normal text-muted">— optional</span></span>
+                <span className="text-xs font-bold">Short Code <span className="font-normal text-muted">— optional, for reference only</span></span>
                 <Input
                   value={form.code}
                   onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
