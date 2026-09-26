@@ -423,8 +423,9 @@ export default function Inventory({ onNavigate }) {
   // Picking a supplier pre-fills Delivered By with its registered staff member;
   // still editable when someone else brings the goods.
   const staffOf = (name) => vendorList.find((v) => v.name === name)?.contactPerson || "";
-  // Supplier choices read "CODE — Store name"; the value stays the name.
-  const vendorOptions = useMemo(() => vendorList.map((v) => ({ value: v.name, label: v.code ? `${v.code} — ${v.name}` : v.name })), [vendorList]);
+  // Supplier choices read "CODE — Store name"; the value stays the name. An
+  // inactive supplier cannot be purchased from, so it is not offered.
+  const vendorOptions = useMemo(() => vendorList.filter((v) => v.isActive !== false).map((v) => ({ value: v.name, label: v.code ? `${v.code} — ${v.name}` : v.name })), [vendorList]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
