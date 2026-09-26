@@ -29,6 +29,7 @@ function mapBackendUser(raw) {
     permissions: raw.permissions ?? [],
     tenantName: raw.tenant_name ?? null,
     tenantLogoUrl: raw.tenant_logo_url ?? null,
+    tenantPhone: raw.tenant_phone ?? null,
   };
 }
 

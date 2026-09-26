@@ -135,7 +135,7 @@ describe("the tunch a piece was bought at is visible in stock", () => {
   });
 
   it("the product list shows it; an unrecorded tunch is a dash, not 0%", () => {
-    expect(inv).toMatch(/<th className="px-3 py-3 text-right">Tunch<\/th>/);
+    expect(inv).toMatch(/<th className="px-3 py-3 text-center">Tunch<\/th>/);
     expect(inv).toMatch(/\{p\.tunch != null \? `\$\{p\.tunch\}%` : "—"\}/);
   });
 
@@ -153,7 +153,8 @@ describe("the tunch a piece was bought at is visible in stock", () => {
 
   it("bulk Tunch comes from the supplier's Tunch Number, never a default", () => {
     // 2026-09-26: Tunch % = Tunch Number - purity (18K 750, number 790 = 4%).
-    expect(inv).toMatch(/setCell\("tunchNo"/);
+    // Tunch No. and Tunch % are both typed; each fills the other
+    expect(inv).toMatch(/tunchNo: tunchNoFromPct\(v, row\.purity\)/);
     expect(inv).toMatch(/const touch = n > 100 \? n \/ 10 : n;/);
     expect(inv).toMatch(/tunch: String\(tunchFromNumber\(r\.tunchNo, r\.purity\)\.pct\),/);
     expect(inv).not.toMatch(/tunch: DEFAULT_TUNCH_PERCENT, other/);
@@ -454,7 +455,7 @@ describe("the screens stay small enough to use", () => {
     // from a vendor not yet on file could not be received at all.
     // Both forms now carry it: the single-item Add Purchase, and bulk receiving.
     expect(inv.match(/\+ Add new supplier/g) || []).toHaveLength(2);
-    expect(inv).toMatch(/setBulkHeader\(h => \(\{ \.\.\.h, vendor: v\.name, deliveredBy: h\.deliveredBy \|\| v\.contactPerson \|\| "" \}\)\);/);
+    expect(inv).toMatch(/setBulkHeader\(h => \(\{ \.\.\.h, vendor: v\.name, deliveredBy: v\.staff\?\.\[0\]\?\.name \|\| ""/);
   });
 
   it("a bar's bill ends in the same dialog a piece's does", () => {

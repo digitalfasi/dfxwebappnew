@@ -506,7 +506,7 @@ function PurchaseTable({ rows, loading, onRecordPayment, emptyHint, hideOutstand
               <td className="px-4 py-2.5 whitespace-nowrap">{fmtDate(p.purchaseDate)}</td>
               <td className="py-2.5 text-xs">
                 {p.invoiceRef || "Not provided"}
-                {p.deliveredBy && <div className="text-[11px] text-muted">Delivered by {p.deliveredBy}</div>}
+                {p.deliveredBy && <div className="text-[11px] text-muted">Delivered by {p.deliveredBy}{p.deliveredByPhone ? ` · +91 ${p.deliveredByPhone}` : ""}</div>}
                 {p.enteredByName && <div className="text-[11px] text-muted">Entered by {p.enteredByName}</div>}
               </td>
               {/* Both figures, because they answer different questions: what
@@ -587,7 +587,12 @@ export function VendorForm({ vendor, onClose, onSaved }) {
     name: vendor?.name || "",
     code: vendor?.code || "",
     ownerName: vendor?.ownerName || "", ownerPhone: onlyTenDigits(vendor?.ownerPhone || ""),
-    contactPerson: vendor?.contactPerson || "", phone: onlyTenDigits(vendor?.phone || ""),
+    // Delivery staff: any number, name + phone each. Older suppliers carry
+    // their one staff contact into the list.
+    staff: vendor?.staff?.length
+      ? vendor.staff.map((s) => ({ id: s.id, name: s.name, phone: onlyTenDigits(s.phone || "") }))
+      : [{ name: vendor?.contactPerson || "", phone: onlyTenDigits(vendor?.phone || "") }],
+    address: vendor?.address || "",
     email: vendor?.email || "", gstNumber: normalizeGst(vendor?.gstNumber || ""),
     isActive: vendor ? vendor.isActive : true,
   });
@@ -603,8 +608,9 @@ export function VendorForm({ vendor, onClose, onSaved }) {
     if (!f.code.trim()) e.code = "Enter the supplier code";
     if (f.ownerName.trim().length < 2) e.ownerName = "Enter the owner's name";
     if (f.ownerPhone.length !== 10) e.ownerPhone = "Enter the owner's 10-digit mobile number";
-    if (f.contactPerson.trim().length < 2) e.contactPerson = "Enter the supplier staff name";
-    if (f.phone.length !== 10) e.phone = "Enter the staff's 10-digit mobile number";
+    const filled = f.staff.filter((s) => s.name.trim() || s.phone);
+    if (!filled.length) e.staff = "Add at least one delivery staff member";
+    else if (filled.some((s) => s.name.trim().length < 2 || s.phone.length !== 10)) e.staff = "Every staff member needs a name and a 10-digit phone";
     if (f.email.trim() && !VENDOR_EMAIL_RE.test(f.email.trim())) e.email = "Use a valid @gmail.com address";
     if (f.gstNumber && f.gstNumber.length !== GSTIN_LEN) e.gstNumber = `A GSTIN is ${GSTIN_LEN} characters`;
     setErrors(e);
@@ -618,7 +624,8 @@ export function VendorForm({ vendor, onClose, onSaved }) {
       const payload = {
         name: f.name.trim(), code: f.code.replace(/[^A-Za-z0-9]/g, "").toUpperCase(),
         ownerName: f.ownerName.trim(), ownerPhone: f.ownerPhone,
-        contactPerson: f.contactPerson.trim(), phone: f.phone,
+        staff: f.staff.filter((s) => s.name.trim() || s.phone),
+        address: f.address.trim(),
         email: f.email.trim(), gstNumber: normalizeGst(f.gstNumber),
         ...(editing ? { isActive: f.isActive } : {}),
       };
@@ -660,19 +667,32 @@ export function VendorForm({ vendor, onClose, onSaved }) {
               <FieldError msg={errors.ownerPhone} />
             </label>
           </FormSection>
-          <FormSection title="Supplier staff" hint="The person from this store who brings the jewellery to you.">
-            <label className="grid gap-1.5">
-              <span className="text-xs font-bold">Staff Name *</span>
-              <Input value={f.contactPerson} onChange={(e) => setField("contactPerson", e.target.value)} placeholder="e.g. Ramesh" error={errors.contactPerson} />
-              <FieldError msg={errors.contactPerson} />
-            </label>
-            <label className="grid gap-1.5">
-              <span className="text-xs font-bold">Staff Phone *</span>
-              <PhoneInput value={f.phone} onValueChange={(v) => setField("phone", v)} error={!!errors.phone} />
-              <FieldError msg={errors.phone} />
-            </label>
-          </FormSection>
+          <div className="rounded-xl border border-line p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-accent-strong">Delivery staff *</div>
+                <p className="mt-0.5 text-[11px] text-muted">The people this store sends with the jewellery. New ones are also added from a purchase.</p>
+              </div>
+              <button type="button" onClick={() => setField("staff", [...f.staff, { name: "", phone: "" }])}
+                className="shrink-0 rounded-lg border border-accent-line bg-accent-soft px-2.5 py-1.5 text-xs font-bold text-accent-strong hover:bg-accent-line">+ Add staff</button>
+            </div>
+            <div className="grid gap-2.5">
+              {f.staff.map((s, i) => (
+                <div key={s.id || i} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_36px] items-center gap-2">
+                  <Input value={s.name} onChange={(e) => setField("staff", f.staff.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="Staff name" aria-label={`Staff ${i + 1} name`} />
+                  <PhoneInput value={s.phone} onValueChange={(v) => setField("staff", f.staff.map((x, j) => (j === i ? { ...x, phone: v } : x)))} />
+                  <button type="button" disabled={f.staff.length === 1} onClick={() => setField("staff", f.staff.filter((_, j) => j !== i))}
+                    className="grid h-9 w-9 place-items-center rounded-lg border border-line text-muted hover:border-danger-line hover:text-danger disabled:opacity-30" aria-label={`Remove staff ${i + 1}`}>✕</button>
+                </div>
+              ))}
+            </div>
+            <FieldError msg={errors.staff} />
+          </div>
           <FormSection title="Optional">
+            <label className="grid gap-1.5 sm:col-span-2">
+              <span className="text-xs font-bold">Address</span>
+              <Input value={f.address} onChange={(e) => setField("address", e.target.value)} placeholder="Shop address" />
+            </label>
             <label className="grid gap-1.5">
               <span className="text-xs font-bold">Email <span className="font-normal text-muted">— @gmail.com</span></span>
               <Input type="email" inputMode="email" autoComplete="email" placeholder="supplier@gmail.com" value={f.email} onChange={(e) => setField("email", e.target.value)} error={errors.email} />

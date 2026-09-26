@@ -215,6 +215,7 @@ export const billingService = {
       invoice_ref: data.invoiceRef || null,
       reference_type: data.referenceType || null,
       delivered_by: data.deliveredBy || null,
+      delivered_by_phone: data.deliveredByPhone || null,
       // GST on the vendor's bill, switched on per purchase (backend default 3%).
       gst_applied: !!data.gstApplied,
       gst_percent: data.gstApplied && data.gstPercent !== "" && data.gstPercent != null ? Number(data.gstPercent) : null,
@@ -447,6 +448,7 @@ export const billingService = {
       purchase_invoice_ref: data.invoiceRef || null,
       purchase_reference_type: data.referenceType || null,
       delivered_by: data.deliveredBy || null,
+      delivered_by_phone: data.deliveredByPhone || null,
       // GST on the vendor's bill, switched on per purchase (backend default 3%).
       gst_applied: !!data.gstApplied,
       gst_percent: data.gstApplied && data.gstPercent !== "" && data.gstPercent != null ? Number(data.gstPercent) : null,
@@ -501,6 +503,7 @@ export const billingService = {
       purchase_invoice_ref: data.invoiceRef || null,
       purchase_reference_type: data.referenceType || null,
       delivered_by: data.deliveredBy || null,
+      delivered_by_phone: data.deliveredByPhone || null,
       // GST on the vendor's bill, switched on per purchase (backend default 3%).
       gst_applied: !!data.gstApplied,
       gst_percent: data.gstApplied && data.gstPercent !== "" && data.gstPercent != null ? Number(data.gstPercent) : null,
@@ -921,6 +924,8 @@ function mapVendor(v = {}) {
     code: v.code ?? "",
     ownerName: v.owner_name ?? "",
     ownerPhone: v.owner_phone ?? "",
+    // The supplier's delivery staff (name + phone), oldest first.
+    staff: (v.staff || []).map((s) => ({ id: s.id, name: s.name ?? "", phone: s.phone ?? "" })),
     vendorChargePercent: v.vendor_charge_percent ?? 4,
     isActive: v.is_active ?? true,
     createdAt: v.created_at ?? null,
@@ -940,6 +945,7 @@ function vendorBody(data = {}) {
   if (data.code !== undefined) b.code = data.code || "";
   if (data.ownerName !== undefined) b.owner_name = data.ownerName || null;
   if (data.ownerPhone !== undefined) b.owner_phone = data.ownerPhone || null;
+  if (data.staff !== undefined) b.staff = data.staff.map((s) => ({ id: s.id || undefined, name: s.name.trim(), phone: s.phone || null }));
   if (data.vendorChargePercent !== undefined && data.vendorChargePercent !== "" && data.vendorChargePercent !== null)
     b.vendor_charge_percent = Number(data.vendorChargePercent);
   if (data.isActive !== undefined) b.is_active = data.isActive;
@@ -957,6 +963,7 @@ function mapVendorPurchase(p = {}) {
     purchaseDate: p.purchase_date ?? null,
     invoiceRef: p.invoice_ref ?? "",
     deliveredBy: p.delivered_by ?? "",
+    deliveredByPhone: p.delivered_by_phone ?? "",
     // The store staff member who recorded the purchase.
     enteredByName: p.entered_by_name ?? "",
     enteredByPhone: p.entered_by_phone ?? "",

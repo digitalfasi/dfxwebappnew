@@ -43,7 +43,7 @@ export default function SupplierDirectory() {
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return suppliers.filter((s) => {
-      const hay = [s.code, s.name, s.ownerName, s.ownerPhone, s.contactPerson, s.phone, s.gstNumber, s.email].join(" ").toLowerCase();
+      const hay = [s.code, s.name, s.ownerName, s.ownerPhone, s.address, s.gstNumber, s.email, ...(s.staff || []).flatMap((x) => [x.name, x.phone])].join(" ").toLowerCase();
       const matchesStatus = statusFilter === "All" || (statusFilter === "Active" ? s.isActive : !s.isActive);
       return (!q || hay.includes(q)) && matchesStatus;
     });
@@ -75,7 +75,7 @@ export default function SupplierDirectory() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2" data-motion="toolbar">
-        <SearchInput placeholder="Search code, store, owner, staff, phone or GST" value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 min-w-[220px]" />
+        <SearchInput placeholder="Search code, store, owner, staff, phone, address or GST" value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 min-w-[220px]" />
         <Select value={statusFilter} onValueChange={setStatusFilter} options={["All", "Active", "Inactive"]} className="w-[140px]" />
       </div>
 
@@ -86,7 +86,7 @@ export default function SupplierDirectory() {
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                 <th className="px-6 py-3 min-w-[14rem]">Supplier</th>
                 <th className="px-4 py-3 min-w-[11rem]">Owner</th>
-                <th className="px-4 py-3 min-w-[11rem]">Supplier Staff</th>
+                <th className="px-4 py-3 min-w-[13rem]">Delivery Staff</th>
                 <th className="px-4 py-3 min-w-[10rem]">GST / Email</th>
                 <th className="px-4 py-3 min-w-[6.5rem]">Status</th>
                 <th className="px-4 py-3 pr-6 text-right min-w-[6rem]">Actions</th>
@@ -100,7 +100,7 @@ export default function SupplierDirectory() {
                       <span className="grid h-9 min-w-[2.25rem] place-items-center rounded-lg border border-accent-line bg-accent-soft px-1.5 font-mono text-xs font-extrabold tracking-wide text-accent-strong">{s.code || "—"}</span>
                       <div className="min-w-0">
                         <div className="truncate font-bold text-ink">{s.name}</div>
-                        <div className="text-[11px] text-muted">Supplier code {s.code || "not set"}</div>
+                        <div className="truncate text-[11px] text-muted" title={s.address || ""}>{s.address || `Supplier code ${s.code || "not set"}`}</div>
                       </div>
                     </div>
                   </td>
@@ -109,8 +109,14 @@ export default function SupplierDirectory() {
                     <div className="num text-xs text-muted">{phone(s.ownerPhone)}</div>
                   </td>
                   <td className="px-4 py-3.5">
-                    <div className="text-xs font-semibold">{s.contactPerson || "—"}</div>
-                    <div className="num text-xs text-muted">{phone(s.phone)}</div>
+                    {(s.staff || []).length === 0 ? <span className="text-xs text-muted">—</span> : (
+                      <div className="grid gap-1">
+                        {s.staff.slice(0, 3).map((x) => (
+                          <div key={x.id} className="text-xs"><span className="font-semibold">{x.name}</span><span className="num text-muted">{x.phone ? ` · ${phone(x.phone)}` : ""}</span></div>
+                        ))}
+                        {s.staff.length > 3 && <span className="text-[11px] font-bold text-accent-strong">+{s.staff.length - 3} more</span>}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="num text-xs font-semibold">{s.gstNumber || "No GST"}</div>

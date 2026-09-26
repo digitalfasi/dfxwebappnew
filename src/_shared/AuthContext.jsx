@@ -18,6 +18,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [tenantName, setTenantName] = useState(null);
   const [tenantLogo, setTenantLogo] = useState(null);
+  // The shop's contact phone, for a signed-in person with none of their own.
+  const [tenantPhone, setTenantPhone] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // On mount: if a token exists, resolve the current user; drop to signed-out
@@ -31,7 +33,7 @@ export function AuthProvider({ children }) {
       }
       try {
         const u = await authService.fetchCurrentUser();
-        if (alive) { setUser(u); setTenantLogo(u?.tenantLogoUrl || null); }
+        if (alive) { setUser(u); setTenantLogo(u?.tenantLogoUrl || null); setTenantPhone(u?.tenantPhone || null); }
         // /users/me carries the caller's own shop name, so staff are never left
         // with the product name. The admin-only profile is still preferred when
         // it resolves; it is the record the shop edits.
@@ -68,7 +70,7 @@ export function AuthProvider({ children }) {
     setUser(u);
     authService.getTenantName().then((tn) => setTenantName(tn || u?.tenantName || null));
     // The login response carries no logo; /users/me does. Best-effort.
-    authService.fetchCurrentUser().then((me) => setTenantLogo(me?.tenantLogoUrl || null)).catch(() => {});
+    authService.fetchCurrentUser().then((me) => { setTenantLogo(me?.tenantLogoUrl || null); setTenantPhone(me?.tenantPhone || null); }).catch(() => {});
     return u;
   }, []);
 
@@ -90,6 +92,7 @@ export function AuthProvider({ children }) {
     setUser(null);
     setTenantName(null);
     setTenantLogo(null);
+    setTenantPhone(null);
   }, []);
 
   // Settings saves a new logo: the sidebar follows at once, no reload.
@@ -119,6 +122,7 @@ export function AuthProvider({ children }) {
     tenantId: user?.tenantId ?? null,
     tenantName,
     tenantLogo,
+    tenantPhone,
     permissions,
     hasPermission,
     isAuthenticated: !!user,

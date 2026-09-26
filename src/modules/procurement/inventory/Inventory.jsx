@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/_shared/ui/card";
 import { Button } from "@/_shared/ui/button";
-import { DigitsInput, Input, MoneyInput, SearchInput } from "@/_shared/ui/input";
+import { DigitsInput, Input, MoneyInput, PhoneInput, SearchInput } from "@/_shared/ui/input";
 import { Badge } from "@/_shared/ui/badge";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
@@ -77,7 +77,7 @@ const BULK_GST_PERCENT = 3;
 // One header per type - Jewellery and Raw Gold never share what was typed.
 // lotWeight / lotQty: the lot the supplier hands over (e.g. 1000 g, 50 pcs);
 // every row entered counts down against them.
-const emptyBulkHeader = (date = "") => ({ vendor: "", deliveredBy: "", date, invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", lotWeight: "", lotQty: "" });
+const emptyBulkHeader = (date = "") => ({ vendor: "", deliveredBy: "", deliveredByPhone: "", deliveredNew: false, date, invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", lotWeight: "", lotQty: "" });
 
 // Item Code = category initial + sub-category initial + a 4-digit number per
 // prefix (BF0001, BF0002 ...). Mirrors the backend's item_code_prefix exactly.
@@ -104,6 +104,46 @@ function tunchFromNumber(no, purity) {
   if (pct > 9) return { pct, error: "Tunch over 9%" };
   return { pct, error: "" };
 }
+
+// Who delivered: the supplier's saved staff, or a new person (name + phone).
+// A new person is remembered on the supplier when the purchase saves.
+const NEW_STAFF = "__new";
+function DeliveredByField({ staff, hasSupplier, name, phone, isNew, onChange }) {
+  const showNew = isNew || (hasSupplier && staff.length === 0);
+  const options = [
+    ...staff.map((s) => ({ value: s.name, label: s.phone ? `${s.name} · +91 ${s.phone}` : s.name })),
+    { value: NEW_STAFF, label: "+ New delivery staff" },
+  ];
+  return (
+    <div className="grid gap-2">
+      {staff.length > 0 && (
+        <Select value={isNew ? NEW_STAFF : name} placeholder="Select delivery staff"
+          onValueChange={(v) => {
+            if (v === NEW_STAFF) return onChange({ deliveredNew: true, deliveredBy: "", deliveredByPhone: "" });
+            const s = staff.find((x) => x.name === v);
+            onChange({ deliveredNew: false, deliveredBy: s?.name || "", deliveredByPhone: s?.phone || "" });
+          }}
+          options={options} />
+      )}
+      {!hasSupplier && <div className="flex h-11 items-center rounded-xl border border-dashed border-line bg-canvas/40 px-3.5 text-sm text-muted">Select a supplier first</div>}
+      {hasSupplier && showNew && (
+        <div className="grid grid-cols-2 gap-2">
+          <Input value={name} onChange={(e) => onChange({ deliveredNew: true, deliveredBy: e.target.value })} placeholder="New staff name" className="h-11" />
+          <PhoneInput value={phone} onValueChange={(v) => onChange({ deliveredNew: true, deliveredByPhone: v })} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Typed Tunch % -> the Tunch Number it means (22K 916, 4% -> 952.64).
+const tunchNoFromPct = (pct, purity) => {
+  if (pct === "" || pct == null) return "";
+  const fin = PURITY_FINENESS[purity] || 0;
+  const n = Number(pct);
+  return fin && Number.isFinite(n) ? String(Math.round(fin * (1 + n / 100) * 100) / 100) : "";
+};
+const cleanDec = (v) => String(v).replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 6);
 
 // A header field: fixed-height label row so every control in the grid lines up.
 function HeaderField({ label, action, children }) {
@@ -165,7 +205,7 @@ const EMPTY_PURCHASE = {
   // from gross - stone; the computed figure is kept beside it and both are
   // shown, so an override is never silent.
   purity: "22K", gross: "", stoneWt: "", netOverride: "", netOverridden: false,
-  vendor: "", deliveredBy: "", purchaseDate: "", invoice: "", referenceType: "INVOICE", rate: "",
+  vendor: "", deliveredBy: "", deliveredByPhone: "", deliveredNew: false, purchaseDate: "", invoice: "", referenceType: "INVOICE", rate: "",
   tunchNo: "", other: "", amount: null, paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
 };
 
@@ -195,7 +235,7 @@ export default function Inventory({ onNavigate }) {
   const scope = useRef(null);
   // Store pricing defaults are Admin-only server-side; mirror that here so the
   // button is not offered to someone the API will refuse.
-  const { backendRole, user } = useAuth();
+  const { backendRole, user, tenantPhone } = useAuth();
   // Who keyed the entry. Display only: the backend stamps created_by from the
   // access token (service.py, created_by=current_user.id), so this is shown to
   // confirm WHO the entry will be recorded against — it is never sent, and
@@ -422,7 +462,16 @@ export default function Inventory({ onNavigate }) {
   const vendorNames = useMemo(() => vendorList.map((v) => v.name), [vendorList]);
   // Picking a supplier pre-fills Delivered By with its registered staff member;
   // still editable when someone else brings the goods.
-  const staffOf = (name) => vendorList.find((v) => v.name === name)?.contactPerson || "";
+  // A supplier's delivery staff, and the pick that opens with it (the first one,
+  // or "new" when it has none yet).
+  const staffListOf = (name) => vendorList.find((v) => v.name === name)?.staff || [];
+  const firstStaff = (name) => {
+    const s = staffListOf(name)[0];
+    return s ? { deliveredBy: s.name, deliveredByPhone: s.phone || "", deliveredNew: false } : { deliveredBy: "", deliveredByPhone: "", deliveredNew: true };
+  };
+  // Name + phone of who is entering it; the shop's phone when the login has none.
+  const enteredPhone = String(user?.phone || tenantPhone || "").replace(/\D/g, "").slice(-10);
+  const storeStaff = `${staffName || "Signed-in user"}${enteredPhone ? ` · +91 ${enteredPhone}` : ""}`;
   // Supplier choices read "CODE — Store name"; the value stays the name. An
   // inactive supplier cannot be purchased from, so it is not offered.
   const vendorOptions = useMemo(() => vendorList.filter((v) => v.isActive !== false).map((v) => ({ value: v.name, label: v.code ? `${v.code} — ${v.name}` : v.name })), [vendorList]);
@@ -582,6 +631,7 @@ export default function Inventory({ onNavigate }) {
     const matchedVendor = vendorList.find(v => v.name === f.vendor);
     if (!matchedVendor) { toast("Select a supplier"); return; }
     if (!f.purchaseDate) { toast("Purchase Date is required"); return; }
+    if (f.deliveredNew && f.deliveredBy.trim() && String(f.deliveredByPhone || "").length !== 10) { toast("Enter the new delivery staff's 10-digit phone"); return; }
     if (!f.huid.trim() && (!f.category || !f.subCategory)) { toast("Pick the category and sub-category - the Item Code is made from them"); return; }
     if (!f.huid.trim() && !addCode.code) { toast("The Item Code is still being generated - try again in a moment"); return; }
     if (tunchFromNumber(f.tunchNo, f.purity).error) { toast(`Tunch Number: ${tunchFromNumber(f.tunchNo, f.purity).error}`); return; }
@@ -651,6 +701,7 @@ export default function Inventory({ onNavigate }) {
           invoiceRef: f.invoice || undefined,
           referenceType: "INVOICE",
           deliveredBy: f.deliveredBy.trim() || undefined,
+          deliveredByPhone: f.deliveredByPhone || undefined,
           weightGrams: addWeights.net,
           stoneWeightGrams: addWeights.stone,
           ratePerGram: Number(f.rate),
@@ -750,6 +801,21 @@ export default function Inventory({ onNavigate }) {
         : rows,
     );
   }, [showBulk, bulkType, newBulkRow, setBulkRows]);
+
+  // Total Quantity = number of rows: typing 50 opens 50 rows. Rows already
+  // typed into are never dropped; only blank rows at the end are trimmed.
+  const MAX_BULK_ROWS = 200;
+  const fitBulkRows = useCallback((qtyText) => {
+    const want = Math.min(parseInt(qtyText, 10) || 0, MAX_BULK_ROWS);
+    if (want < 1) return;
+    const blank = (r) => !r.ident && !r.itemCode && !r.name && !r.gross && !r.stoneWt && !r.net;
+    setBulkRows((rows) => {
+      const next = [...rows];
+      while (next.length < want) next.push(newBulkRow());
+      while (next.length > want && blank(next[next.length - 1])) next.pop();
+      return next;
+    });
+  }, [newBulkRow, setBulkRows]);
 
 
   // Tunch percentage for one row. Zero for bullion, whatever the row happens to
@@ -915,6 +981,7 @@ export default function Inventory({ onNavigate }) {
     const matchedVendor = vendorList.find(v => v.name === h.vendor);
     if (!matchedVendor) { toast("Select a supplier"); return; }
     if (!h.date) { toast("Purchase Date is required"); return; }
+    if (h.deliveredNew && h.deliveredBy.trim() && String(h.deliveredByPhone || "").length !== 10) { toast("Enter the new delivery staff's 10-digit phone"); return; }
     if (!(Number(h.lotWeight) > 0)) { toast("Enter the Total Gold Weight of the lot"); return; }
     if (!(Number(h.lotQty) > 0)) { toast("Enter the Total Quantity of the lot"); return; }
     const rows = bulkRows
@@ -959,6 +1026,7 @@ export default function Inventory({ onNavigate }) {
         invoiceRef: h.invoice || undefined,
         referenceType: "INVOICE",
         deliveredBy: h.deliveredBy.trim() || undefined,
+        deliveredByPhone: h.deliveredByPhone || undefined,
         // No header Tunch any more — every row sends its own and the server
         // sums them, so a mixed-Tunch receipt is priced correctly.
         paymentMode: h.paymentMode,
@@ -1083,8 +1151,8 @@ export default function Inventory({ onNavigate }) {
     setShowAddVendor(false);
     if (!v) return;
     setVendorList(prev => [...prev, v]);
-    setAddForm(f => ({ ...f, vendor: v.name }));
-    setBulkHeader(h => ({ ...h, vendor: v.name, deliveredBy: h.deliveredBy || v.contactPerson || "" }));
+    setAddForm(f => ({ ...f, vendor: v.name, deliveredBy: v.staff?.[0]?.name || "", deliveredByPhone: v.staff?.[0]?.phone || "", deliveredNew: !(v.staff || []).length }));
+    setBulkHeader(h => ({ ...h, vendor: v.name, deliveredBy: v.staff?.[0]?.name || "", deliveredByPhone: v.staff?.[0]?.phone || "", deliveredNew: !(v.staff || []).length }));
   };
 
   return (
@@ -1252,14 +1320,14 @@ export default function Inventory({ onNavigate }) {
               into Category, and the full value stays available on hover. */}
           <table className="w-full min-w-[1210px] table-fixed border-collapse text-sm">
             <colgroup>
-              <col className="w-[130px]" /><col className="w-[220px]" /><col className="w-[130px]" />
-              <col className="w-[140px]" /><col className="w-[90px]" /><col className="w-[110px]" />
-              <col className="w-[150px]" /><col className="w-[90px]" /><col className="w-[110px]" />
-              <col className="w-[110px]" /><col className="w-[190px]" />
+              <col className="w-[140px]" /><col className="w-[210px]" /><col className="w-[160px]" />
+              <col className="w-[170px]" /><col className="w-[80px]" /><col className="w-[100px]" />
+              <col className="w-[130px]" /><col className="w-[70px]" /><col className="w-[110px]" />
+              <col className="w-[100px]" /><col className="w-[180px]" />
             </colgroup>
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left align-middle text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Item Code / HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Supplier</th><th className="px-3 py-3 text-right">Tunch</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
+                <th className="px-6 py-3">Item Code / HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Supplier</th><th className="px-3 py-3 text-center">Tunch</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1280,7 +1348,7 @@ export default function Inventory({ onNavigate }) {
                   {/* The tunch this piece was bought at - the vendor's own
                       charge, which sets this piece's billing floors. A dash
                       means the lot never recorded one, not 0%. */}
-                  <td className="px-3 py-3.5 text-right font-mono whitespace-nowrap tabular-nums">{p.tunch != null ? `${p.tunch}%` : "—"}</td>
+                  <td className="px-3 py-3.5 text-center font-mono whitespace-nowrap tabular-nums">{p.tunch != null ? `${p.tunch}%` : "—"}</td>
                   <td className="px-3 py-3.5"><Badge tone={p.status==="In Stock"?"success":p.status==="Sold"?"warning":"neutral"} dot>{p.status}</Badge></td>
                   <td className="px-3 py-3.5"><Badge tone={p.catalogue==="Yes"?"success":"neutral"}>{p.catalogue}</Badge></td>
                   <td className="py-3.5 pr-6 whitespace-nowrap">
@@ -1322,21 +1390,22 @@ export default function Inventory({ onNavigate }) {
                     <HeaderField label="Supplier *" action={!showAddVendor && canAddSupplier && (
                       <button type="button" onClick={()=>setShowAddVendor(true)} className="text-[11px] font-bold text-accent underline">+ Add new supplier</button>
                     )}>
-                      <Select value={addForm.vendor} onValueChange={v=>setAddForm({...addForm, vendor:v, deliveredBy: addForm.deliveredBy || staffOf(v)})} options={vendorOptions} placeholder={vendorOptions.length ? "Select supplier…" : "No suppliers — add one"} />
+                      <Select value={addForm.vendor} onValueChange={v=>setAddForm({...addForm, vendor:v, ...firstStaff(v)})} options={vendorOptions} placeholder={vendorOptions.length ? "Select supplier…" : "No suppliers — add one"} />
                     </HeaderField>
                   </div>
                   <HeaderField label="Purchase Date & Time *">
                     <Input type="datetime-local" value={addForm.purchaseDate} onChange={e=>setAddForm({...addForm, purchaseDate:e.target.value, purchaseDateEdited:true})} className="h-11" title="Defaults to now; change it for a slip received earlier" />
                   </HeaderField>
-                  <HeaderField label="Invoice Number">
-                    <Input value={addForm.invoice} onChange={e=>setAddForm({...addForm, invoice:e.target.value})} placeholder="INV-..." className="h-11" />
+                  <HeaderField label="Invoice / Reference / Slip / DC No.">
+                    <Input value={addForm.invoice} onChange={e=>setAddForm({...addForm, invoice:e.target.value})} placeholder="e.g. INV-1024 or DC/77" className="h-11" />
                   </HeaderField>
                   <HeaderField label="Delivered By">
-                    <Input placeholder="Supplier staff who brought it" value={addForm.deliveredBy} onChange={e=>setAddForm({...addForm, deliveredBy:e.target.value})} className="h-11" />
+                    <DeliveredByField staff={staffListOf(addForm.vendor)} hasSupplier={!!addForm.vendor} name={addForm.deliveredBy} phone={addForm.deliveredByPhone} isNew={!!addForm.deliveredNew}
+                      onChange={(p) => setAddForm((f) => ({ ...f, ...p }))} />
                   </HeaderField>
                   <HeaderField label="Entered By">
                     <div className="flex h-11 items-center gap-2 rounded-xl border border-line bg-canvas/60 px-3.5 text-sm font-semibold text-ink-soft" title="Recorded automatically against your sign-in">
-                      <span className="truncate">{staffName || "Signed-in user"}</span>
+                      <span className="truncate">{storeStaff}</span>
                       <span className="ml-auto shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">You</span>
                     </div>
                   </HeaderField>
@@ -1447,7 +1516,7 @@ export default function Inventory({ onNavigate }) {
                 <div className="grid items-start gap-4 sm:grid-cols-3">
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Rate (₹/g) — 24K *</span><Input type="number" value={addForm.rate} onChange={e=>setAddForm({...addForm, rate:e.target.value})} /><span className="text-[11px] text-muted">{rate24kPerGram(todayRate) != null ? (rateIsCarriedForward ? `Always the 24K (pure gold) rate — auto-filled from the rate published on ${rateEffectiveLabel}, as today's is not published yet. Check it before saving.` : "Always the 24K (pure gold) rate — auto-filled from today's 24K rate, editable. Purity only converts the net weight.") : "No live 24K rate set today — enter the 24K rate manually."}</span></label>
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Tunch No.</span>
-                    <Input inputMode="decimal" value={addForm.tunchNo ?? ""} onChange={e=>setAddForm({...addForm, tunchNo: e.target.value.replace(/[^\d.]/g, "").slice(0, 6)})} placeholder={String(PURITY_FINENESS[addForm.purity] ?? "")} />
+                    <Input inputMode="decimal" value={addForm.tunchNo ?? ""} onChange={e=>setAddForm({...addForm, tunchNo: cleanDec(e.target.value), tunchPctText: undefined})} placeholder={String(PURITY_FINENESS[addForm.purity] ?? "")} />
                     <span className="text-[11px] text-muted">Purity raised by the Tunch — e.g. 22K 916 + 4% = 952.6. Blank = no Tunch.</span>
                   </label>
                   {(() => {
@@ -1455,8 +1524,15 @@ export default function Inventory({ onNavigate }) {
                     return (
                       <div className="grid content-start gap-1.5">
                         <span className="text-xs font-bold">Tunch %</span>
-                        <div className={`num flex h-10 items-center justify-end rounded-xl border px-3.5 font-mono text-sm tabular-nums ${t.error ? "border-danger bg-danger-soft/40 text-danger" : "border-line bg-canvas/60"}`}>{t.pct.toFixed(2)}%</div>
-                        <span className={`text-[11px] ${t.error ? "font-semibold text-danger" : "text-muted"}`}>{t.error || "Of the 24K-equivalent gold value. Never added to the rate/g."}</span>
+                        <div className="relative">
+                          <Input inputMode="decimal" aria-label="Tunch %"
+                            value={addForm.tunchPctText ?? (addForm.tunchNo ? String(t.pct) : "")}
+                            onChange={e=>{ const v = cleanDec(e.target.value); setAddForm({...addForm, tunchPctText: v, tunchNo: tunchNoFromPct(v, addForm.purity)}); }}
+                            onBlur={()=>setAddForm((f)=>({...f, tunchPctText: undefined}))}
+                            placeholder="0" error={t.error || undefined} className="pr-8 text-right" />
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-muted">%</span>
+                        </div>
+                        <span className={`text-[11px] ${t.error ? "font-semibold text-danger" : "text-muted"}`}>{t.error || "Type the % or the Tunch No. — each fills the other."}</span>
                       </div>
                     );
                   })()}
@@ -1542,20 +1618,21 @@ export default function Inventory({ onNavigate }) {
                 <HeaderField label="Supplier *" action={!showAddVendor && canAddSupplier && (
                   <button type="button" onClick={()=>setShowAddVendor(true)} className="text-[11px] font-bold text-accent underline">+ Add new supplier</button>
                 )}>
-                  <Select value={bulkHeader.vendor} onValueChange={v=>setBulkHeader({...bulkHeader, vendor:v, deliveredBy: bulkHeader.deliveredBy || staffOf(v)})} options={vendorOptions} placeholder={vendorOptions.length ? "Select supplier…" : "No suppliers — add one"} />
+                  <Select value={bulkHeader.vendor} onValueChange={v=>setBulkHeader({...bulkHeader, vendor:v, ...firstStaff(v)})} options={vendorOptions} placeholder={vendorOptions.length ? "Select supplier…" : "No suppliers — add one"} />
                 </HeaderField>
                 <HeaderField label="Purchase Date & Time *">
                   <Input type="datetime-local" value={bulkHeader.date} onChange={e=>setBulkHeader({...bulkHeader, date:e.target.value, dateEdited:true})} className="h-11" title="Defaults to now; editable for a back-dated slip" />
                 </HeaderField>
-                <HeaderField label="Invoice Number">
-                  <Input value={bulkHeader.invoice} onChange={e=>setBulkHeader({...bulkHeader, invoice:e.target.value})} placeholder="INV-..." className="h-11" />
+                <HeaderField label="Invoice / Reference / Slip / DC No.">
+                  <Input value={bulkHeader.invoice} onChange={e=>setBulkHeader({...bulkHeader, invoice:e.target.value})} placeholder="e.g. INV-1024 or DC/77" className="h-11" />
                 </HeaderField>
                 <HeaderField label="Delivered By">
-                  <Input placeholder="Supplier staff who brought it" value={bulkHeader.deliveredBy} onChange={e=>setBulkHeader({...bulkHeader, deliveredBy:e.target.value})} className="h-11" />
+                  <DeliveredByField staff={staffListOf(bulkHeader.vendor)} hasSupplier={!!bulkHeader.vendor} name={bulkHeader.deliveredBy} phone={bulkHeader.deliveredByPhone} isNew={!!bulkHeader.deliveredNew}
+                    onChange={(p) => setBulkHeader((h) => ({ ...h, ...p }))} />
                 </HeaderField>
                 <HeaderField label="Entered By">
                   <div className="flex h-11 items-center gap-2 rounded-xl border border-line bg-canvas/60 px-3.5 text-sm font-semibold text-ink-soft" title="Recorded automatically against your sign-in">
-                    <span className="truncate">{staffName || "Signed-in user"}</span>
+                    <span className="truncate">{storeStaff}</span>
                     <span className="ml-auto shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">You</span>
                   </div>
                 </HeaderField>
@@ -1581,7 +1658,7 @@ export default function Inventory({ onNavigate }) {
               <div className={`grid gap-3 sm:grid-cols-2 ${bulkType === "JEWELLERY" ? "lg:grid-cols-4" : ""}`}>
                 <LotCard label="Total Gold Weight" unit="g" decimals value={bulkHeader.lotWeight} onChange={v=>setBulkHeader(h=>({...h, lotWeight:v}))} used={bulkLotUsed.weight}
                   hint={bulkType === "JEWELLERY" ? "Each row deducts its gross weight, as weighed" : "Each bar deducts its net weight"} />
-                <LotCard label="Total Quantity" unit="pcs" value={bulkHeader.lotQty} onChange={v=>setBulkHeader(h=>({...h, lotQty:v}))} used={bulkLotUsed.qty}
+                <LotCard label="Total Quantity" unit="pcs" value={bulkHeader.lotQty} onChange={v=>{ setBulkHeader(h=>({...h, lotQty:v})); fitBulkRows(v); }} used={bulkLotUsed.qty}
                   hint={bulkType === "JEWELLERY" ? "Each row is one piece" : "Each row is one bar"} />
                 {bulkType === "JEWELLERY" && <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
                   <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Stone Weight</div>
@@ -1684,13 +1761,20 @@ export default function Inventory({ onNavigate }) {
                           {/* maxDigits was 1, so a 12% lot could not be typed at
                               all - the second digit was swallowed. */}
                           {bulkType === "JEWELLERY" && (
-                            <td className="px-2 py-2"><Input inputMode="decimal" value={r.tunchNo ?? ""} onChange={e=>setCell("tunchNo", e.target.value.replace(/[^\d.]/g, "").slice(0, 6))} placeholder={String(PURITY_FINENESS[r.purity] ?? "")} className="h-9" /></td>
+                            <td className="px-2 py-2"><Input inputMode="decimal" value={r.tunchNo ?? ""} onChange={e=>setBulkRows(bulkRows.map((row,ix)=>ix===i?{...row, tunchNo: cleanDec(e.target.value), tunchPctText: undefined}:row))} placeholder={String(PURITY_FINENESS[r.purity] ?? "")} className="h-9" /></td>
                           )}
                           {bulkType === "JEWELLERY" && (() => {
                             const t = tunchFromNumber(r.tunchNo, r.purity);
                             return (
                               <td className="px-2 py-2">
-                                <div className={`num flex h-9 items-center justify-end rounded-xl border px-3 font-mono text-sm tabular-nums ${t.error ? "border-danger bg-danger-soft/40 text-danger" : "border-line bg-canvas/60"}`}>{t.pct.toFixed(2)}%</div>
+                                <div className="relative">
+                                  <Input inputMode="decimal" aria-label="Tunch %"
+                                    value={r.tunchPctText ?? (r.tunchNo ? String(t.pct) : "")}
+                                    onChange={e=>{ const v = cleanDec(e.target.value); setBulkRows(bulkRows.map((row,ix)=>ix===i?{...row, tunchPctText: v, tunchNo: tunchNoFromPct(v, row.purity)}:row)); }}
+                                    onBlur={()=>setCell("tunchPctText", undefined)}
+                                    placeholder="0" error={t.error || undefined} className="h-9 pr-7 text-right" />
+                                  <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">%</span>
+                                </div>
                                 {t.error && <span className="mt-1 block text-[10px] font-semibold text-danger">{t.error}</span>}
                               </td>
                             );
