@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 const ns = read("../src/modules/billing/new-sale/NewSale.jsx");
+const ps = read("../src/modules/billing/pricing-settings/PricingSettings.jsx");
 const svc = read("../src/modules/billing/billingService.js");
 const inv = read("../src/modules/procurement/inventory/Inventory.jsx");
 // The profit/loss word and its wording live in ONE place now, shared by New
@@ -279,10 +280,12 @@ describe("one lookup box for both trades", () => {
     expect(ns).not.toMatch(/toast\("Enter HUID"\)/);
   });
 
-  it("the tax switch carries no GST caption", () => {
-    expect(ns).not.toMatch(/"GST On"/);
-    expect(ns).not.toMatch(/"GST Off"/);
-    expect(ns).toMatch(/\[\["On", true\], \["Off", false\]\]/);
+  it("GST is compulsory: no on/off switch on the bill", () => {
+    // 2026-09-26: every bill carries GST; the switch is gone from both the
+    // jewellery and the raw-gold summary.
+    expect(ns).not.toMatch(/\[\["On", true\], \["Off", false\]\]/);
+    expect(ns).not.toMatch(/setGst\(val\)/);
+    expect(ns).toMatch(/GST is compulsory on every bill/);
   });
 });
 
@@ -423,7 +426,7 @@ describe("the verdict states this piece's own floors", () => {
     // that make it are set.
     expect(ns).not.toMatch(/% list = /);
     expect(ns).not.toMatch(/% tunch \+ /);
-    expect(inv).toMatch(/Making Value \+ Running Cost \+ the lot/);
+    expect(ps).toMatch(/Preview · 10 g 22K/);
   });
 });
 
@@ -431,11 +434,11 @@ describe("the verdict states this piece's own floors", () => {
 describe("the screens stay small enough to use", () => {
   const pay = read("../src/modules/payments/Payments.jsx");
 
-  it("Store Defaults explains the rule in one line, not three paragraphs", () => {
-    // It grew until Save sat below the fold of the dialog.
-    expect(inv).not.toMatch(/How a bill is priced/);
-    expect(inv).toMatch(/Making Value \+ Running Cost \+ the lot/);
-    expect(inv).not.toMatch(/3% gold profit \+ 3% negotiable extra/);
+  it("pricing lives in Billing > Store Defaults, not in Inventory", () => {
+    expect(inv).not.toMatch(/Store Pricing Defaults<\/Button>/);
+    expect(ps).toMatch(/label="Gold profit"/);
+    expect(ps).toMatch(/const extra = r2\(making - goldProfit\);/);
+    expect(ps).toMatch(/Compulsory on every bill/);
   });
 
   it("Payments shows both types at once instead of behind a dropdown", () => {

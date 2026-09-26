@@ -52,6 +52,8 @@ export const PAGE_MODULE = {
   // Billing — three independently grantable areas
   "new-sale": "billing_new_sale",
   "sales-history": "billing_sales_history",
+  // The shop's margin and costs - owner only, like the API.
+  "store-defaults": ADMIN_ONLY,
   // Money
   payments: "payments",
   // Studio / outreach

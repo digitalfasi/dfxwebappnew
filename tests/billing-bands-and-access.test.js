@@ -8,6 +8,8 @@ import { readFileSync } from "node:fs";
 const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 const svc = read("../src/modules/billing/billingService.js");
 const inv = read("../src/modules/procurement/inventory/Inventory.jsx");
+const ps = read("../src/modules/billing/pricing-settings/PricingSettings.jsx");
+const access = read("../src/_shared/moduleAccess.js");
 
 describe("running cost is a field the shop owns", () => {
   it("is read off the store defaults", () => {
@@ -16,30 +18,18 @@ describe("running cost is a field the shop owns", () => {
   it("is sent back, and blank means 'use the default' rather than zero", () => {
     expect(svc).toMatch(/running_cost_percent: f\.runningCost !== "" && f\.runningCost != null \? Number\(f\.runningCost\) : null/);
   });
-  it("the dialog offers it, and says what it is for", () => {
-    expect(inv).toMatch(/Running Cost %/);
-    expect(inv).toMatch(/Rent, wages, power\. Default 4%\./);
+  it("Store Defaults offers it, and says what it is for", () => {
+    expect(ps).toMatch(/label="Running cost"/);
+    expect(ps).toMatch(/Rent, wages, power\./);
   });
 });
 
 describe("store pricing defaults are Admin-only on screen, as they are on the server", () => {
-  it("the button is gated on the role", () => {
-    expect(inv).toMatch(/\{seesStoreDefaults && \(/);
-    expect(inv).toMatch(/const seesStoreDefaults = backendRole === "Admin" \|\| backendRole === "SuperAdmin"/);
+  it("Store Defaults is an Admin-only page", () => {
+    expect(access).toMatch(/"store-defaults": ADMIN_ONLY,/);
   });
-  // The button sits on its own line either way, so "is it gated?" has to be
-  // asked of the STRUCTURE: every occurrence of it must fall inside the
-  // seesStoreDefaults block.
-  it("every render of it is inside the gate", () => {
-    const occurrences = [...inv.matchAll(/onClick=\{openDefaults\}/g)].map((m) => m.index);
-    expect(occurrences.length).toBeGreaterThan(0);
-    const gateStart = inv.indexOf("{seesStoreDefaults && (");
-    const gateEnd = inv.indexOf(")}", gateStart);
-    expect(gateStart).toBeGreaterThan(-1);
-    for (const at of occurrences) {
-      expect(at).toBeGreaterThan(gateStart);
-      expect(at).toBeLessThan(gateEnd);
-    }
+  it("Inventory no longer carries the pricing dialog", () => {
+    expect(inv).not.toMatch(/onClick=\{openDefaults\}/);
   });
 });
 

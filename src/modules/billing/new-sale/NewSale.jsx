@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { ProfitToggle } from "@/_shared/ui/profit-toggle";
 import { Card } from "@/_shared/ui/card";
 import { Button } from "@/_shared/ui/button";
 import { Input, MoneyInput, PhoneInput, SearchInput } from "@/_shared/ui/input";
@@ -139,7 +140,11 @@ export default function NewSale() {
   // the admin's own number behind their back - they type 8,000 and the field
   // answers 7,996.80. The machine advises; it does not overrule.
   const [discountText, setDiscountText] = useState(null);
+  // GST is compulsory on every bill - there is no off (owner 2026-09-26).
   const [gst, setGst] = useState(true);
+  // Profit / cost figures stay hidden until the admin asks for them, so a
+  // customer across the counter never sees the margin. Resets on every piece.
+  const [showProfit, setShowProfit] = useState(false);
 
   // Sale mode (doc Point 12). ONLINE = live gold rate, engine price, everything
   // locked. OFFLINE (full cash) = editable gold rate, customer price and gold
@@ -384,7 +389,7 @@ export default function NewSale() {
     setLoading(true); setLookupError("");
     setProduct(null); setProductCode("");
     setRawGold(null); setRawGoldRate("");
-    setDiscountText(null); setGst(true);
+    setDiscountText(null); setGst(true); setShowProfit(false);
     setPriceText(null); setQuoteError("");
     setSaleMode(null);
     try {
@@ -734,7 +739,7 @@ export default function NewSale() {
 
   const resetAll = () => {
     setProduct(null); setProductCode(""); setCode("");
-    setRate(""); setMakingVal(""); setWastageVal(""); setDiscountText(null); setGst(true);
+    setRate(""); setMakingVal(""); setWastageVal(""); setDiscountText(null); setGst(true); setShowProfit(false);
     setAllowBelowCost(false); setBelowCostReason(""); setPublishedRate(null);
     setPayMethod(""); setPayStatus(""); setPartialAmount(""); setPayRef("");
     setSaleMode(null); setPriceText(null); setQuoteError("");
@@ -937,7 +942,7 @@ export default function NewSale() {
       setDraftsOpen(false);
       setCode(d.product_code || "");
       setResumedDraftId(d.id);
-      setGst(d.gst_applied !== false);
+      setGst(true); // compulsory, whatever an older draft saved
       setMakingVal(d.making_charge_value != null ? String(d.making_charge_value) : "");
       setWastageVal(d.wastage_value != null ? String(d.wastage_value) : "");
       // A draft's concession is replayed through the making charge, which is
@@ -1056,14 +1061,11 @@ export default function NewSale() {
                 </span>
               </label>
               <label className="grid gap-1.5">
-                {/* No "GST" caption, per the owner - the control is the switch
-                    and the line beneath already says what it switches. */}
-                <span className="text-xs font-bold">&nbsp;</span>
-                <div className="flex h-10 items-center gap-1 rounded-xl border border-line bg-canvas/60 p-1">
-                  {[["On", true], ["Off", false]].map(([label, val]) => (
-                    <button key={label} type="button" onClick={() => setRawGoldGst(val)}
-                      className={`h-full flex-1 rounded-lg text-xs font-bold transition-colors ${rawGoldGst === val ? "bg-accent text-white shadow-sm" : "text-ink-soft hover:bg-surface"}`}>{label}</button>
-                  ))}
+                <span className="text-xs font-bold">GST</span>
+                {/* Compulsory - shown, not switched. */}
+                <div className="num flex h-10 items-center rounded-xl border border-line bg-canvas/60 px-3.5 text-sm font-bold">
+                  {rawGold.taxRatePercent}%
+                  <span className="ml-auto rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">Compulsory</span>
                 </div>
                 <span className="text-[11px] text-muted">{rawGold.taxRatePercent}% on the metal. A bar carries no other charge.</span>
               </label>
@@ -1149,7 +1151,10 @@ export default function NewSale() {
           summary, so the screen reads the same whichever is being sold. */}
       {!product && rawGold && (
         <Card data-motion="reveal" className="p-5 lg:sticky lg:top-4 lg:self-start">
-          <h3 className="text-sm font-extrabold">Bill summary</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-extrabold">Bill summary</h3>
+            {rawGold.profitOrLoss != null && <ProfitToggle compact on={showProfit} onToggle={() => setShowProfit((v) => !v)} />}
+          </div>
           <div className="mt-3 rounded-xl border border-line bg-canvas/40 p-3">
             <div className="text-[13px] font-bold">{rawGold.productName}</div>
             <div className="mt-0.5 font-mono text-[11px] text-muted">{rawGold.serialNumber} · {rawGold.purity} · {Number(rawGold.netGoldWeightGrams).toFixed(3)} g</div>
@@ -1196,7 +1201,7 @@ export default function NewSale() {
             )}
           </div>
 
-          {rawGold.profitOrLoss != null && (
+          {showProfit && rawGold.profitOrLoss != null && (
             <div className={`mt-3 flex items-baseline justify-between rounded-lg border px-3 py-2 ${rawGold.profitOrLoss < 0 ? "border-danger-line bg-danger-soft/50" : "border-emerald-200 bg-emerald-50"}`}>
               <span className={`text-[11px] font-bold uppercase tracking-[0.07em] ${rawGold.profitOrLoss < 0 ? "text-danger" : "text-emerald-700"}`}>
                 {rawGold.profitOrLoss < 0 ? "Loss" : "Profit"}
@@ -1392,7 +1397,8 @@ export default function NewSale() {
             {/* Purchase Cost and Purchase-Cost P/L are intentionally omitted from
                 this screen — the counter sees selling figures only. */}
                 <Card className="p-5 space-y-4">
-                  <SectionHead step={3} title="Pricing" meta={requoting ? "Updating…" : undefined} />
+                  <SectionHead step={3} title="Pricing" meta={requoting ? "Updating…" : undefined}
+                    action={<ProfitToggle compact on={showProfit} onToggle={() => setShowProfit((v) => !v)} />} />
                   {/* Reference figures stay small: the field below is the one
                       the admin acts on, so it gets the visual weight. */}
                   {/* Two equal columns, each carrying its own padding. Every
@@ -1496,7 +1502,7 @@ export default function NewSale() {
                             break-even: the cost floor below only catches a bill
                             that goes under what the PIECE cost, and 11% sits
                             above that because it carries running cost too. */}
-                        {impliedMakingPct != null && (
+                        {showProfit && impliedMakingPct != null && (
                           <div className={`mt-2 flex items-baseline justify-between gap-3 rounded-xl border px-3 py-2 ${VERDICT[billVerdict].line}`}>
                             <span className={`text-[11px] font-bold uppercase tracking-[0.07em] ${VERDICT[billVerdict].text}`}>
                               {VERDICT[billVerdict].word}
@@ -1532,10 +1538,10 @@ export default function NewSale() {
                   {/* Staff get the word, never the figure. The backend sends
                       the rupees only to a privileged caller and the label to
                       everyone, so the absent number IS the signal here. */}
-                  {product.currentGoldValuePnl == null && product.profitLabel && (
+                  {showProfit && product.currentGoldValuePnl == null && product.profitLabel && (
                     <PnlWordCard label="This bill" verdict={product.profitLabel} />
                   )}
-                  {product.currentGoldValuePnl != null && (
+                  {showProfit && product.currentGoldValuePnl != null && (
                     <PnlCard
                       /* NOT the gold profit. This is the WHOLE bill measured
                          against the metal, so it carries making, wastage and
@@ -1587,7 +1593,7 @@ export default function NewSale() {
                           of the lot this piece was received on. They were
                           welded at 4/4/3 here, which read "4% tunch" over a
                           lot actually bought at 7%. */}
-                      {impliedMakingPct != null && (
+                      {showProfit && impliedMakingPct != null && (
                         <span className={`text-[11px] font-semibold ${VERDICT[billVerdict].text}`}>
                           {/* The verdict only. What the bands are MADE of -
                               tunch, running cost, gold profit, extra - belongs
@@ -1633,7 +1639,7 @@ export default function NewSale() {
                           {product.gstApplied && (product.taxRatePercent || 0) > 0 ? ` — the ${money(concession)} plus the ${product.taxRatePercent}% GST no longer due on it` : ""}.
                         </span>
                       )}
-                      {discountCeiling != null ? (
+                      {discountCeiling != null && (showProfit || discountExceedsProfit) ? (
                         <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
                           {discountExceedsProfit
                             ? `Max discount ${money(discountCeiling)} — ${ceilingReason}.`
@@ -1682,11 +1688,7 @@ export default function NewSale() {
                 <h3 className="text-sm font-extrabold">Bill summary</h3>
                 <div className="flex items-center gap-2">
                   {requoting && <span className="text-[11px] text-muted">…</span>}
-                  <div className="inline-flex rounded-lg border border-line p-0.5">
-                    {[["On", true], ["Off", false]].map(([label, val]) => (
-                      <button key={label} type="button" onClick={() => setGst(val)} className={`rounded-md px-2.5 py-1 text-[10px] font-bold transition-colors ${gst === val ? "bg-accent text-white" : "text-muted hover:text-ink"}`}>{label}</button>
-                    ))}
-                  </div>
+                  <span className="rounded-full border border-line bg-canvas/60 px-2.5 py-1 text-[10px] font-bold text-muted" title="GST is compulsory on every bill">GST {product.taxRatePercent || 3}%</span>
                 </div>
               </div>
               <div className="mt-3 rounded-xl border border-line bg-canvas/40 p-3 text-[11px] leading-relaxed">
@@ -1883,7 +1885,7 @@ export default function NewSale() {
                 )}
               </div>
 
-              {(
+              {showProfit && (
                 product.safePrice ? (
                   <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5">
                     <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-emerald-800">Safe Price</div>
@@ -2211,7 +2213,7 @@ const PnlCard = ({ label, amount, pct, sub, detail }) => {
 };
 
 /** Numbered step header. The bill is a sequence, so the sequence is shown. */
-const SectionHead = ({ step, title, meta }) => (
+const SectionHead = ({ step, title, meta, action }) => (
   <div className="flex items-center gap-2.5">
     {step != null && (
       <span className="num grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-accent-line bg-accent-soft text-[11px] font-extrabold text-accent-strong">
@@ -2220,6 +2222,7 @@ const SectionHead = ({ step, title, meta }) => (
     )}
     <h3 className="text-sm font-extrabold">{title}</h3>
     {meta ? <span className="ml-auto text-[11px] font-semibold text-muted">{meta}</span> : null}
+    {action ? <span className={meta ? "" : "ml-auto"}>{action}</span> : null}
   </div>
 );
 

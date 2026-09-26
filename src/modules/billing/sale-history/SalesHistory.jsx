@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { ProfitToggle } from "@/_shared/ui/profit-toggle";
 import { useAuth } from "@/_shared/AuthContext";
 import { Card, CardContent } from "@/_shared/ui/card";
 import { Badge } from "@/_shared/ui/badge";
@@ -85,6 +86,9 @@ export default function SalesHistory() {
   // them a number exists and is being kept from them. It is dropped instead.
   const { backendRole } = useAuth();
   const seesProfit = backendRole === "Admin" || backendRole === "SuperAdmin";
+  // Hidden until the admin asks - the list is often on a screen customers see.
+  const [showProfit, setShowProfit] = useState(false);
+  const profitCol = seesProfit && showProfit;
   const [totalOutstanding, setTotalOutstanding] = useState(0);
   // Net gold for the whole period, from the backend. The page holds at most
   // 100 bills, so summing what is loaded understates the moment a period has
@@ -304,6 +308,7 @@ export default function SalesHistory() {
         {filtersActive && (
           <button onClick={clearFilters} className="text-xs font-bold text-accent underline">Clear</button>
         )}
+        {seesProfit && <ProfitToggle on={showProfit} onToggle={() => setShowProfit((v) => !v)} className="ml-auto" />}
       </div>
 
       <Card data-motion="reveal" className="overflow-hidden">
@@ -327,7 +332,7 @@ export default function SalesHistory() {
                 <th className="text-right">Total Amount</th>
                 <th className="text-right">Paid</th>
                 <th className="text-right">Outstanding</th>
-                {seesProfit && <th className="text-right">Profit/Loss</th>}
+                {profitCol && <th className="text-right">Profit/Loss</th>}
                 <th>Status</th>
                 <th className="!pr-5 text-center">Actions</th>
               </tr>
@@ -363,7 +368,7 @@ export default function SalesHistory() {
                   <td className="num whitespace-nowrap text-right font-bold">{formatINR(b.amount)}</td>
                   <td className="num whitespace-nowrap text-right">{formatINR(b.paid)}</td>
                   <td className={`num whitespace-nowrap text-right font-semibold ${b.outstanding > 0 ? "text-danger" : "text-muted"}`}>{formatINR(b.outstanding)}</td>
-                  {seesProfit && (
+                  {profitCol && (
                     <td className="num whitespace-nowrap text-right font-semibold">
                       {b.grossMargin == null ? (
                         <span className="text-faint">—</span>
@@ -459,6 +464,8 @@ function BreakdownRow({ label, value, strong }) {
  * ledger; nothing is recomputed.
  */
 function SaleDetail({ sale, onClose, onChanged }) {
+  // Each bill opens with its profit hidden, whatever the list was showing.
+  const [showProfit, setShowProfit] = useState(false);
   const [history, setHistory] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
@@ -671,14 +678,20 @@ function SaleDetail({ sale, onClose, onChanged }) {
               raised, because the only profit block on this screen is gated on
               purchaseCost, which the backend nulls for Staff. Same rule, same
               word, same component - see _shared/ui/verdict. */}
-          {sale.purchaseCost == null && sale.profitLabel && (
+          {(sale.purchaseCost != null || sale.profitLabel) && (
+            <div className="flex items-center justify-between rounded-xl border border-line bg-canvas/40 px-4 py-2.5">
+              <span className="text-xs font-bold uppercase tracking-[0.06em] text-muted">Profit &amp; cost</span>
+              <ProfitToggle on={showProfit} onToggle={() => setShowProfit((v) => !v)} />
+            </div>
+          )}
+          {showProfit && sale.purchaseCost == null && sale.profitLabel && (
             <div className="max-w-[220px]">
               <PnlWordCard label="This bill" verdict={sale.profitLabel} />
             </div>
           )}
 
           {/* Admin-only cost + profit/loss. */}
-          {sale.purchaseCost != null && (
+          {showProfit && sale.purchaseCost != null && (
             <div className="rounded-xl border border-line bg-canvas/40 px-4 py-3 text-sm">
               <div className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-muted">Internal (admin only)</div>
               <BreakdownRow label="Purchase Cost" value={formatINR(sale.purchaseCost)} />

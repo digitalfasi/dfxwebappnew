@@ -24,6 +24,7 @@ import MasterInventory from "@/modules/procurement/master-inventory/MasterInvent
 import Vendors from "@/modules/procurement/purchase-history/Vendors";
 import SupplierDirectory from "@/modules/procurement/supplier-directory/SupplierDirectory";
 import NewSale from "@/modules/billing/new-sale/NewSale";
+import PricingSettings from "@/modules/billing/pricing-settings/PricingSettings";
 import ReportsAnalytics from "@/modules/reports/ReportsAnalytics";
 import SalesHistory from "@/modules/billing/sale-history/SalesHistory";
 import ComingSoon from "@/_shared/ComingSoon";
@@ -43,6 +44,7 @@ const PAGES = {
   vendors: { title: "Purchase History", component: Vendors },
   "new-sale": { title: "New Sale", component: NewSale },
   "sales-history": { title: "Sales History", component: SalesHistory },
+  "store-defaults": { title: "Store Defaults", component: PricingSettings },
   catalogue: { title: "Catalogue Studio", component: CatalogueStudio },
   marketing: { title: "Promotion Banners", component: PromotionBanners },
   "promotion-create": { title: "Create Promotion", component: PromotionCreate },

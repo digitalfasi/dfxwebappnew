@@ -330,7 +330,10 @@ export const billingService = {
       // bill broke even when it did not. Blank means "use the 4% the rule has
       // always assumed".
       runningCost: d.running_cost_percent ?? "",
-      tax: d.tax_rate_percent ?? "",
+      // The gold profit inside the making-charge bands (Store Defaults).
+      goldProfitBand: d.band_gold_profit_percent ?? null,
+      // GST is compulsory and fixed at 3%.
+      tax: 3,
       pricingMode: d.default_pricing_mode ?? "AUTO",
     };
   },
@@ -348,7 +351,8 @@ export const billingService = {
       // is sent back untouched rather than being wiped to null on the next save.
       gold_profit_percent: f.goldProfit !== "" && f.goldProfit != null ? Number(f.goldProfit) : null,
       running_cost_percent: f.runningCost !== "" && f.runningCost != null ? Number(f.runningCost) : null,
-      tax_rate_percent: f.tax !== "" ? Number(f.tax) : null,
+      band_gold_profit_percent: f.goldProfitBand !== "" && f.goldProfitBand != null ? Number(f.goldProfitBand) : null,
+      tax_rate_percent: 3,
       default_pricing_mode: f.pricingMode,
     };
     const res = await apiClient.put("/billing/defaults/store", body, { auth: true });

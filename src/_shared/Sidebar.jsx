@@ -56,6 +56,7 @@ export const NAV_SECTIONS = [
     items: [
       { id: "new-sale", name: "New Sale", icon: <Icon d={<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M8 12h8M12 8v8" /><path d="M3 10h18" /></>} /> },
       { id: "sales-history", name: "Sales History", icon: <Icon d={<><path d="M8 2v4M16 2v4" /><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18" /></>} /> },
+      { id: "store-defaults", name: "Store Defaults", icon: <Icon d={<><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></>} /> },
     ],
   },
   {

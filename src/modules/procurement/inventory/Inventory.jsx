@@ -201,7 +201,6 @@ export default function Inventory({ onNavigate }) {
   // confirm WHO the entry will be recorded against — it is never sent, and
   // typing a different name here must never become possible.
   const staffName = user?.name || user?.email || "";
-  const seesStoreDefaults = backendRole === "Admin" || backendRole === "SuperAdmin";
   usePressFeedback(scope);
 
   const [items, setItems] = useState([]);
@@ -225,10 +224,6 @@ export default function Inventory({ onNavigate }) {
 
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
-  const [showDefaults, setShowDefaults] = useState(false);
-  const [defaults, setDefaults] = useState(null);
-  const [defaultsLoading, setDefaultsLoading] = useState(false);
-  const [defaultsSaving, setDefaultsSaving] = useState(false);
   // Store-default GST, needed because single-item create requires tax_rate_percent.
   const [storeTax, setStoreTax] = useState(0);
 
@@ -574,21 +569,6 @@ export default function Inventory({ onNavigate }) {
   }, [addWeights.net, addForm.rate, addForm.purity, addForm.tunchNo, addForm.other, addForm.amount]);
 
 
-  const openDefaults = async () => {
-    setShowDefaults(true);
-    if (defaults) return;
-    setDefaultsLoading(true);
-    try { setDefaults(await billingService.getStoreDefaults()); }
-    catch (err) { toast(err?.message || "Could not load store defaults"); }
-    finally { setDefaultsLoading(false); }
-  };
-  const saveDefaults = async () => {
-    if (!defaults) return;
-    setDefaultsSaving(true);
-    try { await billingService.updateStoreDefaults({ ...defaults, pricingMode: "AUTO" }); toast("Store defaults saved"); setShowDefaults(false); }
-    catch (err) { toast(err?.message || "Save failed"); }
-    finally { setDefaultsSaving(false); }
-  };
 
   const handleAdd = async () => {
     const f = addForm;
@@ -1110,14 +1090,7 @@ export default function Inventory({ onNavigate }) {
           <p className="mt-1 text-sm text-muted">Receive finished jewellery / artefacts into stock — every piece carries an <span className="font-mono text-xs">Item Code</span> (Offline) or a <span className="font-mono text-xs">HUID</span> (Online).</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* The store's pricing defaults are its costs and its margin - what
-              the shop pays and what it intends to earn. The server has always
-              refused Staff here (403 on read and on write); the button was
-              offered to them anyway, so clicking it produced a red error for
-              something they were never meant to see. */}
-          {seesStoreDefaults && (
-            <Button variant="outline" size="sm" onClick={openDefaults}>Store Pricing Defaults</Button>
-          )}
+          {/* Store pricing now lives in Billing > Store Defaults. */}
           {/* Both forms open stamped with NOW, date and time. Still editable:
               back-dating a slip that arrived yesterday is ordinary retail
               practice, so the field is defaulted, never locked. An already
@@ -1893,65 +1866,6 @@ export default function Inventory({ onNavigate }) {
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" onClick={()=>setShowBulk(false)}>Cancel</Button>
               <Button size="sm" disabled={bulkSaving} className="bg-accent hover:bg-accent-strong" onClick={handleBulkAdd}>{bulkSaving ? "Saving…" : "Record Bulk Purchase"}</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Store Pricing Defaults — pre-fill source for new items (backend-backed). */}
-      {showDefaults && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={()=>setShowDefaults(false)} aria-label="Close" />
-          <div className="relative w-full max-w-[560px] rounded-2xl border border-line bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">Store Pricing Defaults</h3><button onClick={()=>setShowDefaults(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
-            <div className="px-6 py-5">
-              <p className="mb-4 text-xs text-muted">Pre-fill for new items only. Never changes saved inventory or a raised bill.</p>
-              {defaultsLoading || !defaults ? (
-                <div className="py-10 text-center text-sm font-bold text-muted">Loading…</div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Making Type</span><Select value={defaults.makingType} onValueChange={v=>setDefaults({...defaults, makingType:v})} options={["PERCENTAGE","FIXED","PER_GRAM"]} /></label>
-                  {/* A PERCENTAGE rule is two digits; a FIXED / PER_GRAM rule is
-                      rupees and needs real room (a Rs 500 flat making charge is an
-                      ordinary figure). The cap follows the unit, exactly as the
-                      server validates it. */}
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Making Value {defaults.makingType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.makingValue} onValueChange={v=>setDefaults({...defaults, makingValue:v})} maxDigits={defaults.makingType === "PERCENTAGE" ? 2 : 7} />{defaults.makingType === "PERCENTAGE" && <span className="text-[11px] text-muted">Half gold profit, half negotiable. Default 6%.</span>}</label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Type</span><Select value={defaults.wastageType} onValueChange={v=>setDefaults({...defaults, wastageType:v})} options={["PERCENTAGE","FIXED","PER_GRAM"]} /></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Wastage Value {defaults.wastageType === "PERCENTAGE" ? <span className="font-normal text-muted">— 0-99 %</span> : <span className="font-normal text-muted">— ₹</span>}</span><DigitsInput value={defaults.wastageValue} onValueChange={v=>setDefaults({...defaults, wastageValue:v})} maxDigits={defaults.wastageType === "PERCENTAGE" ? 2 : 7} /></label>
-                  {/* Gold Profit is gone from the counter: the store's margin
-                      is the making charge (14% list, 11% break-even), so a
-                      second margin default here would quietly add itself to
-                      every bill on top of the one the counter sets. The stored
-                      value is preserved for invoices already raised against it
-                      and sent back unchanged - it is simply no longer edited. */}
-                  {/* Running cost — the shop's own, and the half of break-even
-                      that was never visible. break-even = tunch + running cost,
-                      and the tunch comes from the lot the piece was bought on,
-                      so this is the only part of it the shop sets. */}
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Running Cost % <span className="font-normal text-muted">— 0-99</span></span><DigitsInput value={defaults.runningCost} onValueChange={v=>setDefaults({...defaults, runningCost:v})} maxDigits={2} /><span className="text-[11px] text-muted">Rent, wages, power. Default 4%.</span></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Tax / GST % <span className="font-normal text-muted">— 0-9</span></span><DigitsInput value={defaults.tax} onValueChange={v=>setDefaults({...defaults, tax:v})} maxDigits={1} /><span className="text-[11px] text-muted">Jewellery is 3%.</span></label>
-                  {/* One mode exists, so this was a dropdown that could only ever
-                      pick what it already showed. Read-only until a second mode is
-                      a real product decision. */}
-                  {/* The rule in one line. It was three paragraphs, which grew
-                      the dialog until Save sat below the fold - a settings box
-                      should be readable at a glance, not studied. */}
-                  <p className="sm:col-span-2 rounded-xl border border-line bg-canvas/60 px-3.5 py-2.5 text-[11px] text-muted">
-                    Billing charges <b className="text-ink">Making Value + Running Cost + the lot&rsquo;s tunch</b>. Only half the Making Value is discountable.
-                  </p>
-                  <div className="grid gap-1.5 sm:col-span-2">
-                    <span className="text-xs font-bold">Pricing Mode</span>
-                    <div className="flex h-10 items-center gap-2 rounded-xl border border-line bg-canvas/60 px-3.5">
-                      <span className="text-sm font-bold text-ink">Auto</span>
-                      <span className="text-[11px] text-muted">— priced from the live rate and these defaults.</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
-              <Button variant="outline" size="sm" onClick={()=>setShowDefaults(false)}>Cancel</Button>
-              <Button size="sm" disabled={defaultsSaving || defaultsLoading || !defaults} className="bg-accent hover:bg-accent-strong" onClick={saveDefaults}>{defaultsSaving ? "Saving…" : "Save Store Defaults"}</Button>
             </div>
           </div>
         </div>
