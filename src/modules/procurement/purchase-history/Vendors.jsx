@@ -134,7 +134,7 @@ export default function Vendors() {
       setVendors(v);
       setPurchases(p);
     } catch (err) {
-      setLoadError(err?.message || "Could not load vendors.");
+      setLoadError(err?.message || "Could not load suppliers.");
     } finally {
       setLoading(false);
     }
@@ -381,7 +381,7 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
     )
       .then((res) => {
         if (!alive) return;
-        const flat = res.flatMap((r, i) => r.payments.map((pm) => ({ ...pm, invoiceRef: rows[i].invoiceRef, purchaseDate: rows[i].purchaseDate })));
+        const flat = res.flatMap((r, i) => r.payments.map((pm) => ({ ...pm, invoiceRef: rows[i].invoiceRef, purchaseDate: rows[i].purchaseDate, deliveredBy: rows[i].deliveredBy })));
         flat.sort((a, b) => String(b.paymentDate || "").localeCompare(String(a.paymentDate || "")));
         setLedger(flat);
         setLedgerIncomplete(res.filter((r) => !r.ok).length);
@@ -408,7 +408,11 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
               <h3 className="text-base font-extrabold">{vendor.name}</h3>
               <Badge tone={vendor.isActive ? "success" : "neutral"} dot>{vendor.isActive ? "Active" : "Inactive"}</Badge>
             </div>
-            <p className="mt-0.5 text-xs text-muted">Default tunch {Number(vendor.vendorChargePercent).toFixed(2)}% · percent of net weight at the 24K rate</p>
+            {/* Tunch is per piece now (from its Tunch Number), so the
+                supplier has no default worth showing here. */}
+            <p className="mt-0.5 text-xs text-muted">
+              {[vendor.code && `Supplier code ${vendor.code}`, vendor.contactPerson && `Staff ${vendor.contactPerson}${vendor.phone ? ` · +91 ${vendor.phone}` : ""}`].filter(Boolean).join("  ·  ") || "Supplier"}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={onEdit}>Edit</Button>
@@ -446,7 +450,7 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
           )}
 
           {tab === "purchases" && (
-            <PurchaseTable rows={rows} loading={loading} onRecordPayment={onRecordPayment} emptyHint="No purchases recorded for this vendor yet." />
+            <PurchaseTable rows={rows} loading={loading} onRecordPayment={onRecordPayment} emptyHint="No purchases recorded for this supplier yet." />
           )}
 
           {tab === "payments" && (
@@ -468,7 +472,7 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
                   {!ledgerLoading && ledgerIncomplete > 0 && (
                     <tr>
                       <td colSpan={5} className="px-4 py-3 text-center text-xs font-bold text-danger">
-                        {ledgerIncomplete} purchase{ledgerIncomplete === 1 ? "'s" : "s'"} payments could not be loaded — this ledger is incomplete. Reopen the vendor to try again.
+                        {ledgerIncomplete} purchase{ledgerIncomplete === 1 ? "'s" : "s'"} payments could not be loaded — this ledger is incomplete. Reopen the supplier to try again.
                       </td>
                     </tr>
                   )}
@@ -500,7 +504,11 @@ function PurchaseTable({ rows, loading, onRecordPayment, emptyHint, hideOutstand
           {!loading && rows.map((p) => (
             <tr key={p.id} className="border-t border-line-soft align-middle">
               <td className="px-4 py-2.5 whitespace-nowrap">{fmtDate(p.purchaseDate)}</td>
-              <td className="py-2.5 text-xs">{p.invoiceRef || "Not provided"}{p.deliveredBy && <div className="text-[11px] text-muted">By {p.deliveredBy}</div>}</td>
+              <td className="py-2.5 text-xs">
+                {p.invoiceRef || "Not provided"}
+                {p.deliveredBy && <div className="text-[11px] text-muted">Delivered by {p.deliveredBy}</div>}
+                {p.enteredByName && <div className="text-[11px] text-muted">Entered by {p.enteredByName}</div>}
+              </td>
               {/* Both figures, because they answer different questions: what
                   came into the safe, and what the vendor was paid for. A row
                   written before net weight was recorded shows the equivalent
@@ -719,7 +727,7 @@ function RecordPayment({ purchase, onClose, onSaved }) {
     setSaving(true);
     try {
       await billingService.recordVendorPayment(purchase.id, { amount, paymentDate: f.paymentDate, paymentMethod: MODE_TO_METHOD[f.payMode], referenceNo: f.referenceNo, remarks: f.remarks });
-      toast("Vendor payment recorded");
+      toast("Supplier payment recorded");
       await onSaved();
     } catch (err) { toast(err?.message || "Could not record payment"); }
     finally { setSaving(false); }
@@ -729,7 +737,7 @@ function RecordPayment({ purchase, onClose, onSaved }) {
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
       <div className="relative flex max-h-[92vh] w-full max-w-[520px] flex-col rounded-2xl border border-line bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">Record Vendor Payment</h3><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
+        <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">Record Supplier Payment</h3><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
             <div className="flex items-center justify-between text-xs"><span className="font-bold text-muted">{purchase.vendorName}{purchase.invoiceRef ? ` · ${purchase.invoiceRef}` : ""}</span><Badge tone={STATUS_TONE[purchase.paymentStatus] || "neutral"}>{STATUS_LABEL[purchase.paymentStatus] || purchase.paymentStatus}</Badge></div>
