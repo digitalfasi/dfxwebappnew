@@ -281,6 +281,8 @@ export default function Inventory({ onNavigate }) {
     }));
   }, [bulkType]);
   const [bulkSaving, setBulkSaving] = useState(false);
+  // The lot-mismatch dialog: { weight, lotW, qty, lotQ } while it is open.
+  const [lotConfirm, setLotConfirm] = useState(null);
 
   // Auto-save (5.9): an unfinished Add / Bulk Purchase survives a reload or
   // navigating away. Restored once on mount (the photo never — re-attach it),
@@ -911,7 +913,9 @@ export default function Inventory({ onNavigate }) {
     });
   }, [bulkRows, bulkType, nextCodes]);
 
-  const handleBulkAdd = async () => {
+  // force === true only from the lot dialog's "Record anyway" (the button's
+  // click event is never `true`).
+  const handleBulkAdd = async (force) => {
     const h = bulkHeader;
     const matchedVendor = vendorList.find(v => v.name === h.vendor);
     if (!matchedVendor) { toast("Select a supplier"); return; }
@@ -945,14 +949,11 @@ export default function Inventory({ onNavigate }) {
     if (h.paymentMode === "PARTIAL" && !(Number(h.paidNow) > 0)) { toast("Enter the amount paid now"); return; }
     // The lot check: the rows should add up to what the supplier handed over.
     const lotW = Number(h.lotWeight), lotQ = Number(h.lotQty);
-    if (Math.abs(lotW - bulkLotUsed.weight) >= 0.0005 || lotQ !== bulkLotUsed.qty) {
-      const ok = window.confirm(
-        `The rows do not match the lot yet:\n` +
-        `• Weight: ${bulkLotUsed.weight.toFixed(3)} g entered of ${lotW.toFixed(3)} g\n` +
-        `• Pieces: ${bulkLotUsed.qty} entered of ${lotQ}\n\nRecord the purchase anyway?`
-      );
-      if (!ok) return;
+    if (force !== true && (Math.abs(lotW - bulkLotUsed.weight) >= 0.0005 || lotQ !== bulkLotUsed.qty)) {
+      setLotConfirm({ weight: bulkLotUsed.weight, lotW, qty: bulkLotUsed.qty, lotQ });
+      return;
     }
+    setLotConfirm(null);
 
     setBulkSaving(true);
     try {
@@ -2013,6 +2014,59 @@ export default function Inventory({ onNavigate }) {
           </div>
         </div>
       )}
+      {/* Lot mismatch - the rows entered do not add up to the lot yet. */}
+      {lotConfirm && showBulk && (() => {
+        const lines = [
+          { label: "Gold weight", unit: "g", used: lotConfirm.weight, lot: lotConfirm.lotW, fmt: (x) => x.toFixed(3) },
+          { label: "Pieces", unit: "pcs", used: lotConfirm.qty, lot: lotConfirm.lotQ, fmt: (x) => String(Math.round(x)) },
+        ];
+        return (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="lot-confirm-title">
+            <button className="absolute inset-0 bg-ink/50 backdrop-blur-[2px]" onClick={() => setLotConfirm(null)} aria-label="Keep editing" />
+            <div className="relative w-full max-w-[460px] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl">
+              <div className="flex items-start gap-3 px-6 pt-6">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-700">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4M12 17h.01" /></svg>
+                </span>
+                <div>
+                  <h3 id="lot-confirm-title" className="text-base font-extrabold">The rows don&apos;t match the lot yet</h3>
+                  <p className="mt-0.5 text-sm text-muted">What you entered is not the full lot the supplier handed over.</p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2.5 px-6">
+                {lines.map((l) => {
+                  const diff = l.lot - l.used;
+                  const done = Math.abs(diff) < (l.unit === "g" ? 0.0005 : 0.5);
+                  const pct = l.lot > 0 ? Math.min(100, (l.used / l.lot) * 100) : 0;
+                  return (
+                    <div key={l.label} className={`rounded-xl border p-3 ${done ? "border-emerald-200 bg-emerald-50/60" : diff < 0 ? "border-danger-line bg-danger-soft/40" : "border-amber-200 bg-amber-50/60"}`}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-bold">{l.label}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${done ? "bg-emerald-100 text-emerald-800" : diff < 0 ? "bg-danger-soft text-danger" : "bg-amber-100 text-amber-800"}`}>
+                          {done ? "✓ Matches" : diff < 0 ? `Over by ${l.fmt(-diff)} ${l.unit}` : `${l.fmt(diff)} ${l.unit} short`}
+                        </span>
+                      </div>
+                      <div className="num mt-1.5 flex items-baseline justify-between text-xs text-muted">
+                        <span>Entered <b className="text-ink">{l.fmt(l.used)} {l.unit}</b></span>
+                        <span>Lot <b className="text-ink">{l.fmt(l.lot)} {l.unit}</b></span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white">
+                        <div className={`h-full rounded-full ${done ? "bg-emerald-500" : diff < 0 ? "bg-danger" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="px-6 pt-3 text-[11px] text-muted">Keep editing to add the missing rows, or record now if the supplier&apos;s slip itself differs.</p>
+              <div className="mt-5 flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+                <Button variant="outline" size="sm" onClick={() => setLotConfirm(null)} autoFocus>Keep editing</Button>
+                <Button size="sm" disabled={bulkSaving} className="bg-accent hover:bg-accent-strong" onClick={() => handleBulkAdd(true)}>{bulkSaving ? "Saving…" : "Record anyway"}</Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {showAddVendor && <VendorForm vendor={null} onClose={() => setShowAddVendor(false)} onSaved={onVendorCreated} />}
     </div>
   );
