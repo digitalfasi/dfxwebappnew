@@ -395,11 +395,6 @@ export default function MasterInventory({ onNavigate, search = "" }) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => openAddSubcategory()} disabled={categories.length === 0}
-            title={categories.length === 0 ? "Add a category first" : "Add a subcategory to any category"}>
-            <Icon d={ICON.plus} className="h-3.5 w-3.5" />
-            New subcategory
-          </Button>
           <Button size="sm" onClick={openAddCategory}>
             <Icon d={ICON.plus} className="h-3.5 w-3.5" />
             New category
@@ -504,6 +499,14 @@ export default function MasterInventory({ onNavigate, search = "" }) {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                {/* Add a subcategory right on its category - no trip back up to
+                    the page header to pick the category again. */}
+                {cat.isActive && (
+                  <Button variant="outline" size="sm" className="mr-2" onClick={() => openAddSubcategory(cat.id)} title={`Add a subcategory to ${cat.name}`}>
+                    <Icon d={ICON.plus} className="h-3.5 w-3.5" />
+                    New subcategory
+                  </Button>
+                )}
                 <IconAction icon={ICON.edit} label={`Rename ${cat.name}`} onClick={() => openEditCategory(cat)} />
                 <IconAction
                   icon={ICON.trash}

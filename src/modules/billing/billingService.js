@@ -66,6 +66,13 @@ export const billingService = {
    * was invisible afterwards - the money owed to the vendor was real and the
    * bars were nowhere.
    */
+  /** { BF: 3, RG: 1 } - the next free Item Code number for each 2-letter prefix. */
+  async nextItemCodes(prefixes = []) {
+    if (!prefixes.length) return {};
+    const res = await apiClient.get(`/billing/inventory/next-item-codes?prefixes=${encodeURIComponent(prefixes.join(","))}`, { auth: true });
+    return res.data || {};
+  },
+
   async listRawGold({ search = "", stockStatus = "" } = {}) {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
@@ -946,6 +953,9 @@ function mapVendorPurchase(p = {}) {
     purchaseDate: p.purchase_date ?? null,
     invoiceRef: p.invoice_ref ?? "",
     deliveredBy: p.delivered_by ?? "",
+    // The store staff member who recorded the purchase.
+    enteredByName: p.entered_by_name ?? "",
+    enteredByPhone: p.entered_by_phone ?? "",
     // netWeightGrams is the metal received (45 g of 22K stays 45 g);
     // weightGrams is the 24K equivalent the payment was calculated on. Null
     // netWeightGrams means a purchase recorded before the column existed.

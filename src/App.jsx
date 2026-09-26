@@ -22,6 +22,7 @@ import Settings from "@/modules/settings/Settings";
 import Inventory from "@/modules/procurement/inventory/Inventory";
 import MasterInventory from "@/modules/procurement/master-inventory/MasterInventory";
 import Vendors from "@/modules/procurement/purchase-history/Vendors";
+import SupplierDirectory from "@/modules/procurement/supplier-directory/SupplierDirectory";
 import NewSale from "@/modules/billing/new-sale/NewSale";
 import ReportsAnalytics from "@/modules/reports/ReportsAnalytics";
 import SalesHistory from "@/modules/billing/sale-history/SalesHistory";
@@ -38,6 +39,7 @@ const PAGES = {
   payments: { title: "Payments", component: Payments },
   inventory: { title: "Inventory", component: Inventory },
   "master-inventory": { title: "Master Inventory", component: MasterInventory },
+  "supplier-directory": { title: "Supplier Directory", component: SupplierDirectory },
   vendors: { title: "Purchase History", component: Vendors },
   "new-sale": { title: "New Sale", component: NewSale },
   "sales-history": { title: "Sales History", component: SalesHistory },

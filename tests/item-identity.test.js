@@ -19,8 +19,10 @@ describe("purchase: HUID optional, Item Code auto", () => {
     expect(inv).toMatch(/itemCode: r\.ident\.trim\(\) \? undefined :/);
     expect(svc).toMatch(/product_code: r\.huid \? null : \(r\.itemCode \|\| null\)/);
   });
-  it("only raw gold still requires its identifier on bulk rows", () => {
-    expect(inv).toMatch(/bulkType === "RAW_GOLD" && !r\.ident\.trim\(\)/);
+  it("bulk rows carry a generated Item Code unless the piece has a HUID", () => {
+    expect(inv).toMatch(/if \(bulkType === "JEWELLERY" && r\.ident\.trim\(\)\) return \{ code: "", note: "HUID piece" \};/);
+    expect(inv).toMatch(/serial: r\.code,/);
+    expect(inv).toMatch(/itemCode: r\.ident\.trim\(\) \? undefined : r\.code,/);
   });
 });
 

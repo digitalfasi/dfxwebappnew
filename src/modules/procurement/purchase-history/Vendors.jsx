@@ -85,8 +85,11 @@ function inWindow(dateStr, win) {
 function rollupByVendor(purchases) {
   const m = new Map();
   for (const p of purchases) {
-    const r = m.get(p.vendorId) || { count: 0, purchases: 0, paid: 0, outstanding: 0 };
+    const r = m.get(p.vendorId) || { count: 0, purchases: 0, paid: 0, outstanding: 0, last: null };
     r.count += 1;
+    // The store staff shown for a supplier is whoever entered its latest purchase.
+    const at = p.purchaseAt || p.createdAt || p.purchaseDate || "";
+    if (!r.last || at > r.last.at) r.last = { at, name: p.enteredByName, phone: p.enteredByPhone, deliveredBy: p.deliveredBy };
     r.purchases += p.purchaseAmount;
     r.paid += p.amountPaid;
     r.outstanding += p.amountOutstanding;
@@ -170,7 +173,7 @@ export default function Vendors() {
   const filteredVendors = useMemo(() => {
     const q = query.trim().toLowerCase();
     return vendors.filter((v) => {
-      const matchesQ = !q || v.name.toLowerCase().includes(q) || v.phone.toLowerCase().includes(q) || (v.code || "").toLowerCase().includes(q) || (v.gstNumber || "").toLowerCase().includes(q);
+      const matchesQ = !q || v.name.toLowerCase().includes(q) || v.phone.toLowerCase().includes(q) || (v.code || "").toLowerCase().includes(q) || (v.contactPerson || "").toLowerCase().includes(q) || (v.gstNumber || "").toLowerCase().includes(q);
       const matchesStatus = statusFilter === "All" || (statusFilter === "Active" ? v.isActive : !v.isActive);
       return matchesQ && matchesStatus;
     });
@@ -191,11 +194,9 @@ export default function Vendors() {
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Purchase History</h2>
-          <p className="mt-1 text-sm text-muted">Vendor purchase payables and the vendor payment ledger — clear outstanding balances here.</p>
+          <p className="mt-1 text-sm text-muted">What was bought from each supplier, what is paid and what is outstanding — clear balances here.</p>
         </div>
-        {/* The vendor list below IS the supplier (store) master - add stores here
-            too, not only from Add Purchase. Same form as Edit. */}
-        <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => { setEditVendor(null); setShowVendorForm(true); }}>+ Add Vendor / Store</Button>
+        {/* Suppliers are added and edited in the Supplier Directory now. */}
       </div>
 
       {/* KPI cards — backend-authoritative vendor summary */}
@@ -225,13 +226,13 @@ export default function Vendors() {
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-2" data-motion="toolbar">
-        <SearchInput placeholder="Search vendor, phone or GST" value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 min-w-[220px]" />
+        <SearchInput placeholder="Search supplier code, name, staff or GST" value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 min-w-[220px]" />
         <Select value={statusFilter} onValueChange={setStatusFilter} options={["All", "Active", "Inactive"]} className="w-[140px]" />
       </div>
 
       {/* Vendor list */}
       <Card data-motion="reveal" className="overflow-hidden">
-        <div className="border-b border-line px-6 py-3"><h3 className="text-sm font-extrabold">Vendor list</h3></div>
+        <div className="border-b border-line px-6 py-3"><h3 className="text-sm font-extrabold">Purchases by supplier</h3></div>
         <CardContent className="overflow-x-auto px-0 pb-0">
           {/* 1180px is the sum of the column minimums below plus their padding.
               Leaving it at 900 would have let the browser start squeezing again
@@ -240,7 +241,7 @@ export default function Vendors() {
               same line left two spaces between <table> and the comment, and a
               whitespace text node is not a legal child of <table> — React
               reported it as a hydration error on every render of this page. */}
-          <table className="w-full min-w-[1180px] border-collapse text-sm">
+          <table className="w-full min-w-[1100px] border-collapse text-sm">
             <thead>
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                 {/* PH-UI-001. Every column but the first and last carried
@@ -251,25 +252,31 @@ export default function Vendors() {
                     growing with the viewport, and when it can no longer fit it
                     scrolls (see overflow-x on the wrapper) rather than crushing
                     the columns into each other. */}
-                <th className="px-6 py-3 min-w-[13rem]">Vendor</th><th className="px-4 py-3 min-w-[11rem]">Contact</th><th className="px-4 py-3 min-w-[6.5rem]">Status</th><th className="px-4 py-3 min-w-[5.5rem]">Tunch</th>
+                <th className="px-6 py-3 min-w-[12rem]">Supplier Code</th><th className="px-4 py-3 min-w-[11rem]">Supplier Staff</th><th className="px-4 py-3 min-w-[11rem]">Store Staff</th>
                 <th className="px-4 py-3 text-right min-w-[9rem]">Total Purchases</th><th className="px-4 py-3 text-right min-w-[8rem]">Paid</th><th className="px-4 py-3 text-right min-w-[9rem]">Outstanding</th><th className="px-4 py-3 text-right pr-6 min-w-[10.5rem]">Actions</th>
               </tr>
             </thead>
             <tbody>
               {!loading && !loadError && filteredVendors.map((v) => {
-                const r = rollup.get(v.id) || { purchases: 0, paid: 0, outstanding: 0 };
+                const r = rollup.get(v.id) || { purchases: 0, paid: 0, outstanding: 0, last: null };
+                const staffName = v.contactPerson || r.last?.deliveredBy || "";
                 return (
                   <tr key={v.id} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
                     <td className="px-6 py-3.5">
-                      <button className="font-bold text-ink hover:text-accent hover:underline" onClick={() => { setDetailTab("overview"); setDetailVendor(v); }}>{v.name}</button>
-                      {(v.code || v.ownerName) && <div className="text-[11px] text-muted">{[v.code, v.ownerName && `Owner ${v.ownerName}`].filter(Boolean).join(" · ")}</div>}
+                      <button className="flex items-center gap-2 text-left" onClick={() => { setDetailTab("overview"); setDetailVendor(v); }}>
+                        <span className="rounded-md border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-xs font-extrabold tracking-wide text-accent-strong">{v.code || "—"}</span>
+                        <span className="font-bold text-ink hover:text-accent hover:underline">{v.name}</span>
+                      </button>
+                      {!v.isActive && <div className="mt-1"><Badge tone="neutral" dot>Inactive</Badge></div>}
                     </td>
                     <td className="px-4 py-3.5">
-                      <div className="num text-xs font-semibold">{v.phone ? `+91 ${v.phone}` : "No phone"}</div>
-                      <div className="num text-xs text-muted">{v.gstNumber || "No GST"}</div>
+                      <div className="text-xs font-semibold">{staffName || "—"}</div>
+                      <div className="num text-xs text-muted">{v.phone ? `+91 ${v.phone}` : ""}</div>
                     </td>
-                    <td className="px-4 py-3.5"><Badge tone={v.isActive ? "success" : "neutral"} dot>{v.isActive ? "Active" : "Inactive"}</Badge></td>
-                    <td className="px-4 py-3.5 font-mono text-xs whitespace-nowrap">{Number(v.vendorChargePercent).toFixed(2)}%</td>
+                    <td className="px-4 py-3.5">
+                      <div className="text-xs font-semibold">{r.last?.name || "—"}</div>
+                      <div className="num text-xs text-muted">{r.last?.phone ? `+91 ${String(r.last.phone).replace(/\D/g, "").slice(-10)}` : ""}</div>
+                    </td>
                     <td className="px-4 py-3.5 text-right num font-semibold whitespace-nowrap">{money(r.purchases)}</td>
                     <td className="px-4 py-3.5 text-right num text-emerald-700 whitespace-nowrap">{money(r.paid)}</td>
                     <td className="px-4 py-3.5 text-right num font-bold text-accent whitespace-nowrap">{money(r.outstanding)}</td>
@@ -285,12 +292,12 @@ export default function Vendors() {
                   </tr>
                 );
               })}
-              {loading && (<tr><td colSpan={8} className="px-6 py-14 text-center text-sm font-bold text-muted">Loading…</td></tr>)}
+              {loading && (<tr><td colSpan={7} className="px-6 py-14 text-center text-sm font-bold text-muted">Loading…</td></tr>)}
               {!loading && loadError && (
-                <tr><td colSpan={8} className="px-6 py-14 text-center"><div className="font-bold text-danger">Couldn’t load vendors</div><p className="mt-1 text-sm text-muted">{loadError}</p><Button size="sm" variant="outline" className="mt-3" onClick={loadCore}>Retry</Button></td></tr>
+                <tr><td colSpan={7} className="px-6 py-14 text-center"><div className="font-bold text-danger">Couldn’t load suppliers</div><p className="mt-1 text-sm text-muted">{loadError}</p><Button size="sm" variant="outline" className="mt-3" onClick={loadCore}>Retry</Button></td></tr>
               )}
               {!loading && !loadError && filteredVendors.length === 0 && (
-                <tr><td colSpan={8} className="px-6 py-14 text-center"><div className="font-bold">No vendors found</div><p className="mt-1 text-sm text-muted">Adjust the filters to see purchase history.</p></td></tr>
+                <tr><td colSpan={7} className="px-6 py-14 text-center"><div className="font-bold">No suppliers found</div><p className="mt-1 text-sm text-muted">Adjust the filters to see purchase history.</p></td></tr>
               )}
             </tbody>
           </table>
@@ -429,12 +436,11 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
                 <MiniStat label="Outstanding" value={money(totals.outstanding)} tone="text-accent" />
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Code name" value={vendor.code || "Not provided"} />
+                <Field label="Supplier code" value={vendor.code || "Not provided"} />
                 <Field label="Owner" value={vendor.ownerName ? `${vendor.ownerName}${vendor.ownerPhone ? `  ·  +91 ${vendor.ownerPhone}` : ""}` : "Not provided"} />
-                <Field label="Phone" value={vendor.phone ? `+91 ${vendor.phone}` : "Not provided"} />
+                <Field label="Supplier staff" value={vendor.contactPerson ? `${vendor.contactPerson}${vendor.phone ? `  ·  +91 ${vendor.phone}` : ""}` : vendor.phone ? `+91 ${vendor.phone}` : "Not provided"} />
                 <Field label="Email" value={vendor.email || "Not provided"} />
                 <Field label="GST number" value={vendor.gstNumber || "Not provided"} />
-                <Field label="Address" value={vendor.address || "Not provided"} className="sm:col-span-2" />
               </div>
             </div>
           )}
@@ -547,30 +553,50 @@ const Field = ({ label, value, className }) => (
 // The ONE supplier (store) form - Purchase History and the "+ Add new vendor"
 // link in Add / Bulk Purchase both open this, so a store is never created
 // through a second, thinner form.
+// Section wrapper for the supplier form. Declared at module level so the inputs
+// inside keep focus while typing (a component defined inside the form would be
+// a new type on every keystroke and remount its children).
+function FormSection({ title, hint, children }) {
+  return (
+    <div className="rounded-xl border border-line p-4">
+      <div className="mb-3">
+        <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-accent-strong">{title}</div>
+        {hint && <p className="mt-0.5 text-[11px] text-muted">{hint}</p>}
+      </div>
+      <div className="grid items-start gap-4 sm:grid-cols-2">{children}</div>
+    </div>
+  );
+}
+const FieldError = ({ msg }) => (msg ? <span className="text-[11px] font-semibold text-danger">{msg}</span> : null);
+
 export function VendorForm({ vendor, onClose, onSaved }) {
   const editing = !!vendor;
-  // Contact Person is gone: the vendor's own phone and GST are what the store
-  // actually deals with, and a second free-text name only ever went stale.
+  // Supplier = the store the gold comes from. Mandatory: store name, code,
+  // owner + phone, and the supplier's staff (the person who brings the goods)
+  // + phone. Email and GST are optional. Address and default Tunch are no
+  // longer asked (Tunch is set per purchase; the backend default stays 4%).
   const [f, setF] = useState({
-    name: vendor?.name || "", phone: onlyTenDigits(vendor?.phone || ""),
-    // Supplier Master: the store's code name and its owner (the permanent
-    // contact when the salesman who delivers changes).
-    code: vendor?.code || "", ownerName: vendor?.ownerName || "", ownerPhone: onlyTenDigits(vendor?.ownerPhone || ""),
-    email: vendor?.email || "", gstNumber: normalizeGst(vendor?.gstNumber || ""), address: vendor?.address || "",
-    vendorChargePercent: vendor ? String(vendor.vendorChargePercent) : "4", isActive: vendor ? vendor.isActive : true,
+    name: vendor?.name || "",
+    code: vendor?.code || "",
+    ownerName: vendor?.ownerName || "", ownerPhone: onlyTenDigits(vendor?.ownerPhone || ""),
+    contactPerson: vendor?.contactPerson || "", phone: onlyTenDigits(vendor?.phone || ""),
+    email: vendor?.email || "", gstNumber: normalizeGst(vendor?.gstNumber || ""),
+    isActive: vendor ? vendor.isActive : true,
   });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   // Clearing the field's own error as it is corrected keeps the message tied to
   // the input the admin is looking at, rather than to the last submit.
   const setField = (k, v) => { setF((p) => ({ ...p, [k]: v })); setErrors((p) => (p[k] ? { ...p, [k]: undefined } : p)); };
 
   const validate = () => {
     const e = {};
-    if (f.name.trim().length < 2) e.name = "Vendor name needs at least 2 characters";
-    if (f.phone.length !== 10) e.phone = "Enter the 10-digit mobile number";
-    if (f.ownerPhone && f.ownerPhone.length !== 10) e.ownerPhone = "Enter the owner's 10-digit mobile number";
+    if (f.name.trim().length < 2) e.name = "Store name needs at least 2 characters";
+    if (!f.code.trim()) e.code = "Enter the supplier code";
+    if (f.ownerName.trim().length < 2) e.ownerName = "Enter the owner's name";
+    if (f.ownerPhone.length !== 10) e.ownerPhone = "Enter the owner's 10-digit mobile number";
+    if (f.contactPerson.trim().length < 2) e.contactPerson = "Enter the supplier staff name";
+    if (f.phone.length !== 10) e.phone = "Enter the staff's 10-digit mobile number";
     if (f.email.trim() && !VENDOR_EMAIL_RE.test(f.email.trim())) e.email = "Use a valid @gmail.com address";
     if (f.gstNumber && f.gstNumber.length !== GSTIN_LEN) e.gstNumber = `A GSTIN is ${GSTIN_LEN} characters`;
     setErrors(e);
@@ -581,9 +607,15 @@ export function VendorForm({ vendor, onClose, onSaved }) {
     if (!validate()) { toast("Check the highlighted fields"); return; }
     setSaving(true);
     try {
-      const payload = { ...f, name: f.name.trim(), email: f.email.trim(), gstNumber: normalizeGst(f.gstNumber), code: f.code.replace(/[^A-Za-z0-9]/g, "").toUpperCase(), ownerName: f.ownerName.trim() };
+      const payload = {
+        name: f.name.trim(), code: f.code.replace(/[^A-Za-z0-9]/g, "").toUpperCase(),
+        ownerName: f.ownerName.trim(), ownerPhone: f.ownerPhone,
+        contactPerson: f.contactPerson.trim(), phone: f.phone,
+        email: f.email.trim(), gstNumber: normalizeGst(f.gstNumber),
+        ...(editing ? { isActive: f.isActive } : {}),
+      };
       const saved = editing ? await billingService.updateVendor(vendor.id, payload) : await billingService.createVendor(payload);
-      toast(editing ? "Vendor updated" : "Vendor created");
+      toast(editing ? "Supplier updated" : "Supplier added");
       await onSaved(saved);
     } catch (err) { toast(err?.message || "Save failed"); }
     finally { setSaving(false); }
@@ -592,48 +624,56 @@ export function VendorForm({ vendor, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
-      <div className="relative w-full max-w-[560px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">{editing ? "Edit Vendor / Store" : "Add Vendor / Store"}</h3><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
+      <div className="relative w-full max-w-[600px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between border-b border-line px-6 py-4">
+          <div><h3 className="text-base font-extrabold">{editing ? "Edit Supplier" : "Add Supplier"}</h3><p className="text-[11px] text-muted">Fields marked * are required</p></div>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
+        </div>
         <div className="flex-1 overflow-y-auto px-6 py-5 grid gap-4">
-          <div className="grid items-start gap-4 sm:grid-cols-[1fr_150px]">
+          <FormSection title="Store">
             <label className="grid gap-1.5">
               <span className="text-xs font-bold">Store Full Name *</span>
-              <Input value={f.name} onChange={set("name")} placeholder="e.g. Mahalaxmi Jewellers" error={errors.name} />
-              {errors.name && <span className="text-[11px] font-semibold text-danger">{errors.name}</span>}
+              <Input value={f.name} onChange={(e) => setField("name", e.target.value)} placeholder="e.g. Mahalaxmi Jewellers" error={errors.name} />
+              <FieldError msg={errors.name} />
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-bold">Code Name</span>
-              <Input value={f.code} onChange={(e) => setField("code", e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 20))} placeholder="e.g. MJ" />
-            </label>
-          </div>
-          <div className="grid items-start gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5">
-              <span className="text-xs font-bold">Owner Name</span>
-              <Input value={f.ownerName} onChange={set("ownerName")} placeholder="Store owner" />
+              <span className="text-xs font-bold">Supplier Code *</span>
+              <Input value={f.code} onChange={(e) => setField("code", e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 20))} placeholder="e.g. MJ" error={errors.code} className="font-mono uppercase" />
+              <FieldError msg={errors.code} />
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-bold">Owner Phone</span>
+              <span className="text-xs font-bold">Owner Name *</span>
+              <Input value={f.ownerName} onChange={(e) => setField("ownerName", e.target.value)} placeholder="Store owner" error={errors.ownerName} />
+              <FieldError msg={errors.ownerName} />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Owner Phone *</span>
               <PhoneInput value={f.ownerPhone} onValueChange={(v) => setField("ownerPhone", v)} error={!!errors.ownerPhone} />
-              {errors.ownerPhone && <span className="text-[11px] font-semibold text-danger">{errors.ownerPhone}</span>}
+              <FieldError msg={errors.ownerPhone} />
             </label>
-          </div>
-          <p className="-mt-2 text-[11px] text-muted">The store stays the same; the salesman who delivers is entered on each purchase.</p>
-          <div className="grid items-start gap-4 sm:grid-cols-2">
+          </FormSection>
+          <FormSection title="Supplier staff" hint="The person from this store who brings the jewellery to you.">
             <label className="grid gap-1.5">
-              <span className="text-xs font-bold">Phone * <span className="font-normal text-muted">— 10 digits</span></span>
-              <PhoneInput value={f.phone} onValueChange={(v) => setField("phone", v)} error={!!errors.phone} />
-              {errors.phone && <span className="text-[11px] font-semibold text-danger">{errors.phone}</span>}
+              <span className="text-xs font-bold">Staff Name *</span>
+              <Input value={f.contactPerson} onChange={(e) => setField("contactPerson", e.target.value)} placeholder="e.g. Ramesh" error={errors.contactPerson} />
+              <FieldError msg={errors.contactPerson} />
             </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">Staff Phone *</span>
+              <PhoneInput value={f.phone} onValueChange={(v) => setField("phone", v)} error={!!errors.phone} />
+              <FieldError msg={errors.phone} />
+            </label>
+          </FormSection>
+          <FormSection title="Optional">
             <label className="grid gap-1.5">
               <span className="text-xs font-bold">Email <span className="font-normal text-muted">— @gmail.com</span></span>
-              <Input type="email" inputMode="email" autoComplete="email" placeholder="vendor@gmail.com" value={f.email} onChange={(e) => setField("email", e.target.value)} error={errors.email} />
-              {errors.email && <span className="text-[11px] font-semibold text-danger">{errors.email}</span>}
+              <Input type="email" inputMode="email" autoComplete="email" placeholder="supplier@gmail.com" value={f.email} onChange={(e) => setField("email", e.target.value)} error={errors.email} />
+              <FieldError msg={errors.email} />
             </label>
-            <label className="grid gap-1.5 sm:col-span-2">
-              <span className="text-xs font-bold">GST Number <span className="font-normal text-muted">— 15 characters, uppercase</span></span>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold">GST Number <span className="font-normal text-muted">— 15 characters</span></span>
               {/* Normalised on every keystroke and on paste, so a number copied
-                  out of an invoice with spaces or in lowercase is accepted as
-                  typed and stored in the one canonical form. */}
+                  out of an invoice with spaces or in lowercase is accepted. */}
               <Input
                 value={f.gstNumber}
                 onChange={(e) => setField("gstNumber", normalizeGst(e.target.value))}
@@ -643,19 +683,7 @@ export function VendorForm({ vendor, onClose, onSaved }) {
                 maxLength={GSTIN_LEN}
                 error={errors.gstNumber}
               />
-              {errors.gstNumber
-                ? <span className="text-[11px] font-semibold text-danger">{errors.gstNumber}</span>
-                : <span className="text-[11px] text-muted">{f.gstNumber.length}/{GSTIN_LEN}</span>}
-            </label>
-          </div>
-          <label className="grid gap-1.5"><span className="text-xs font-bold">Address</span><Input value={f.address} onChange={set("address")} /></label>
-          {/* Tunch carries a two-line note, so both controls are pinned to the
-              top of the row and the note is reserved space below the pair -
-              that is what kept Status sitting off the grid line. */}
-          <div className="grid items-start gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5">
-              <span className="text-xs font-bold">Default Tunch % <span className="font-normal text-muted">— 0-9</span></span>
-              <DigitsInput value={f.vendorChargePercent} onValueChange={(v) => setField("vendorChargePercent", v)} maxDigits={1} />
+              {errors.gstNumber ? <FieldError msg={errors.gstNumber} /> : <span className="text-[11px] text-muted">{f.gstNumber.length}/{GSTIN_LEN}</span>}
             </label>
             {editing && (
               <label className="grid gap-1.5">
@@ -663,12 +691,11 @@ export function VendorForm({ vendor, onClose, onSaved }) {
                 <Select value={f.isActive ? "Active" : "Inactive"} onValueChange={(v) => setF({ ...f, isActive: v === "Active" })} options={["Active", "Inactive"]} />
               </label>
             )}
-          </div>
-          <p className="-mt-1 text-[11px] text-muted">Tunch is a percent of the net weight paid at the 24K rate (18K = 75% + 4% = 79% of net). It is never added to the rate per gram. Default 4%.</p>
+          </FormSection>
         </div>
         <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={saving} className="bg-accent hover:bg-accent-strong" onClick={submit}>{saving ? "Saving…" : editing ? "Save Changes" : "Create Vendor"}</Button>
+          <Button size="sm" disabled={saving} className="bg-accent hover:bg-accent-strong" onClick={submit}>{saving ? "Saving…" : editing ? "Save Changes" : "Add Supplier"}</Button>
         </div>
       </div>
     </div>

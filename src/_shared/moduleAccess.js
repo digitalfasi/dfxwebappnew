@@ -48,6 +48,7 @@ export const PAGE_MODULE = {
   "master-inventory": "master_inventory",
   inventory: "billing_inventory",
   vendors: ADMIN_ONLY,
+  "supplier-directory": ADMIN_ONLY,
   // Billing — three independently grantable areas
   "new-sale": "billing_new_sale",
   "sales-history": "billing_sales_history",

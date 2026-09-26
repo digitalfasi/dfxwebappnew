@@ -113,18 +113,29 @@ function parseKjpl(html) {
  */
 function parseKjplFeed(txt) {
   const rows = {};
+  const spot = {};
   let updated = null;
   for (const line of txt.split(/\r?\n/)) {
     const f = line.split("\t");
     if (f[0] === "3" && f[1]) {
       const rate = toNum(f[4]);
       if (rate != null && rate > 0) rows[f[1].trim()] = rate;
+    } else if (f[0] === "1" && f[1]) {
+      // International spot, display only: SPOT-GOLD / SPOT-SILVER in US$ per
+      // troy ounce, SPOT-INR = rupees per US$. Column 4 = the live sell side.
+      const v = toNum(f[4]);
+      if (v != null && v > 0) spot[f[1].trim()] = v;
     } else if (f[0] === "4") {
       updated = line.match(/"([^"]+)"/)?.[1] || updated;
     }
   }
   const gold24k = pick(rows[KJPL_24K_COM_ID], rows["49"], rows["50"], rows["51"], rows["52"], rows["47"]);
-  return { ok: true, gold24k, updated };
+  const usd = {
+    goldPerOz: spot["SPOT-GOLD"] ?? null,
+    silverPerOz: spot["SPOT-SILVER"] ?? null,
+    inrPerUsd: spot["SPOT-INR"] ?? null,
+  };
+  return { ok: true, gold24k, usd, updated };
 }
 
 /**
@@ -175,6 +186,8 @@ function buildPayload(kjpl, kjplFeed, mjdta, errors) {
     fetchedAt: new Date().toISOString(),
     gstRate: GST_RATE,
     form: { r24: gold24k, r22: g22, r18: g18, r14: g14, r9: g9, silver },
+    // Information only — never used for billing, schemes or purchases.
+    usd: kjplFeed?.usd ?? { goldPerOz: null, silverPerOz: null, inrPerUsd: null },
     rates: {
       gold_24k: { value: gold24k, source: gold24kSource, unit: "per_gram_inr" },
       gold_22k: {

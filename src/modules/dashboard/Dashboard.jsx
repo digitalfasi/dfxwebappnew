@@ -47,16 +47,17 @@ const CARDS_FAILED = { __failed: true };
 const CARDS_REFUSED = { __refused: true };
 
 const QUICK_ACTIONS = [
-  { title: "New Sale", page: "new-sale", icon: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0" },
-  { title: "Add Customer", page: "customers", icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
-  { title: "Record Payment", page: "payments", icon: "M1 4h22v16H1zM1 10h22" },
+  { title: "New Sale", hint: "Bill a piece", page: "new-sale", icon: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0" },
+  { title: "Record Payment", hint: "Scheme instalment", page: "payments", icon: "M1 4h22v16H1zM1 10h22" },
+  // Adding a customer and enrolling them are the same dialog, so this one tile
+  // covers both (the separate Add Customer tile was a duplicate).
   // Enrolment happens in the Add Customer dialog on the Customer Directory,
   // not on Enrollment Management - that screen lists and manages enrolments
   // that already exist. Sending someone here to CREATE one left them hunting.
-  { title: "New Enrollment", page: "customers", intent: "add-customer", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6" },
-  { title: "Add Scheme", page: "schemes", icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
-  { title: "Add Catalogue", page: "catalogue", icon: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" },
-  { title: "Generate Report", report: true, icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8" },
+  { title: "New Enrollment", hint: "New customer + scheme", page: "customers", intent: "add-customer", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6" },
+  { title: "Add Scheme", hint: "Create a plan", page: "schemes", icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
+  { title: "Add Catalogue", hint: "Storefront product", page: "catalogue", icon: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" },
+  { title: "Generate Report", hint: "Download a summary", report: true, icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8" },
 ];
 
 const PERIOD_TABS = [
@@ -727,26 +728,29 @@ export default function Dashboard({ onNavigate, search = "" }) {
   return (
     <div ref={scope} className="mx-auto w-full max-w-[1440px]">
       {/* QUICK ACTIONS */}
-      <Card data-motion="reveal" className="mb-4 p-3.5">
+      <Card data-motion="reveal" className="mb-4 p-4">
         {/* The senior reached for a Refresh here, found none, used the browser
             and concluded the product was stuck. Enrollment Management already
             has one; this page did not. */}
         <div className="mb-3 flex items-center justify-between gap-3">
-          <CardTitle className="text-xs font-bold">Quick Actions</CardTitle>
+          <CardTitle className="text-sm font-extrabold">Quick Actions</CardTitle>
           <button type="button" onClick={reload}
             className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-[11px] font-bold text-muted transition-colors hover:border-accent-line hover:text-ink">
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
             Refresh
           </button>
         </div>
-        <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-7">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           {QUICK_ACTIONS.map((qa) => (
-            <button key={qa.title} onClick={() => (qa.report ? setShowReport(true) : nav(qa.page, qa.intent))}
-              className="flex flex-col items-center gap-1.5 rounded-xl border border-line p-2.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line hover:shadow-sm">
-              <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-accent">
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={qa.icon} /></svg>
+            <button key={qa.title} type="button" onClick={() => (qa.report ? setShowReport(true) : nav(qa.page, qa.intent))}
+              className="group flex min-h-[64px] items-center gap-3 rounded-xl border border-line bg-white px-3.5 py-3 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line hover:bg-accent-soft/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line transition-colors group-hover:bg-accent group-hover:text-white">
+                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={qa.icon} /></svg>
               </span>
-              <span className="text-center text-[10px] font-bold leading-tight text-muted">{qa.title}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-bold text-ink">{qa.title}</span>
+                <span className="block truncate text-[11px] font-medium text-muted">{qa.hint}</span>
+              </span>
             </button>
           ))}
         </div>

@@ -76,6 +76,11 @@ export default function GoldRate() {
   }, []);
 
   const num = (v) => { const n = Number(v); return v !== "" && Number.isFinite(n) ? n : null; };
+  // A rupee per-gram rate in US$ at the live USD-INR rate ("$162.33"), or null.
+  const usd = (v) => {
+    const n = num(v), fx = live?.usd?.inrPerUsd;
+    return n != null && fx > 0 ? `$${(n / fx).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null;
+  };
 
   // Pull live rates from the collector.
   //   "fill"  — initial load: fill only blank fields, never touch a saved rate.
@@ -218,11 +223,19 @@ export default function GoldRate() {
             <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/60">{purityLabel("24K")} Gold · per gram</span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-bold backdrop-blur"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />LIVE</span>
           </div>
-          <div className="num relative mt-3 text-5xl font-extrabold tracking-tight text-white drop-shadow-sm">
-            {num(rates.r24) != null ? formatINR(num(rates.r24)) : "—"}
+          {/* Rupee / dollar side by side. The dollar is today's rupee rate at
+              the live USD-INR rate - shown for reference, never billed. */}
+          <div className="num relative mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-extrabold tracking-tight text-white drop-shadow-sm">
+            <span className="text-5xl">{num(rates.r24) != null ? formatINR(num(rates.r24)) : "—"}</span>
+            {usd(rates.r24) && (
+              <>
+                <span className="text-4xl font-light text-white/30">/</span>
+                <span className="text-4xl text-[#fde68a]">{usd(rates.r24)}</span>
+              </>
+            )}
           </div>
           <div className="relative mt-1 text-[13px] font-semibold text-white/60">
-            The rate every purchase is priced at
+            The rate every purchase is priced at{live?.usd?.inrPerUsd > 0 && <span className="num text-white/45"> · $1 = ₹{live.usd.inrPerUsd.toFixed(2)}</span>}
           </div>
           <div className={`relative mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-bold backdrop-blur ${isUp ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300" : isDown ? "border-red-400/20 bg-red-500/15 text-red-300" : "border-[#fde68a]/20 bg-[#c9a84c]/15 text-[#fde68a]"}`} style={isDown ? { textShadow: "0 0 10px rgba(252,165,165,0.7)", boxShadow: "0 0 18px rgba(239,68,68,0.32)" } : isUp ? { textShadow: "0 0 10px rgba(110,231,183,0.55)", boxShadow: "0 0 18px rgba(16,185,129,0.22)" } : undefined}>
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">{isDown ? <path d="M7 7l10 10M17 7v10H7" /> : <path d="M7 17 17 7M7 7h10v10" />}</svg>
@@ -231,12 +244,12 @@ export default function GoldRate() {
           <div className="relative mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-5">
             <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3.5 backdrop-blur">
               <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white/55"><span className="h-1.5 w-1.5 rounded-full bg-amber-300" />{purityLabel("22K")}</div>
-              <div className="num mt-1 text-[15px] font-extrabold text-white">{num(rates.r22) != null ? formatINR(num(rates.r22)) : "—"}</div>
+              <div className="num mt-1 text-[15px] font-extrabold text-white">{num(rates.r22) != null ? formatINR(num(rates.r22)) : "—"}{usd(rates.r22) && <span className="text-[#fde68a]"><span className="font-light text-white/30"> / </span>{usd(rates.r22)}</span>}</div>
               <div className="num text-[11px] text-white/45">{live?.rates?.gold_22k?.withGst != null ? `incl. GST ${formatINR(live.rates.gold_22k.withGst)}` : "per gram"}</div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3.5 backdrop-blur">
               <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white/55"><span className="h-1.5 w-1.5 rounded-full bg-slate-300" />Silver / g</div>
-              <div className="num mt-1 text-[15px] font-extrabold text-white">{num(rates.silver) != null ? formatINR(num(rates.silver)) : "—"}</div>
+              <div className="num mt-1 text-[15px] font-extrabold text-white">{num(rates.silver) != null ? formatINR(num(rates.silver)) : "—"}{usd(rates.silver) && <span className="text-[#fde68a]"><span className="font-light text-white/30"> / </span>{usd(rates.silver)}</span>}</div>
               <div className="text-[11px] text-white/45">per gram</div>
             </div>
           </div>

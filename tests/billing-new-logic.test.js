@@ -145,14 +145,17 @@ describe("the tunch a piece was bought at is visible in stock", () => {
     // there as a permanent zero for someone to fill in.
     expect(svc).not.toMatch(/tunch: r\.tunch_percent/);
     expect(inv).not.toMatch(/<th className="px-4 py-2.5 text-right">Tunch<\/th>/);
-    expect(inv).toMatch(/\{bulkType === "JEWELLERY" && <th className="py-2 w-\[80px\]">Tunch %<\/th>\}/);
+    expect(inv).toMatch(/\{bulkType === "JEWELLERY" && <th className="py-2 w-\[100px\]">Tunch %<\/th>\}/);
     // and the tunch leg is zero in every raw-gold total on the screen
-    expect(inv).toMatch(/bulkType === "JEWELLERY" && r\.tunch !== "" && r\.tunch != null \? Number\(r\.tunch\) \|\| 0 : 0;/);
+    expect(inv).toMatch(/bulkType === "JEWELLERY" \? tunchFromNumber\(r\.tunchNo, r\.purity\)\.pct : 0;/);
   });
 
-  it("a two-digit tunch can actually be typed in the bulk grid", () => {
-    // maxDigits was 1, so a 12% lot lost its second digit as it was entered.
-    expect(inv).toMatch(/onValueChange=\{v=>setCell\("tunch",v\)\} maxDigits=\{2\}/);
+  it("bulk Tunch comes from the supplier's Tunch Number, never a default", () => {
+    // 2026-09-26: Tunch % = Tunch Number - purity (18K 750, number 790 = 4%).
+    expect(inv).toMatch(/setCell\("tunchNo"/);
+    expect(inv).toMatch(/const touch = n > 100 \? n \/ 10 : n;/);
+    expect(inv).toMatch(/tunch: String\(tunchFromNumber\(r\.tunchNo, r\.purity\)\.pct\),/);
+    expect(inv).not.toMatch(/tunch: DEFAULT_TUNCH_PERCENT, other/);
   });
   it("the store default making value is the shop's 6%, not a saved blank 0", () => {
     expect(svc).toMatch(/makingValue: d\.making_charge_value \? d\.making_charge_value : 6,/);
@@ -446,8 +449,8 @@ describe("the screens stay small enough to use", () => {
     // The control existed only on the single-item Add Purchase form, so a lot
     // from a vendor not yet on file could not be received at all.
     // Both forms now carry it: the single-item Add Purchase, and bulk receiving.
-    expect(inv.match(/\+ Add new vendor/g) || []).toHaveLength(2);
-    expect(inv).toMatch(/setBulkHeader\(h => \(\{ \.\.\.h, vendor: v\.name \}\)\);/);
+    expect(inv.match(/\+ Add new supplier/g) || []).toHaveLength(2);
+    expect(inv).toMatch(/setBulkHeader\(h => \(\{ \.\.\.h, vendor: v\.name, deliveredBy: h\.deliveredBy \|\| v\.contactPerson \|\| "" \}\)\);/);
   });
 
   it("a bar's bill ends in the same dialog a piece's does", () => {
