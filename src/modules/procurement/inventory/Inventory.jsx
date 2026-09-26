@@ -201,6 +201,9 @@ export default function Inventory({ onNavigate }) {
   // confirm WHO the entry will be recorded against — it is never sent, and
   // typing a different name here must never become possible.
   const staffName = user?.name || user?.email || "";
+  // Adding a supplier is the owner's (Supplier Directory, admin-only on the
+  // server); staff pick from the suppliers already on file.
+  const canAddSupplier = backendRole === "Admin" || backendRole === "SuperAdmin";
   usePressFeedback(scope);
 
   const [items, setItems] = useState([]);
@@ -225,7 +228,9 @@ export default function Inventory({ onNavigate }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   // Store-default GST, needed because single-item create requires tax_rate_percent.
-  const [storeTax, setStoreTax] = useState(0);
+  // GST is compulsory at 3%; staff cannot read the store defaults, so this
+  // must not fall back to 0 for them.
+  const [storeTax, setStoreTax] = useState(3);
 
   const [addForm, setAddForm] = useState(EMPTY_PURCHASE);
   // Today's gold rate object. Only rate_24k is used: a purchase is always
@@ -344,7 +349,7 @@ export default function Inventory({ onNavigate }) {
       // Never let raw gold failing blank the jewellery table beside it.
       billingService.listRawGold().then(setRawGold).catch(() => setRawGold([]));
       if (master) setMaster(master.categories);
-      if (sd && sd.tax !== "" && sd.tax != null) setStoreTax(Number(sd.tax) || 0);
+      if (sd && sd.tax !== "" && sd.tax != null) setStoreTax(Number(sd.tax) || 3);
       // Neither the single Purchase nor the bulk header preselects a vendor —
       // both start in an empty placeholder state (real vendor master only).
     } catch (err) {
@@ -1314,7 +1319,7 @@ export default function Inventory({ onNavigate }) {
                 <h4 className="mb-3 text-xs font-extrabold uppercase tracking-widest">Supplier / Purchase</h4>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="sm:col-span-2">
-                    <HeaderField label="Supplier *" action={!showAddVendor && (
+                    <HeaderField label="Supplier *" action={!showAddVendor && canAddSupplier && (
                       <button type="button" onClick={()=>setShowAddVendor(true)} className="text-[11px] font-bold text-accent underline">+ Add new supplier</button>
                     )}>
                       <Select value={addForm.vendor} onValueChange={v=>setAddForm({...addForm, vendor:v, deliveredBy: addForm.deliveredBy || staffOf(v)})} options={vendorOptions} placeholder={vendorOptions.length ? "Select supplier…" : "No suppliers — add one"} />
@@ -1534,7 +1539,7 @@ export default function Inventory({ onNavigate }) {
 
               {/* Header - three even columns, every control 44px tall. */}
               <div className="grid gap-4 rounded-xl border border-line bg-canvas/30 p-4 sm:grid-cols-2 lg:grid-cols-3">
-                <HeaderField label="Supplier *" action={!showAddVendor && (
+                <HeaderField label="Supplier *" action={!showAddVendor && canAddSupplier && (
                   <button type="button" onClick={()=>setShowAddVendor(true)} className="text-[11px] font-bold text-accent underline">+ Add new supplier</button>
                 )}>
                   <Select value={bulkHeader.vendor} onValueChange={v=>setBulkHeader({...bulkHeader, vendor:v, deliveredBy: bulkHeader.deliveredBy || staffOf(v)})} options={vendorOptions} placeholder={vendorOptions.length ? "Select supplier…" : "No suppliers — add one"} />

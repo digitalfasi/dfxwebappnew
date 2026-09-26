@@ -317,11 +317,15 @@ export default function NewSale() {
   const minSafe = product?.safePrice?.minimumSafePrice;
   // What may still be given, down to whichever floor binds - and never below
   // zero. The old ceiling mixed two unrelated quantities and could go negative.
+  // Staff get no bands and no safe price from the server (profit words only),
+  // so there is no ceiling to show them - never one invented from fallbacks.
   const discountCeiling = !product
     ? null
     : minSafe != null
       ? Math.max(0, round2(askingPretax - toPretax(minSafe)))
-      : Math.max(0, pctToRupees(listPct - profitFloorPct));
+      : bands
+        ? Math.max(0, pctToRupees(listPct - profitFloorPct))
+        : null;
   const discountExceedsProfit = discountCeiling != null && concession > discountCeiling + 1e-6;
   const ceilingReason = "beyond that the bill starts eating the gold profit";
 
@@ -1153,7 +1157,7 @@ export default function NewSale() {
         <Card data-motion="reveal" className="p-5 lg:sticky lg:top-4 lg:self-start">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-extrabold">Bill summary</h3>
-            {rawGold.profitOrLoss != null && <ProfitToggle compact on={showProfit} onToggle={() => setShowProfit((v) => !v)} />}
+            {(rawGold.profitOrLoss != null || rawGold.profitLabel) && <ProfitToggle compact on={showProfit} onToggle={() => setShowProfit((v) => !v)} />}
           </div>
           <div className="mt-3 rounded-xl border border-line bg-canvas/40 p-3">
             <div className="text-[13px] font-bold">{rawGold.productName}</div>
@@ -1201,6 +1205,9 @@ export default function NewSale() {
             )}
           </div>
 
+          {showProfit && rawGold.profitOrLoss == null && rawGold.profitLabel && (
+            <div className="mt-3 max-w-[220px]"><PnlWordCard label="This bill" verdict={rawGold.profitLabel} /></div>
+          )}
           {showProfit && rawGold.profitOrLoss != null && (
             <div className={`mt-3 flex items-baseline justify-between rounded-lg border px-3 py-2 ${rawGold.profitOrLoss < 0 ? "border-danger-line bg-danger-soft/50" : "border-emerald-200 bg-emerald-50"}`}>
               <span className={`text-[11px] font-bold uppercase tracking-[0.07em] ${rawGold.profitOrLoss < 0 ? "text-danger" : "text-emerald-700"}`}>
@@ -1512,7 +1519,7 @@ export default function NewSale() {
                                   "11% break-even" welded, which on this piece is
                                   the PROFIT floor - break-even is 8% - so the
                                   strip named the wrong line, and welded it. */}
-                              {round2(impliedMakingPct)}% making · profit {round2(profitFloorPct)}% · break-even {round2(breakEvenPct)}%
+                              {bands ? `${round2(impliedMakingPct)}% making · profit ${round2(profitFloorPct)}% · break-even ${round2(breakEvenPct)}%` : ""}
                             </span>
                           </div>
                         )}
@@ -1885,7 +1892,7 @@ export default function NewSale() {
                 )}
               </div>
 
-              {showProfit && (
+              {showProfit && canApproveBelowCost && (
                 product.safePrice ? (
                   <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5">
                     <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-emerald-800">Safe Price</div>

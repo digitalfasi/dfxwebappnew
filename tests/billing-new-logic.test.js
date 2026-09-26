@@ -95,7 +95,7 @@ describe("one concession, three boxes that agree", () => {
   it("the headroom can never go negative", () => {
     // converted through the scheme-aware inverse, not a flat factor
     expect(ns).toMatch(/\? Math\.max\(0, round2\(askingPretax - toPretax\(minSafe\)\)\)/);
-    expect(ns).toMatch(/: Math\.max\(0, pctToRupees\(listPct - profitFloorPct\)\);/);
+    expect(ns).toMatch(/\? Math\.max\(0, pctToRupees\(listPct - profitFloorPct\)\)\s*: null;/);
   });
 
   it("the asking price is the bill at LIST, built from the backend's figures", () => {
@@ -391,7 +391,8 @@ describe("the verdict states this piece's own floors", () => {
   it("the strip names both floors, from the bands", () => {
     // It read "11% break-even" welded - which on a 4% tunch lot is the PROFIT
     // floor, not break-even (8%). It named the wrong line, and welded it.
-    expect(ns).toMatch(/profit \{round2\(profitFloorPct\)\}% . break-even \{round2\(breakEvenPct\)\}%/);
+    // numbers only when the server sent the bands - staff get the word alone
+    expect(ns).toMatch(/bands \? `\$\{round2\(impliedMakingPct\)\}% making . profit \$\{round2\(profitFloorPct\)\}% . break-even \$\{round2\(breakEvenPct\)\}%` : ""/);
     expect(ns).not.toMatch(/% making . 11% break-even/);
   });
 
