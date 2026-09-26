@@ -270,7 +270,7 @@ export default function Inventory({ onNavigate }) {
   // losing anything.
   const [bulkRowsByType, setBulkRowsByType] = useState({
     JEWELLERY: [emptyBulkRow()],
-    RAW_GOLD: [emptyBulkRow()],
+    RAW_GOLD: [{ ...emptyBulkRow(), purity: "24K" }], // bars are usually 24K
   });
 
   const bulkRows = bulkRowsByType[bulkType];
@@ -325,7 +325,7 @@ export default function Inventory({ onNavigate }) {
   const discardBulkDraft = () => {
     clearDraft("bulk"); setBulkDraftAt(null);
     setBulkHeaders({ JEWELLERY: emptyBulkHeader(nowLocalInput()), RAW_GOLD: emptyBulkHeader(nowLocalInput()) });
-    setBulkRowsByType({ JEWELLERY: [newBulkRow()], RAW_GOLD: [newBulkRow()] });
+    setBulkRowsByType({ JEWELLERY: [newBulkRow("JEWELLERY")], RAW_GOLD: [newBulkRow("RAW_GOLD")] });
   };
   const draftStamp = (at) => at ? `Draft saved ${new Date(at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : "";
 
@@ -738,10 +738,11 @@ export default function Inventory({ onNavigate }) {
   const bulkRowBase = (r) => rowWeights(r).net * ((parseInt(r.purity, 10) || 0) / 24) * (Number(r.rate) || 0);
   // A new row opens with today's 24K rate already in it, so the common case
   // needs no typing at all; the field stays editable for a back-dated invoice.
-  const newBulkRow = useCallback(() => {
+  const newBulkRow = useCallback((type = bulkType) => {
     const live = rate24kPerGram(todayRate);
-    return { ...emptyBulkRow(), rate: live != null ? String(live) : "" };
-  }, [todayRate]);
+    // Raw gold opens at 24K (bars usually are); jewellery at 22K.
+    return { ...emptyBulkRow(), purity: type === "RAW_GOLD" ? "24K" : "22K", rate: live != null ? String(live) : "" };
+  }, [todayRate, bulkType]);
 
   // Seed the OPEN grid's first row with the live 24K rate. Only the grid that
   // happened to be active when the modal opened used to be seeded, so switching
@@ -1014,7 +1015,7 @@ export default function Inventory({ onNavigate }) {
       setShowBulk(false);
       // Both grids, not just the one submitted - a stale draft of the other
       // kind reappearing after a completed receipt is the same confusion.
-      setBulkRowsByType({ JEWELLERY: [newBulkRow()], RAW_GOLD: [newBulkRow()] });
+      setBulkRowsByType({ JEWELLERY: [newBulkRow("JEWELLERY")], RAW_GOLD: [newBulkRow("RAW_GOLD")] });
       clearDraft("bulk"); setBulkDraftAt(null);
       setNextCodes({});
       setBulkHeaders({ JEWELLERY: emptyBulkHeader(nowLocalInput()), RAW_GOLD: emptyBulkHeader(nowLocalInput()) });
@@ -1720,7 +1721,7 @@ export default function Inventory({ onNavigate }) {
                           ) : (
                             <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(ra.auto) : "—"}</td>
                           )}
-                          <td className="px-2 py-2"><Button size="sm" variant="outline" onClick={()=>setBulkRows(bulkRows.length>1 ? bulkRows.filter((_,ix)=>ix!==i) : [emptyBulkRow()])}>×</Button></td>
+                          <td className="px-2 py-2"><Button size="sm" variant="outline" onClick={()=>setBulkRows(bulkRows.length>1 ? bulkRows.filter((_,ix)=>ix!==i) : [newBulkRow()])}>×</Button></td>
                         </tr>
                       );
                     })}
@@ -1744,8 +1745,8 @@ export default function Inventory({ onNavigate }) {
                           <th className="py-2 pr-3">Purity</th>
                           <th className="py-2 pr-3 text-right">Net weight</th>
                           <th className="py-2 pr-3 text-right">24K equivalent</th>
-                          <th className="py-2 pr-3 text-right">Tunch</th>
-                          <th className="py-2 pr-3 text-right">Payable gold</th>
+                          {bulkType === "JEWELLERY" && <th className="py-2 pr-3 text-right">Tunch</th>}
+                          {bulkType === "JEWELLERY" && <th className="py-2 pr-3 text-right">Payable gold</th>}
                           <th className="py-2 text-right">Amount</th>
                         </tr>
                       </thead>
@@ -1760,13 +1761,13 @@ export default function Inventory({ onNavigate }) {
                               </td>
                               <td className="num py-2 pr-3 text-right font-mono tabular-nums">{g.net.toFixed(3)} g</td>
                               <td className="num py-2 pr-3 text-right font-mono tabular-nums">{g.fine.toFixed(3)} g</td>
-                              <td className="num py-2 pr-3 text-right font-mono tabular-nums">
+                              {bulkType === "JEWELLERY" && <td className="num py-2 pr-3 text-right font-mono tabular-nums">
                                 {g.tunchG.toFixed(3)} g
                                 <span className="ml-1 text-[11px] font-sans text-muted">
                                   {pcts.length === 1 ? `@ ${pcts[0]}%` : `@ mixed ${pcts.join("/")}%`}
                                 </span>
-                              </td>
-                              <td className="num py-2 pr-3 text-right font-mono font-bold tabular-nums">{(g.fine + g.tunchG).toFixed(3)} g</td>
+                              </td>}
+                              {bulkType === "JEWELLERY" && <td className="num py-2 pr-3 text-right font-mono font-bold tabular-nums">{(g.fine + g.tunchG).toFixed(3)} g</td>}
                               <td className="num py-2 text-right font-mono font-bold tabular-nums">{money(Math.round(g.base * 100) / 100 + Math.round(g.tunchAmt * 100) / 100 + g.stone)}</td>
                             </tr>
                           );
@@ -1777,8 +1778,8 @@ export default function Inventory({ onNavigate }) {
                           <td className="py-2.5 pr-3 font-extrabold">Total</td>
                           <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.netTotal.toFixed(3)} g</td>
                           <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.fineTotal.toFixed(3)} g</td>
-                          <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.tunchGTotal.toFixed(3)} g</td>
-                          <td className="num py-2.5 pr-3 text-right font-mono font-extrabold tabular-nums text-accent-strong">{bulkBreakdown.payableGrams.toFixed(3)} g</td>
+                          {bulkType === "JEWELLERY" && <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.tunchGTotal.toFixed(3)} g</td>}
+                          {bulkType === "JEWELLERY" && <td className="num py-2.5 pr-3 text-right font-mono font-extrabold tabular-nums text-accent-strong">{bulkBreakdown.payableGrams.toFixed(3)} g</td>}
                           <td className="num py-2.5 text-right font-mono font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount)}</td>
                         </tr>
                       </tfoot>
@@ -1796,14 +1797,16 @@ export default function Inventory({ onNavigate }) {
                       </span>
                       <span className="num font-mono font-bold tabular-nums">{money(bulkBreakdown.baseTotal)}</span>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-muted">+ Tunch {bulkBreakdown.tunchGTotal.toFixed(3)} g (each row at its own %)</span>
-                      <span className="num font-mono font-bold tabular-nums">{money(bulkBreakdown.tunchAmtTotal)}</span>
-                    </div>
+                    {bulkType === "JEWELLERY" && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted">+ Tunch {bulkBreakdown.tunchGTotal.toFixed(3)} g (each row at its own %)</span>
+                        <span className="num font-mono font-bold tabular-nums">{money(bulkBreakdown.tunchAmtTotal)}</span>
+                      </div>
+                    )}
                     {/* Shown as soon as there IS stone in the receipt, even
                         before it is priced - a row carrying 5 g of stone at Rs 0
                         is a figure the buyer needs to see, not a hidden line. */}
-                    {(bulkBreakdown.valueAdditionTotal > 0 || bulkBreakdown.stoneGTotal > 0) && (
+                    {bulkType === "JEWELLERY" && (bulkBreakdown.valueAdditionTotal > 0 || bulkBreakdown.stoneGTotal > 0) && (
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-muted">
                           + Value addition (V/A, no Tunch)
@@ -1819,7 +1822,7 @@ export default function Inventory({ onNavigate }) {
                       </div>
                     )}
                     <div className="flex items-center justify-between gap-3 border-t border-accent-line pt-1.5">
-                      <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold{bulkBreakdown.valueAdditionTotal > 0 ? " + V/A" : ""} + GST</span>
+                      <span className="font-extrabold">Final payable — {bulkBreakdown.payableGrams.toFixed(3)} g of pure gold{bulkType === "JEWELLERY" && bulkBreakdown.valueAdditionTotal > 0 ? " + V/A" : ""} + GST</span>
                       <span className="num font-mono text-base font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount + bulkGst)}</span>
                     </div>
                     {/* The settlement, on the same slip as the payable. One
