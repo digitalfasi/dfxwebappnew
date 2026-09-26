@@ -735,7 +735,8 @@ export default function Inventory({ onNavigate }) {
   };
   // Each row's Cost/g is the 24K rate, so the row's base is its PURE gold
   // content (net × karat/24) at that rate — the purity never changes the rate.
-  const bulkRowBase = (r) => rowWeights(r).net * ((parseInt(r.purity, 10) || 0) / 24) * (Number(r.rate) || 0);
+  const rowPurity = (r) => (bulkType === "RAW_GOLD" ? "24K" : r.purity); // raw gold is 24K only
+  const bulkRowBase = (r) => rowWeights(r).net * ((parseInt(rowPurity(r), 10) || 0) / 24) * (Number(r.rate) || 0);
   // A new row opens with today's 24K rate already in it, so the common case
   // needs no typing at all; the field stays editable for a back-dated invoice.
   const newBulkRow = useCallback((type = bulkType) => {
@@ -797,7 +798,7 @@ export default function Inventory({ onNavigate }) {
     for (const r of bulkRows) {
       const { gross, net, stone: stoneG } = rowWeights(r);
       const other = bulkType === "JEWELLERY" ? Number(r.other) || 0 : 0;
-      const karat = parseInt(r.purity, 10) || 0;
+      const karat = parseInt(rowPurity(r), 10) || 0;
       const rate = Number(r.rate) || 0;
       if (net <= 0 || karat <= 0) continue;
       const pct = rowTunchPct(r);
@@ -817,7 +818,7 @@ export default function Inventory({ onNavigate }) {
       netTotal += net; fineTotal += fine; tunchGTotal += tunchG;
       baseTotal += base; tunchAmtTotal += tunchAmt; stoneTotal += stone; stoneGTotal += stoneG;
 
-      const key = r.purity;
+      const key = rowPurity(r);
       const g = groups.get(key) || { purity: key, rows: 0, net: 0, fine: 0, tunchG: 0, base: 0, tunchAmt: 0, stone: 0, stoneG: 0, pcts: new Set() };
       g.rows += 1; g.net += net; g.fine += fine; g.tunchG += tunchG;
       g.base += base; g.tunchAmt += tunchAmt; g.stone += stone; g.stoneG += stoneG; g.pcts.add(pct);
@@ -985,7 +986,7 @@ export default function Inventory({ onNavigate }) {
             // used to be dropped here, so a bar's category never saved.
             category: (r.category || "").trim() || undefined,
             subCategory: (r.subCategory || "").trim() || undefined,
-            purity: r.purity,
+            purity: "24K",
             gross: rowWeights(r).gross,
             net: rowWeights(r).net,
             rate: r.rate,
@@ -1662,7 +1663,10 @@ export default function Inventory({ onNavigate }) {
                           <td className="px-2 py-2">{bulkType==="JEWELLERY"
                             ? <Select value={r.subCategory||""} onValueChange={v=>setCell("subCategory",v)} options={subChoicesFor(r.category)} placeholder="Sub-category" />
                             : <Input value={r.subCategory} onChange={e=>setCell("subCategory",e.target.value)} placeholder="Optional" className="h-9 text-sm" />}</td>
-                          <td className="px-2 py-2"><Select value={r.purity} onValueChange={v=>setCell("purity",v)} options={PURITY_OPTIONS} /></td>
+                          <td className="px-2 py-2">{bulkType === "RAW_GOLD"
+                            // Raw gold is 24K only - shown, not chosen.
+                            ? <div className="num flex h-9 items-center rounded-xl border border-accent-line bg-accent-soft/40 px-3 text-sm font-bold text-accent-strong">{purityLabel("24K")}</div>
+                            : <Select value={r.purity} onValueChange={v=>setCell("purity",v)} options={PURITY_OPTIONS} />}</td>
                           {bulkType === "JEWELLERY" && (
                             <td className="px-2 py-2"><Input type="number" value={r.gross} onChange={e=>setCell("gross",e.target.value)} className="h-9" /></td>
                           )}
