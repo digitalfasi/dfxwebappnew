@@ -286,8 +286,8 @@ export default function CatalogueStudio() {
       {/* Search & filters */}
       <div className="mb-3 flex flex-wrap items-center gap-2" data-motion="toolbar">
         <SearchInput placeholder="Search by name, category, sub-category or SKU" value={search} onChange={e => setSearch(e.target.value)} className="min-w-[260px] flex-1 max-w-md" />
-        <Select value={categoryFilter} onValueChange={setCategoryFilter} options={categoryOptions} className="w-[160px]" />
-        <Select value={subCategoryFilter} onValueChange={setSubCategoryFilter} options={subCategoryOptions} className="w-[170px]" />
+        <Select value={categoryFilter} onValueChange={setCategoryFilter} options={categoryOptions} className="w-[170px]" />
+        <Select value={subCategoryFilter} onValueChange={setSubCategoryFilter} options={subCategoryOptions} className="w-[200px]" />
         <Select value={purityFilter} onValueChange={setPurityFilter} options={["All Purity", ...PURITY_OPTIONS]} className="w-[140px]" />
         <Select value={statusFilter} onValueChange={setStatusFilter} options={["All Status", "Active", "Inactive"]} className="w-[130px]" />
         {(search || categoryFilter !== "All Categories" || subCategoryFilter !== "All Sub-categories" || purityFilter !== "All Purity" || statusFilter !== "All Status") && (

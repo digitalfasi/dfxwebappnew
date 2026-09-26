@@ -302,8 +302,8 @@ export default function SalesHistory() {
             <Input type="date" value={dateTo} max={todayIso()} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="w-[150px]" aria-label="To date" />
           </>
         )}
-        <Select value={fCat} onValueChange={setFCat} options={["All Categories", ...catOptions]} className="w-[150px]" />
-        <Select value={fSub} onValueChange={setFSub} options={["All Sub-categories", ...subOptions]} className="w-[170px]" />
+        <Select value={fCat} onValueChange={setFCat} options={["All Categories", ...catOptions]} className="w-[170px]" />
+        <Select value={fSub} onValueChange={setFSub} options={["All Sub-categories", ...subOptions]} className="w-[200px]" />
         <Select value={fPurity} onValueChange={setFPurity} options={["All Purity", ...purityOptions]} className="w-[130px]" />
         {filtersActive && (
           <button onClick={clearFilters} className="text-xs font-bold text-accent underline">Clear</button>

@@ -140,7 +140,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
             middle when there's no search. Always shown (—/g until today's rate is
             published). Hidden on small screens to stay clean. */}
         {!showSearch && (
-          <div className="hidden min-w-0 shrink-0 items-stretch overflow-hidden rounded-2xl border border-accent-line bg-surface shadow-[0_1px_3px_rgba(30,41,59,0.08),0_6px_16px_-8px_rgba(166,134,49,0.25),inset_0_1px_0_rgba(255,255,255,0.85)] lg:flex">
+          <div className="hidden min-w-0 flex-1 items-stretch overflow-hidden rounded-2xl border border-accent-line bg-surface shadow-[0_1px_3px_rgba(30,41,59,0.08),0_6px_16px_-8px_rgba(166,134,49,0.25),inset_0_1px_0_rgba(255,255,255,0.85)] lg:flex">
             {/* Which day this rail is showing. "Live" ONLY when today's rate has
                 been published; otherwise the date it is actually from, so a
                 yesterday figure is never read as today's. */}
@@ -170,7 +170,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
                 wrap is seamless. Ordered ascending by value (Silver → 24K).
                 Pauses on hover; under reduced-motion it stops moving and
                 becomes a normal horizontal scroll instead. */}
-            <div className="group relative w-[440px] min-w-0 shrink-0 overflow-hidden xl:w-[560px]">
+            <div className="group relative min-w-[120px] max-w-[560px] flex-1 overflow-hidden">
               {/* Soft edges so figures dissolve in and out rather than clipping
                   against a hard border. */}
               <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-surface to-transparent" />
@@ -235,7 +235,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
         <div className={`flex shrink-0 items-center gap-2.5 ${showSearch ? "" : "lg:ml-auto"}`}>
           {action}
           {/* Current-day indicator (auto-updates; no dropdown, no From/To). */}
-          <div className="hidden h-9 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-xs font-bold text-ink md:flex">
+          <div className="hidden h-9 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-xs font-bold text-ink 2xl:flex">
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-accent-strong" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
             </svg>

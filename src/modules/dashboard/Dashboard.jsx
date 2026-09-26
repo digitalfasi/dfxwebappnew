@@ -740,7 +740,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             Refresh
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:grid-cols-3 min-[1800px]:grid-cols-6">
           {QUICK_ACTIONS.map((qa) => (
             <button key={qa.title} type="button" onClick={() => (qa.report ? setShowReport(true) : nav(qa.page, qa.intent))}
               className="group flex min-h-[64px] items-center gap-3 rounded-xl border border-line bg-white px-3.5 py-3 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line hover:bg-accent-soft/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">

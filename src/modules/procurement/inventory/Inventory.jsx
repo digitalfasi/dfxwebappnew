@@ -1165,8 +1165,8 @@ export default function Inventory({ onNavigate }) {
           <span className="text-xs font-bold">Filters</span>
           <Select value={status} onValueChange={setStatus} options={STATUS_OPTS} className="w-[140px]" />
           <Select value={vendor} onValueChange={setVendor} options={["All Suppliers", ...vendorNames]} className="w-[160px]" />
-          <Select value={category} onValueChange={setCategory} options={["All Categories", ...catOptions]} className="w-[140px]" />
-          <Select value={subCategory} onValueChange={setSubCategory} options={["All Sub-categories", ...subOptions]} className="w-[170px]" />
+          <Select value={category} onValueChange={setCategory} options={["All Categories", ...catOptions]} className="w-[170px]" />
+          <Select value={subCategory} onValueChange={setSubCategory} options={["All Sub-categories", ...subOptions]} className="w-[200px]" />
           <Select value={purity} onValueChange={setPurity} options={["All Purity", ...PURITY_OPTIONS]} className="w-[140px]" />
           {/* Clear used to call setProductName, which does not exist on this
               component, so the click threw a ReferenceError and nothing reset.
