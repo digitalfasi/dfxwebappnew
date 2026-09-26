@@ -65,6 +65,6 @@ describe("raw gold is visible where it was bought", () => {
   });
 
   it("the section is absent rather than empty when the shop holds no bars", () => {
-    expect(inv).toMatch(/\{rawGold\.length > 0 && \(/);
+    expect(inv).toMatch(/\{filteredRawGold\.length > 0 && \(/);
   });
 });

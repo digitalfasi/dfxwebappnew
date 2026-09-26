@@ -218,7 +218,7 @@ export default function Inventory({ onNavigate }) {
   // Active categories/subcategories from Master Inventory.
   const [master, setMaster] = useState([]);
   const [status, setStatus] = useState("All statuses");
-  const [vendor, setVendor] = useState("All Vendors");
+  const [vendor, setVendor] = useState("All Suppliers");
   const [category, setCategory] = useState("All Categories");
   const [subCategory, setSubCategory] = useState("All Sub-categories");
   const [purity, setPurity] = useState("All Purity");
@@ -432,13 +432,20 @@ export default function Inventory({ onNavigate }) {
     return items.filter(i => {
       const matchesQ = !q || i.name.toLowerCase().includes(q) || (i.huid || "").toLowerCase().includes(q) || i.code.toLowerCase().includes(q);
       const matchesStatus = status==="All statuses" || i.status===status;
-      const matchesVendor = vendor==="All Vendors" || i.vendor===vendor;
+      const matchesVendor = vendor==="All Suppliers" || i.vendor===vendor;
       const matchesCat = category==="All Categories" || i.category===category;
       const matchesSub = subCategory==="All Sub-categories" || i.sub===subCategory;
       const matchesPurity = purity==="All Purity" || i.purity===purity;
       return matchesQ && matchesStatus && matchesVendor && matchesCat && matchesSub && matchesPurity;
     });
   }, [items, query, status, vendor, category, subCategory, purity]);
+  // The bar list follows the same search box and supplier filter.
+  const filteredRawGold = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rawGold.filter((r) =>
+      (!q || (r.serialNumber || "").toLowerCase().includes(q) || (r.productName || "").toLowerCase().includes(q))
+      && (vendor === "All Suppliers" || r.vendorName === vendor));
+  }, [rawGold, query, vendor]);
 
   // Gold-weight composition of the currently in-stock, filtered inventory. Real
   // loaded data only — display aggregation, no financials. Default is purity-wise;
@@ -1174,12 +1181,12 @@ export default function Inventory({ onNavigate }) {
 
       <div className="mb-4 grid gap-2" data-motion="toolbar">
         <div className="flex flex-wrap gap-2">
-          <SearchInput placeholder="Search HUID, product or code" value={query} onChange={e=>setQuery(e.target.value)} className="flex-1 min-w-[200px]" />
+          <SearchInput placeholder="Search item code, HUID or product" value={query} onChange={e=>setQuery(e.target.value)} className="flex-1 min-w-[200px]" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold">Filters</span>
           <Select value={status} onValueChange={setStatus} options={STATUS_OPTS} className="w-[140px]" />
-          <Select value={vendor} onValueChange={setVendor} options={["All Vendors", ...vendorNames]} className="w-[160px]" />
+          <Select value={vendor} onValueChange={setVendor} options={["All Suppliers", ...vendorNames]} className="w-[160px]" />
           <Select value={category} onValueChange={setCategory} options={["All Categories", ...catOptions]} className="w-[140px]" />
           <Select value={subCategory} onValueChange={setSubCategory} options={["All Sub-categories", ...subOptions]} className="w-[170px]" />
           <Select value={purity} onValueChange={setPurity} options={["All Purity", ...PURITY_OPTIONS]} className="w-[140px]" />
@@ -1187,13 +1194,13 @@ export default function Inventory({ onNavigate }) {
               component, so the click threw a ReferenceError and nothing reset.
               Every filter this screen owns is listed here, and the control is
               right-aligned with the destructive treatment used elsewhere. */}
-          {(query || status !== "All statuses" || vendor !== "All Vendors" || category !== "All Categories" || subCategory !== "All Sub-categories" || purity !== "All Purity") && (
+          {(query || status !== "All statuses" || vendor !== "All Suppliers" || category !== "All Categories" || subCategory !== "All Sub-categories" || purity !== "All Purity") && (
             <button
               type="button"
               onClick={() => {
                 setQuery("");
                 setStatus("All statuses");
-                setVendor("All Vendors");
+                setVendor("All Suppliers");
                 setCategory("All Categories");
                 setSubCategory("All Sub-categories");
                 setPurity("All Purity");
@@ -1211,23 +1218,23 @@ export default function Inventory({ onNavigate }) {
           table, and /billing/inventory only selects hallmarked pieces. Shown
           as its own list because a bar has a serial number where a piece has a
           HUID, and none of the making/wastage columns beside it apply. */}
-      {rawGold.length > 0 && (
+      {filteredRawGold.length > 0 && (
         <Card data-motion="reveal" className="mb-4 overflow-hidden">
           <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-6 py-3">
             <h3 className="text-sm font-extrabold">Raw gold &amp; bullion</h3>
             <span className="text-[11px] text-muted">
-              {rawGold.length} bar{rawGold.length === 1 ? "" : "s"} ·{" "}
+              {filteredRawGold.length} bar{filteredRawGold.length === 1 ? "" : "s"} ·{" "}
               <span className="num font-semibold">
-                {rawGold.reduce((s, r) => s + (Number(r.netGoldWeightGrams) || 0), 0).toFixed(3)} g
+                {filteredRawGold.reduce((s, r) => s + (Number(r.netGoldWeightGrams) || 0), 0).toFixed(3)} g
               </span>{" "}
-              net · tracked by serial number
+              net · 24K · tracked by item code
             </span>
           </div>
           <CardContent className="overflow-x-auto px-0 pb-0">
             <table className="w-full min-w-[820px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-line bg-canvas/40 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                  <th className="px-4 py-2.5">Serial No.</th>
+                  <th className="px-4 py-2.5">Item Code</th>
                   <th className="px-4 py-2.5">Name</th>
                   <th className="px-4 py-2.5">Purity</th>
                   <th className="px-4 py-2.5 text-right">Gross</th>
@@ -1238,7 +1245,7 @@ export default function Inventory({ onNavigate }) {
                 </tr>
               </thead>
               <tbody>
-                {rawGold.map((r) => (
+                {filteredRawGold.map((r) => (
                   <tr key={r.id} className="border-b border-line-soft last:border-0">
                     <td className="px-4 py-2.5 font-mono text-xs font-semibold">{r.serialNumber}</td>
                     <td className="px-4 py-2.5 font-semibold">{r.productName}</td>
@@ -1248,7 +1255,9 @@ export default function Inventory({ onNavigate }) {
                     <td className="px-4 py-2.5 text-muted">{r.vendorName || "—"}</td>
                     <td className="num px-4 py-2.5 text-right">{r.purchaseCost != null ? money(r.purchaseCost) : "—"}</td>
                     <td className="px-4 py-2.5">
-                      <Badge tone={r.stockStatus === "IN_STOCK" ? "success" : "neutral"}>{r.stockStatus}</Badge>
+                      <Badge tone={r.stockStatus === "IN_STOCK" ? "success" : r.stockStatus === "SOLD" ? "warning" : "neutral"} dot>
+                        {{ IN_STOCK: "In Stock", SOLD: "Sold" }[r.stockStatus] || String(r.stockStatus || "").replace(/_/g, " ").toLowerCase().replace(/^./, (ch) => ch.toUpperCase())}
+                      </Badge>
                     </td>
                   </tr>
                 ))}
