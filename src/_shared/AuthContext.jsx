@@ -37,7 +37,8 @@ export function AuthProvider({ children }) {
         // /users/me carries the caller's own shop name, so staff are never left
         // with the product name. The admin-only profile is still preferred when
         // it resolves; it is the record the shop edits.
-        const tn = await authService.getTenantName();
+        // The SuperAdmin has no shop, so there is no shop profile to read.
+        const tn = u?.backendRole === "SuperAdmin" ? null : await authService.getTenantName();
         if (alive) setTenantName(tn || u?.tenantName || null);
       } catch {
         tokenStore.clear();
@@ -68,7 +69,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (username, password) => {
     const u = await authService.loginWithEmail(username, password);
     setUser(u);
-    authService.getTenantName().then((tn) => setTenantName(tn || u?.tenantName || null));
+    if (u?.backendRole !== "SuperAdmin") authService.getTenantName().then((tn) => setTenantName(tn || u?.tenantName || null));
     // The login response carries no logo; /users/me does. Best-effort.
     authService.fetchCurrentUser().then((me) => { setTenantLogo(me?.tenantLogoUrl || null); setTenantPhone(me?.tenantPhone || null); }).catch(() => {});
     return u;
