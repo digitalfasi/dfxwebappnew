@@ -237,8 +237,9 @@ export const billingService = {
       inventory_item_id: data.inventoryItemId || null,
       note: data.note || null,
       payment_mode: data.paymentMode,
-      paid_now: data.paidNow ?? null,
+      paid_now: data.settleIn === "METAL" ? null : (data.paidNow ?? null),
       payment_method: data.paymentMethod || "CASH",
+      ...metalBody(data),
       payment_date: data.paymentDate || null,
       reference_no: data.referenceNo || null,
       remarks: data.remarks || null,
@@ -272,6 +273,20 @@ export const billingService = {
         reference_no: referenceNo || null,
         remarks: remarks || null,
       },
+      { auth: true }
+    );
+    return mapVendorPurchasePayments(res.data ?? {});
+  },
+
+  /**
+   * POST /api/v1/billing/vendor-purchases/{id}/metal-payments - grams of gold /
+   * silver handed to the supplier against a METAL purchase. Over-giving is
+   * refused by the server. Returns the refreshed purchase + both ledgers.
+   */
+  async recordVendorMetalPayment(purchaseId, { grams, paymentDate, remarks } = {}) {
+    const res = await apiClient.post(
+      `/billing/vendor-purchases/${purchaseId}/metal-payments`,
+      { grams: Number(grams), payment_date: paymentDate, remarks: remarks || null },
       { auth: true }
     );
     return mapVendorPurchasePayments(res.data ?? {});
@@ -454,8 +469,9 @@ export const billingService = {
       gst_percent: data.gstApplied && data.gstPercent !== "" && data.gstPercent != null ? Number(data.gstPercent) : null,
       vendor_charge_percent: data.tunchPercent !== "" && data.tunchPercent != null ? Number(data.tunchPercent) : null,
       payment_mode: data.paymentMode,
-      paid_now: data.paymentMode === "PARTIAL" && data.paidNow !== "" && data.paidNow != null ? Number(data.paidNow) : null,
+      paid_now: data.settleIn !== "METAL" && data.paymentMode === "PARTIAL" && data.paidNow !== "" && data.paidNow != null ? Number(data.paidNow) : null,
       payment_method: data.paymentMethod || "CASH",
+      ...metalBody(data),
       payment_date: data.paymentDate || null,
       reference_no: data.referenceNo || null,
       remarks: data.remarks || null,
@@ -482,6 +498,8 @@ export const billingService = {
         // header, then to the vendor default.
         vendor_charge_percent: r.tunch !== "" && r.tunch != null ? Number(r.tunch) : null,
       })),
+      // Recording a staff purchase draft marks it RECORDED in the same call.
+      draft_id: data.draftId || null,
     };
     const res = await apiClient.post("/billing/inventory/bulk-purchase", body, { auth: true });
     return {
@@ -509,8 +527,9 @@ export const billingService = {
       gst_percent: data.gstApplied && data.gstPercent !== "" && data.gstPercent != null ? Number(data.gstPercent) : null,
       vendor_charge_percent: data.tunchPercent !== "" && data.tunchPercent != null ? Number(data.tunchPercent) : null,
       payment_mode: data.paymentMode,
-      paid_now: data.paymentMode === "PARTIAL" && data.paidNow !== "" && data.paidNow != null ? Number(data.paidNow) : null,
+      paid_now: data.settleIn !== "METAL" && data.paymentMode === "PARTIAL" && data.paidNow !== "" && data.paidNow != null ? Number(data.paidNow) : null,
       payment_method: data.paymentMethod || "CASH",
+      ...metalBody(data),
       payment_date: data.paymentDate || null,
       reference_no: data.referenceNo || null,
       remarks: data.remarks || null,
@@ -524,12 +543,61 @@ export const billingService = {
         net_gold_weight_grams: Number(r.net),
         purchase_rate_per_gram: Number(r.rate),
       })),
+      draft_id: data.draftId || null,
     };
     const res = await apiClient.post("/billing/inventory/raw-gold-bulk-purchase", body, { auth: true });
     return {
       items: res.data?.items ?? [],
       purchase: mapVendorPurchase(res.data?.purchase ?? {}),
     };
+  },
+
+  // ── Purchase drafts (owner 2026-09-28) ─────────────────────────────────
+  // Staff key the physical rows of a bulk purchase with no money on screen;
+  // an Admin opens the draft, prices it and records it through bulkPurchase /
+  // bulkPurchaseRawGold with draftId. The body carries weights only - the
+  // server refuses any other field.
+  async listPurchaseDrafts(status) {
+    const q = status ? `?status=${encodeURIComponent(status)}` : "";
+    const res = await apiClient.get(`/billing/purchase-drafts${q}`, { auth: true });
+    return (res.data?.drafts ?? []).map(mapPurchaseDraft);
+  },
+  async getPurchaseDraft(id) {
+    const res = await apiClient.get(`/billing/purchase-drafts/${id}`, { auth: true });
+    return mapPurchaseDraft(res.data?.draft ?? {});
+  },
+  /** id null = create. submit true = send to the Admin. */
+  async savePurchaseDraft(id, data = {}, submit = false) {
+    const num = (v) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+    const raw = data.kind === "RAW_GOLD";
+    const body = {
+      kind: data.kind,
+      vendor_id: data.vendorId || null,
+      purchase_at: data.purchaseAt || null,
+      purchase_invoice_ref: data.invoiceRef || null,
+      delivered_by: data.deliveredBy || null,
+      delivered_by_phone: data.deliveredByPhone || null,
+      lot_weight_grams: num(data.lotWeight),
+      lot_qty: num(data.lotQty) != null ? Math.round(num(data.lotQty)) : null,
+      rows: (data.rows ?? []).map((r) => (raw
+        ? { product_name: r.name || null, category: r.category || null, subcategory: r.subCategory || null, purity: "24K", net_gold_weight_grams: num(r.net) }
+        : { huid: r.ident || null, product_name: r.name || null, category: r.category || null, subcategory: r.subCategory || null,
+            purity: r.purity || null, gross_weight_grams: num(r.gross), stone_weight_grams: num(r.stoneWt) })),
+      submit: !!submit,
+      // Admin only: the staff member who will key the rows.
+      assign_to: data.assignTo || null,
+    };
+    const res = id
+      ? await apiClient.put(`/billing/purchase-drafts/${id}`, body, { auth: true })
+      : await apiClient.post("/billing/purchase-drafts", body, { auth: true });
+    return mapPurchaseDraft(res.data?.draft ?? {});
+  },
+  async returnPurchaseDraft(id, note) {
+    const res = await apiClient.post(`/billing/purchase-drafts/${id}/return`, { note }, { auth: true });
+    return mapPurchaseDraft(res.data?.draft ?? {});
+  },
+  async deletePurchaseDraft(id) {
+    await apiClient.delete(`/billing/purchase-drafts/${id}`, { auth: true });
   },
 
   /** POST /api/v1/billing/inventory/{id}/publish — publish (or idempotently
@@ -595,7 +663,7 @@ export const billingService = {
     productCode, customerId, customerName, customerPhone,
     discountAmount = 0, gstApplied = true, appliedRatePerGram,
     makingChargeValue, makingChargeType, wastageValue, wastageType,
-    customerPrice, goldProfitPercent, schemeValue,
+    customerPrice, goldProfitPercent, schemeValue, exchangeValue,
     allowBelowCost, belowCostReason,
     paymentMethod = "CASH", paymentStatus = "PAID",
     initialPaymentAmount, paymentReferenceNo,
@@ -623,6 +691,8 @@ export const billingService = {
     // OTP-gated redemption - but it means a discount that could not survive the
     // carve is refused now rather than with the customer at the OTP step.
     if (schemeValue) body.scheme_value = Number(schemeValue);
+    // The customer's old gold, taken off what they pay now (owner 2026-09-28).
+    if (exchangeValue) body.exchange_value = Number(exchangeValue);
     if (paymentStatus === "PARTIAL") body.initial_payment_amount = initialPaymentAmount;
     if (paymentReferenceNo) body.payment_reference_no = paymentReferenceNo;
     const res = await apiClient.post("/billing/sell", body, { auth: true });
@@ -952,8 +1022,62 @@ function vendorBody(data = {}) {
   return b;
 }
 
+/** How a purchase is settled: MONEY (the rupee ledger) or METAL (the shop's own
+ *  GOLD / SILVER, owed in grams). Reminder days apply to Credit / Partial. */
+function metalBody(data = {}) {
+  const metal = data.settleIn === "METAL";
+  const num = (v) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+  return {
+    settle_in: metal ? "METAL" : "MONEY",
+    metal_type: metal ? data.metalType || "GOLD" : null,
+    metal_rate_per_gram: metal ? num(data.metalRate) : null,
+    metal_paid_grams: metal && data.paymentMode === "PARTIAL" ? num(data.metalPaidGrams) : null,
+    reminder_days: data.paymentMode !== "CASH" ? num(data.reminderDays) : null,
+  };
+}
+
 /** GET/POST /billing/vendor-purchases item -> the payable row shape the Vendor
  *  module renders. All money figures are backend authoritative. */
+// A staff purchase draft, back in the bulk form's own row shape.
+function mapPurchaseDraft(d) {
+  const str = (v) => (v == null ? "" : String(v));
+  return {
+    id: d.id,
+    kind: d.kind,
+    status: d.status,
+    vendorId: d.vendor_id || "",
+    vendorCode: d.vendor_code || "",
+    vendorName: d.vendor_name || "",
+    purchaseAt: d.purchase_at ? String(d.purchase_at).slice(0, 16) : "",
+    invoiceRef: d.purchase_invoice_ref || "",
+    deliveredBy: d.delivered_by || "",
+    deliveredByPhone: d.delivered_by_phone || "",
+    lotWeight: str(d.lot_weight_grams),
+    lotQty: str(d.lot_qty),
+    rows: (d.rows ?? []).map((r) => ({
+      ident: r.huid || "", name: r.product_name || "", category: r.category || "", subCategory: r.subcategory || "",
+      purity: r.purity || (d.kind === "RAW_GOLD" ? "24K" : "22K"),
+      gross: str(r.gross_weight_grams), stoneWt: str(r.stone_weight_grams), net: str(r.net_gold_weight_grams),
+    })),
+    pieces: d.pieces ?? 0,
+    totalGross: d.total_gross_grams ?? 0,
+    totalNet: d.total_net_grams ?? 0,
+    createdBy: d.created_by,
+    authorName: d.created_by_name || "Staff",
+    assignedTo: d.assigned_to || null,
+    assignedToName: d.assigned_to_name || "",
+    assignedAt: d.assigned_at || null,
+    // The Admin set the lot; staff fill rows against it and cannot change it.
+    lotLocked: !!d.lot_locked,
+    submittedAt: d.submitted_at || null,
+    adminNote: d.admin_note || "",
+    recordedAt: d.recorded_at || null,
+    recordedByName: d.recorded_by_name || "",
+    vendorPurchaseId: d.vendor_purchase_id || null,
+    updatedAt: d.updated_at || null,
+  };
+}
+
 function mapVendorPurchase(p = {}) {
   return {
     id: p.id,
@@ -986,6 +1110,15 @@ function mapVendorPurchase(p = {}) {
     amountPaid: p.amount_paid ?? 0,
     amountOutstanding: p.amount_outstanding ?? 0,
     paymentStatus: p.payment_status ?? "",
+    // METAL: the rupee figures are the reference cost only; what is owed is
+    // metalDueGrams of metalType, of which metalPaidGrams is given.
+    settleIn: p.settle_in ?? "MONEY",
+    metalType: p.metal_type ?? null,
+    metalRatePerGram: p.metal_rate_per_gram ?? null,
+    metalDueGrams: p.metal_due_grams ?? null,
+    metalPaidGrams: p.metal_paid_grams ?? 0,
+    reminderDays: p.reminder_days ?? null,
+    reminderAt: p.reminder_at ?? null,
     note: p.note ?? "",
     createdAt: p.created_at ?? null,
   };
@@ -1006,6 +1139,14 @@ function mapVendorPurchasePayments(raw = {}) {
       remarks: p.remarks ?? null,
       recordedBy: p.recorded_by ?? null,
       createdAt: p.created_at ?? null,
+    })),
+    metalPayments: (raw.metal_payments ?? []).map((m) => ({
+      id: m.id,
+      metalType: m.metal_type ?? "GOLD",
+      grams: m.grams ?? 0,
+      paymentDate: m.payment_date ?? null,
+      remarks: m.remarks ?? null,
+      createdAt: m.created_at ?? null,
     })),
   };
 }

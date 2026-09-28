@@ -95,7 +95,7 @@ describe("one concession, three boxes that agree", () => {
   it("the headroom can never go negative", () => {
     // converted through the scheme-aware inverse, not a flat factor
     expect(ns).toMatch(/\? Math\.max\(0, round2\(askingPretax - toPretax\(minSafe\)\)\)/);
-    expect(ns).toMatch(/\? Math\.max\(0, pctToRupees\(listPct - profitFloorPct\)\)\s*: null;/);
+    expect(ns).toMatch(/\? Math\.max\(0, pctToRupees\(listPct - breakEvenPct\)\)\s*: null;/);
   });
 
   it("the asking price is the bill at LIST, built from the backend's figures", () => {
@@ -146,16 +146,17 @@ describe("the tunch a piece was bought at is visible in stock", () => {
     // there as a permanent zero for someone to fill in.
     expect(svc).not.toMatch(/tunch: r\.tunch_percent/);
     expect(inv).not.toMatch(/<th className="px-4 py-2.5 text-right">Tunch<\/th>/);
-    expect(inv).toMatch(/\{bulkType === "JEWELLERY" && <th className="py-2 w-\[100px\]">Tunch %<\/th>\}/);
+    // Admin-only since 2026-09-28: staff never see the tunch.
+    expect(inv).toMatch(/\{isAdmin && bulkType === "JEWELLERY" && <th className="py-2 w-\[100px\]">Tunch %<\/th>\}/);
     // and the tunch leg is zero in every raw-gold total on the screen
     expect(inv).toMatch(/bulkType === "JEWELLERY" \? tunchFromNumber\(r\.tunchNo, r\.purity\)\.pct : 0;/);
   });
 
-  it("bulk Tunch comes from the supplier's Tunch Number, never a default", () => {
-    // 2026-09-26: Tunch % = Tunch Number - purity (18K 750, number 790 = 4%).
-    // Tunch No. and Tunch % are both typed; each fills the other
+  it("bulk Tunch comes from the Arrival Purity, never a default", () => {
+    // 2026-09-28: Tunch = Arrival Purity - Product Purity, both % (18K 75%, 79 = 4%).
+    // Arrival Purity and Tunch % are both typed; each fills the other
     expect(inv).toMatch(/tunchNo: tunchNoFromPct\(v, row\.purity\)/);
-    expect(inv).toMatch(/const touch = n > 100 \? n \/ 10 : n;/);
+    expect(inv).toMatch(/const pct = Math\.round\(\(arrival - base\) \* 100\) \/ 100;/);
     expect(inv).toMatch(/tunch: String\(tunchFromNumber\(r\.tunchNo, r\.purity\)\.pct\),/);
     expect(inv).not.toMatch(/tunch: DEFAULT_TUNCH_PERCENT, other/);
   });

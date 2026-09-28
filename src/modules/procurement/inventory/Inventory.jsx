@@ -8,12 +8,13 @@ import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { billingService } from "@/modules/billing/billingService";
 import { money, istToday } from "@/_shared/utils";
-import { PURITY_FINENESS, PURITY_OPTIONS, purityLabel } from "@/_shared/purity";
+import { PURITY_PERCENT, PURITY_OPTIONS, purityLabel } from "@/_shared/purity";
 import { goldRateService } from "@/modules/gold-rate/goldRateService";
 import { masterInventoryService } from "@/modules/procurement/master-inventory/masterInventoryService";
 import { useAuth } from "@/_shared/AuthContext";
 import { loadDraft, saveDraft, clearDraft } from "@/_shared/purchaseDraft";
 import { VendorForm } from "@/modules/procurement/purchase-history/Vendors";
+import { staffService } from "@/modules/staff/staffService";
 
 // A purchase is ALWAYS priced at the 24K (pure gold) rate — the purity only
 // converts the net weight into the pure gold it contains, it never changes the
@@ -31,7 +32,6 @@ function rate24kPerGram(rateObj) {
 // string is what is STORED and sent. PURITY_OPTIONS carries the same values
 // with the fineness ("22K – 916") as a DISPLAY label only; see _shared/purity.js.
 const STATUS_OPTS = ["All statuses","In Stock","Sold","Inactive"];
-const PAYMENT_MODES = ["CASH","CREDIT","PARTIAL"];
 // Mode of payment (how the money actually moved) — separate from settlement
 // type. Recorded in the Vendor Payment ledger so cash/UPI/card/bank are
 // accounted. These are exactly the billing PaymentMethod enum values
@@ -60,10 +60,12 @@ const PAY_METHOD_OPTS = [
 // (input GST is a credit, not a cost of the piece).
 const gstOn = (on, pct, subtotal) => (on ? Math.round(subtotal * (Number(pct) || 0)) / 100 : 0);
 
-function amountOver(amount, auto) {
-  if (amount === "" || amount == null) return { extra: 0, below: false };
-  const typed = Number(amount) || 0;
-  return { extra: Math.max(0, typed - auto), below: typed < auto - 0.005 };
+// Total Cost is CALCULATED, never typed (owner 2026-09-28): gold at Arrival
+// Purity + the Value Addition typed for the piece (stones, other costs). The
+// old "type the whole price, the excess is V/A" reading is gone, so nothing is
+// ever derived as value addition behind the operator's back.
+function amountOver() {
+  return { extra: 0, below: false };
 }
 // A row states what the SLIP states: gross and stone weight. Net is derived
 // (rowWeights) and never typed, so the two weights can never disagree with a
@@ -77,7 +79,7 @@ const BULK_GST_PERCENT = 3;
 // One header per type - Jewellery and Raw Gold never share what was typed.
 // lotWeight / lotQty: the lot the supplier hands over (e.g. 1000 g, 50 pcs);
 // every row entered counts down against them.
-const emptyBulkHeader = (date = "") => ({ vendor: "", deliveredBy: "", deliveredByPhone: "", deliveredNew: false, date, invoice: "", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", lotWeight: "", lotQty: "" });
+const emptyBulkHeader = (date = "") => ({ vendor: "", deliveredBy: "", deliveredByPhone: "", deliveredNew: false, date, invoice: "", ...emptyPayment(), rate: "", rateEdited: false, lotWeight: "", lotQty: "" });
 
 // Item Code = category initial + sub-category initial + a 4-digit number per
 // prefix (BF0001, BF0002 ...). Mirrors the backend's item_code_prefix exactly.
@@ -87,22 +89,178 @@ const bulkCodePrefix = (type, r) => {
   return r.category && r.subCategory ? initialOf(r.category) + initialOf(r.subCategory) : null;
 };
 
-// Tunch from the supplier's Tunch Number. The number is the purity's fineness
-// raised by the Tunch %: 22K is 916, and 916 + 4% = 916 × 1.04 = 952.6. So
-//   Tunch % = (Tunch Number ÷ fineness − 1) × 100      (952.6 on 22K = 4%)
-// the same "percent of the pure-gold value" the backend charges. Numbers above
-// 100 are parts per thousand (952.6); up to 100 a percentage (95.26).
+// Tunch from the Arrival Purity (the purity the supplier bills the piece at).
+// Both are percentages, so Tunch is simply the gap (owner's rule 2026-09-28):
+//   Product Purity 18K = 75%, Arrival Purity 79%  ->  Tunch 4%
+//   Product Purity 22K = 91.6%, Arrival 95.6%     ->  Tunch 4%
+// The supplier is paid for net x Arrival% of pure gold at the 24K rate - the
+// backend charges Tunch on the full net weight (TUNCH_ON_FULL_NET_WEIGHT).
+// A value above 110 is an old parts-per-thousand figure (790) and reads as 79.
 function tunchFromNumber(no, purity) {
   if (no === "" || no == null) return { pct: 0, error: "" };
   const n = Number(no);
   if (!Number.isFinite(n) || n <= 0) return { pct: 0, error: "Invalid number" };
-  const fineness = PURITY_FINENESS[purity] || 0;
-  if (!fineness) return { pct: 0, error: "Unknown purity" };
-  const touch = n > 100 ? n / 10 : n;
-  const pct = Math.round((touch * 10 / fineness - 1) * 10000) / 100;
-  if (pct < 0) return { pct: 0, error: `Below purity (${PURITY_FINENESS[purity]})` };
+  const base = PURITY_PERCENT[purity];
+  if (base == null) return { pct: 0, error: "Unknown purity" };
+  const arrival = n > 110 ? n / 10 : n;
+  const pct = Math.round((arrival - base) * 100) / 100;
+  if (pct < 0) return { pct: 0, error: `Below product purity (${base}%)` };
   if (pct > 9) return { pct, error: "Tunch over 9%" };
   return { pct, error: "" };
+}
+
+// ── Payment ────────────────────────────────────────────────────────────────
+// One panel for Add Purchase and both Bulk grids, so every purchase is settled
+// the same way (owner 2026-09-28):
+//   Payment Type    Money (cash / online)  |  Metal (the shop's own gold/silver)
+//   Settlement      Full  |  Credit  |  Partial
+//   Mode of Payment Money: Cash/UPI/Card/Bank/Other   Metal: Gold | Silver
+// Metal = gold for gold: the supplier is owed the PAYABLE PURE GOLD itself
+// (net x Arrival Purity, the 24K equivalent) - no rate is involved. Silver is
+// that gold's value at the 24K rate / the silver rate. Value addition, GST and
+// the rupee total stay as the stock's reference cost only (a "dummy" figure).
+// Credit / Partial carry a reminder that lands in the bell on the due day.
+const SETTLEMENTS = [["CASH", "Full"], ["CREDIT", "Credit"], ["PARTIAL", "Partial"]];
+const REMINDER_CHIPS = [7, 15, 30, 45];
+const emptyPayment = () => ({ settleIn: "MONEY", paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", metalType: "GOLD", metalRate: "", metalRateEdited: false, metalPaidGrams: "", reminderDays: "" });
+const grams3 = (g) => `${(Math.round((Number(g) || 0) * 1000) / 1000).toFixed(3)} g`;
+
+// Where the chosen settlement leaves the purchase - the same figures the server
+// will record, shown before the button is pressed.
+// basis = { total: rupees payable, goldGrams: payable pure gold, goldValue:
+// that gold's rupee value (base + tunch, no V/A, no GST) }.
+function settlementOf(basis, p) {
+  const { total = 0, goldGrams = 0, goldValue = 0 } = basis;
+  const metal = p.settleIn === "METAL";
+  if (metal) {
+    const silver = p.metalType === "SILVER";
+    const rate = Number(p.metalRate) || 0;
+    const due = silver ? (rate > 0 ? Math.round((goldValue / rate) * 1000) / 1000 : 0) : Math.round(goldGrams * 1000) / 1000;
+    const typed = Number(p.metalPaidGrams) || 0;
+    const given = p.paymentMode === "CASH" ? due : p.paymentMode === "CREDIT" ? 0 : typed;
+    const error = silver && !(rate > 0) ? "Enter the silver rate per gram"
+      : !(due > 0) ? "Add the gold rows first"
+      : p.paymentMode === "PARTIAL" && !(typed > 0) ? "Enter the metal given now"
+      : p.paymentMode === "PARTIAL" && typed >= due - 0.0005 ? `Must be less than ${grams3(due)} - choose Full instead`
+      : "";
+    return { metal, due, given, balance: Math.max(0, Math.round((due - given) * 1000) / 1000), error };
+  }
+  const typed = Number(p.paidNow) || 0;
+  const given = p.paymentMode === "CASH" ? total : p.paymentMode === "CREDIT" ? 0 : typed;
+  const error = p.paymentMode === "PARTIAL" && !(typed > 0) ? "Enter the amount paid now"
+    : p.paymentMode === "PARTIAL" && typed >= total ? `Must be less than ${money(total)} - choose Full instead` : "";
+  return { metal, due: total, given, balance: Math.max(0, Math.round((total - given) * 100) / 100), error };
+}
+const needsReminder = (p) => p.paymentMode !== "CASH";
+const reminderError = (p) => (needsReminder(p) && !(Number(p.reminderDays) >= 1 && Number(p.reminderDays) <= 365) ? "Set the reminder: 1 to 365 days" : "");
+
+function Segmented({ value, options, onChange, size = "md" }) {
+  return (
+    <div className="grid auto-cols-fr grid-flow-col rounded-xl border border-line bg-canvas/50 p-1" role="radiogroup">
+      {options.map(([v, label]) => (
+        <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
+          className={`${size === "sm" ? "h-8 text-xs" : "h-9 text-[13px]"} rounded-lg px-3 font-bold transition-colors duration-150 ${value === v ? "bg-accent text-white shadow-sm" : "text-muted hover:bg-white hover:text-ink"}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PaymentPanel({ value: p, onChange, total, goldGrams, goldValue, purchaseDate, liveSilver }) {
+  const set = (patch) => onChange({ ...p, ...patch });
+  const metal = p.settleIn === "METAL";
+  const silver = metal && p.metalType === "SILVER";
+  // Only silver needs a rate. It follows today's silver rate until typed over.
+  const shownRate = p.metalRateEdited ? p.metalRate : (liveSilver != null ? String(liveSilver) : p.metalRate);
+  useEffect(() => {
+    if (silver && !p.metalRateEdited && shownRate !== p.metalRate) onChange({ ...p, metalRate: shownRate });
+  }, [silver, p, shownRate, onChange]);
+  const st = settlementOf({ total, goldGrams, goldValue }, { ...p, metalRate: shownRate });
+  const unit = metal ? (p.metalType === "SILVER" ? "silver" : "gold") : "";
+  const remindOn = needsReminder(p) && Number(p.reminderDays) >= 1
+    ? (() => { const d = new Date(purchaseDate ? String(purchaseDate).slice(0, 10) + "T10:00:00" : Date.now()); d.setDate(d.getDate() + Number(p.reminderDays)); return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); })()
+    : null;
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid content-start gap-1.5">
+          <span className="text-xs font-bold">Payment Type</span>
+          <Segmented value={p.settleIn} onChange={(v) => set({ settleIn: v, paidNow: "", metalPaidGrams: "" })} options={[["MONEY", "Cash / Online"], ["METAL", "Metal"]]} />
+        </div>
+        <div className="grid content-start gap-1.5">
+          <span className="text-xs font-bold">Settlement</span>
+          <Segmented value={p.paymentMode} onChange={(v) => set({ paymentMode: v })}
+            options={SETTLEMENTS.map(([v, l]) => [v, v === "CASH" && metal ? "Full Metal" : l])} />
+        </div>
+        <div className="grid content-start gap-1.5">
+          <span className="text-xs font-bold">Mode of Payment</span>
+          {metal
+            ? <Segmented value={p.metalType} onChange={(v) => set({ metalType: v, metalRateEdited: false })} options={[["GOLD", "Gold"], ["SILVER", "Silver"]]} />
+            : p.paymentMode === "CREDIT"
+              ? <div className="flex h-11 items-center rounded-xl border border-dashed border-line bg-canvas/40 px-3.5 text-sm text-muted">Chosen when you pay later</div>
+              : <Select value={p.paymentMethod} onValueChange={(v) => set({ paymentMethod: v })} options={PAY_METHOD_OPTS} />}
+        </div>
+      </div>
+
+      {(silver || p.paymentMode === "PARTIAL" || needsReminder(p)) && (
+        <div className="grid gap-4 md:grid-cols-3">
+          {silver && (
+            <label className="grid content-start gap-1.5">
+              <span className="text-xs font-bold">Silver rate / g (₹) *</span>
+              <MoneyInput allowDecimal value={shownRate} onValueChange={(v) => set({ metalRate: v, metalRateEdited: true })} className="h-11" placeholder="0" />
+              <span className="text-[11px] text-muted">{p.metalRateEdited ? "Edited for this purchase" : liveSilver != null ? "Today's published rate" : "No silver rate published today - type it"}</span>
+            </label>
+          )}
+          {p.paymentMode === "PARTIAL" && (
+            <label className="grid content-start gap-1.5">
+              <span className="text-xs font-bold">{metal ? `${p.metalType === "SILVER" ? "Silver" : "Gold"} given now (g) *` : "Paid now (₹) *"}</span>
+              {metal
+                ? <Input inputMode="decimal" value={p.metalPaidGrams} onChange={(e) => set({ metalPaidGrams: cleanDec(e.target.value) })} placeholder="0.000" className="h-11 text-right font-mono" />
+                : <MoneyInput value={p.paidNow} onValueChange={(v) => set({ paidNow: v })} className="h-11" />}
+            </label>
+          )}
+          {needsReminder(p) && (
+            <div className="grid content-start gap-1.5">
+              <span className="text-xs font-bold">Remind me after *</span>
+              <div className="flex items-center gap-2">
+                <div className="relative w-24 shrink-0">
+                  <Input inputMode="numeric" value={p.reminderDays} onChange={(e) => set({ reminderDays: e.target.value.replace(/\D/g, "").slice(0, 3) })} placeholder="15" className="h-11 pr-11 text-right font-mono" />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">days</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {REMINDER_CHIPS.map((d) => (
+                    <button key={d} type="button" onClick={() => set({ reminderDays: String(d) })}
+                      className={`h-7 rounded-full border px-2.5 text-[11px] font-bold transition-colors ${String(p.reminderDays) === String(d) ? "border-accent bg-accent-soft text-accent-strong" : "border-line text-muted hover:border-accent-line hover:text-ink"}`}>{d}</button>
+                  ))}
+                </div>
+              </div>
+              <span className="text-[11px] text-muted">{remindOn ? `Bell + pop-up on ${remindOn}` : "A bell reminder on the due day"}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className={`grid gap-2 rounded-xl border p-3.5 sm:grid-cols-3 ${st.error ? "border-danger-line bg-danger-soft/30" : "border-accent-line bg-accent-soft/40"}`}>
+        <div>
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted">{metal ? `Owed in ${unit}` : "Purchase total"}</div>
+          <div className="num mt-0.5 font-mono text-[15px] font-extrabold tabular-nums">{metal ? grams3(st.due) : money(st.due)}</div>
+          {metal && <div className="text-[11px] text-muted">{silver
+            ? `${money(goldValue)} of gold ÷ ${money(Number(shownRate) || 0)}/g silver`
+            : "Payable pure gold (net × Arrival Purity)"} · ₹ total is reference only</div>}
+        </div>
+        <div>
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted">{metal ? "Given now" : "Paying now"}</div>
+          <div className="num mt-0.5 font-mono text-[15px] font-extrabold tabular-nums">{metal ? grams3(st.given) : money(st.given)}</div>
+        </div>
+        <div>
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted">Balance to {metal ? "return" : "pay"}</div>
+          <div className={`num mt-0.5 font-mono text-[15px] font-extrabold tabular-nums ${st.balance > 0 ? "text-accent-strong" : "text-emerald-700"}`}>{metal ? grams3(st.balance) : money(st.balance)}</div>
+        </div>
+        {st.error && <div className="text-[11.5px] font-semibold text-danger sm:col-span-3">{st.error}</div>}
+      </div>
+    </div>
+  );
 }
 
 // Who delivered: the supplier's saved staff, or a new person (name + phone).
@@ -136,13 +294,17 @@ function DeliveredByField({ staff, hasSupplier, name, phone, isNew, onChange }) 
   );
 }
 
-// Typed Tunch % -> the Tunch Number it means (22K 916, 4% -> 952.64).
+// Typed Tunch % -> the Arrival Purity it means (18K 75% + 4% -> 79).
 const tunchNoFromPct = (pct, purity) => {
   if (pct === "" || pct == null) return "";
-  const fin = PURITY_FINENESS[purity] || 0;
+  const base = PURITY_PERCENT[purity];
   const n = Number(pct);
-  return fin && Number.isFinite(n) ? String(Math.round(fin * (1 + n / 100) * 100) / 100) : "";
+  return base != null && Number.isFinite(n) ? String(Math.round((base + n) * 100) / 100) : "";
 };
+// Product Name is optional: a blank one is saved as the sub-category (or the
+// category), so every piece still has a readable name on the stock list.
+const nameOrDefault = (name, category, subCategory) =>
+  String(name || "").trim() || String(subCategory || "").trim() || String(category || "").trim() || "Gold Item";
 const cleanDec = (v) => String(v).replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 6);
 
 // A header field: fixed-height label row so every control in the grid lines up.
@@ -160,7 +322,7 @@ function HeaderField({ label, action, children }) {
 
 // A lot card: the admin types the lot (weight or pieces); each row entered
 // counts down, so zero remaining means every piece of the lot is on the slip.
-function LotCard({ label, unit, value, onChange, used, decimals, hint }) {
+function LotCard({ label, unit, value, onChange, used, decimals, hint, locked }) {
   const lot = Number(value) || 0;
   const remaining = lot - used;
   const fmt = (x) => (decimals ? x.toFixed(3) : String(Math.round(x)));
@@ -180,7 +342,15 @@ function LotCard({ label, unit, value, onChange, used, decimals, hint }) {
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>{chip}</span>
       </div>
       <div className="mt-2 flex items-center gap-2">
-        <Input value={value} onChange={(e) => onChange(clean(e.target.value))} inputMode={decimals ? "decimal" : "numeric"} placeholder={decimals ? "e.g. 1000" : "e.g. 50"} className="num h-10 flex-1 text-lg font-extrabold" aria-label={`${label} of the lot`} />
+        {locked ? (
+          // Set by the Admin: the target the rows are counted against.
+          <div className="num flex h-10 flex-1 items-center gap-2 rounded-xl border border-line bg-white/70 px-3 text-lg font-extrabold" title="Set by the Admin">
+            {value || "—"}
+            <span className="ml-auto rounded-full bg-canvas px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">Set by Admin</span>
+          </div>
+        ) : (
+          <Input value={value} onChange={(e) => onChange(clean(e.target.value))} inputMode={decimals ? "decimal" : "numeric"} placeholder={decimals ? "e.g. 1000" : "e.g. 50"} className="num h-10 flex-1 text-lg font-extrabold" aria-label={`${label} of the lot`} />
+        )}
         <span className="text-sm font-bold text-muted">{unit}</span>
       </div>
       <div className="mt-2.5 flex items-baseline justify-between text-xs">
@@ -197,6 +367,17 @@ function LotCard({ label, unit, value, onChange, used, decimals, hint }) {
 
 // Real inventory loads from the DFX backend via billingService. No mock items.
 
+// Purchase drafts (owner 2026-09-28): staff key the physical rows, the Admin
+// prices and records them. The chip reads differently for each side.
+const DRAFT_STATUS = {
+  DRAFT: { staff: "Draft", admin: "Staff entering", tone: "border border-line bg-canvas text-muted" },
+  SUBMITTED: { staff: "With Admin", admin: "Ready to record", tone: "bg-amber-100 text-amber-800" },
+  RETURNED: { staff: "Sent back", admin: "Sent back", tone: "bg-danger-soft text-danger" },
+  RECORDED: { staff: "Recorded", admin: "Recorded", tone: "bg-emerald-100 text-emerald-800" },
+};
+const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
+const rowHasContent = (r) => !!(String(r.ident || "").trim() || String(r.name || "").trim() || r.gross || r.stoneWt || r.net || r.category);
+
 const EMPTY_PURCHASE = {
   // Item Code XOR HUID: itemCode blank = auto-generated; a HUID replaces it.
   photoFile: null, photo: null, itemCode: "", huid: "", name: "", category: "Rings", subCategory: "Traditional",
@@ -206,7 +387,7 @@ const EMPTY_PURCHASE = {
   // shown, so an override is never silent.
   purity: "22K", gross: "", stoneWt: "", netOverride: "", netOverridden: false,
   vendor: "", deliveredBy: "", deliveredByPhone: "", deliveredNew: false, purchaseDate: "", invoice: "", referenceType: "INVOICE", rate: "",
-  tunchNo: "", other: "", amount: null, paymentMode: "CASH", paymentMethod: "CASH", paidNow: "", addToCatalogue: true,
+  tunchNo: "", other: "", amount: null, ...emptyPayment(), addToCatalogue: true,
 };
 
 // The four document types a purchase can arrive on. A Delivery Challan is not a
@@ -244,6 +425,9 @@ export default function Inventory({ onNavigate }) {
   // Adding a supplier is the owner's (Supplier Directory, admin-only on the
   // server); staff pick from the suppliers already on file.
   const canAddSupplier = backendRole === "Admin" || backendRole === "SuperAdmin";
+  // Owner rule 2026-09-28: staff never see a purchase's money. They key bulk
+  // purchases as drafts (weights only); the Admin prices and records them.
+  const isAdmin = canAddSupplier;
   usePressFeedback(scope);
 
   const [items, setItems] = useState([]);
@@ -323,6 +507,25 @@ export default function Inventory({ onNavigate }) {
   const [bulkSaving, setBulkSaving] = useState(false);
   // The lot-mismatch dialog: { weight, lotW, qty, lotQ } while it is open.
   const [lotConfirm, setLotConfirm] = useState(null);
+  // The server-side purchase draft open in the bulk dialog:
+  // { id, status, authorName, submittedAt, adminNote, readOnly } | null.
+  // Staff always work inside one; an Admin only when recording a staff draft.
+  const [draftCtx, setDraftCtx] = useState(null);
+  const [purchaseDrafts, setPurchaseDrafts] = useState([]);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+  // { mode: "return" | "delete" | "assign", draft, note, staffId } while the
+  // confirm dialog is open.
+  const [draftAction, setDraftAction] = useState(null);
+  // Staff who can key a draft the Admin hands over (active, with Inventory).
+  const [staffChoices, setStaffChoices] = useState(null);
+  const draftIdRef = useRef(null);
+  const lastSavedRef = useRef("");
+  // Set when a draft is loaded: the next render records what was loaded as
+  // "saved", so opening a draft is never mistaken for an edit.
+  const baselineRef = useRef(false);
+  const inflightRef = useRef(Promise.resolve());
 
   // Auto-save (5.9): an unfinished Add / Bulk Purchase survives a reload or
   // navigating away. Restored once on mount (the photo never — re-attach it),
@@ -332,7 +535,8 @@ export default function Inventory({ onNavigate }) {
   useEffect(() => {
     const a = loadDraft("add");
     if (a?.form) { setAddForm({ ...EMPTY_PURCHASE, ...a.form, photoFile: null, photo: null }); setAddDraftAt(a.savedAt); }
-    const b = loadDraft("bulk");
+    // Staff drafts live on the server; the browser copy is the Admin's own.
+    const b = isAdmin ? loadDraft("bulk") : null;
     if ((b?.headers || b?.header) && b?.rows) {
       // Older drafts saved one shared header; newer ones one per type.
       setBulkHeaders((h) => ({
@@ -343,6 +547,7 @@ export default function Inventory({ onNavigate }) {
       if (b.type) setBulkType(b.type);
       setBulkDraftAt(b.savedAt);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (!showAdd) return;
@@ -352,7 +557,9 @@ export default function Inventory({ onNavigate }) {
     return () => clearTimeout(t);
   }, [addForm, showAdd]);
   useEffect(() => {
-    if (!showBulk) return;
+    // Not while a staff draft is open: that must never overwrite the Admin's
+    // own unfinished form in this browser.
+    if (!showBulk || !isAdmin || draftCtx) return;
     const typed = Object.values(bulkRowsByType).some((rows) => rows.some((r) => r.name.trim() || r.gross || r.net || r.ident.trim()))
       || Object.values(bulkHeaders).some((h) => h.lotWeight || h.lotQty);
     if (!typed) return;
@@ -360,7 +567,7 @@ export default function Inventory({ onNavigate }) {
       if (saveDraft("bulk", { headers: bulkHeaders, rows: bulkRowsByType, type: bulkType })) setBulkDraftAt(Date.now());
     }, 1000);
     return () => clearTimeout(t);
-  }, [bulkHeaders, bulkRowsByType, bulkType, showBulk]);
+  }, [bulkHeaders, bulkRowsByType, bulkType, showBulk, isAdmin, draftCtx]);
   const discardAddDraft = () => { clearDraft("add"); setAddDraftAt(null); setAddForm({ ...EMPTY_PURCHASE, purchaseDate: nowLocalInput() }); };
   const discardBulkDraft = () => {
     clearDraft("bulk"); setBulkDraftAt(null);
@@ -474,7 +681,10 @@ export default function Inventory({ onNavigate }) {
   const storeStaff = `${staffName || "Signed-in user"}${enteredPhone ? ` · +91 ${enteredPhone}` : ""}`;
   // Supplier choices read "CODE — Store name"; the value stays the name. An
   // inactive supplier cannot be purchased from, so it is not offered.
-  const vendorOptions = useMemo(() => vendorList.filter((v) => v.isActive !== false).map((v) => ({ value: v.name, label: v.code ? `${v.code} — ${v.name}` : v.name })), [vendorList]);
+  // The purchase forms name a supplier by its CODE only (owner 2026-09-28), so
+  // the store's name is not read out at the counter. A supplier with no code
+  // yet falls back to its name so it can still be picked.
+  const vendorOptions = useMemo(() => vendorList.filter((v) => v.isActive !== false).map((v) => ({ value: v.name, label: v.code || v.name })), [vendorList]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -576,11 +786,11 @@ export default function Inventory({ onNavigate }) {
 
   // Add Purchase amount preview, in the vendor's own terms: everything is
   // priced at the 24K rate and the purity only converts the weight.
-  //   490 g of 18K  →  490 × 18/24 = 367.500 g of pure gold
-  //   Tunch 4%      →  4% of that   =  14.700 g of pure gold
-  //   payable       →  382.200 g of pure gold × the 24K rate/g
-  // (Purchase Cost = (24K Equivalent × 24K Rate) + Touch%, per the gold billing
-  // model — Tunch is a percent of the 24K-equivalent value, not of the net.)
+  //   490 g of 18K (75%)       →  367.500 g of pure gold
+  //   Arrival 79% = Tunch 4%   →  4% of the NET = 19.600 g of pure gold
+  //   payable                  →  387.100 g (= 490 × 79%) × the 24K rate/g
+  // Tunch is the gap between Arrival and Product Purity, so it is a percent of
+  // the net weight (backend TUNCH_ON_FULL_NET_WEIGHT = True).
   // Rate/g is ALWAYS the 24K rate (editable), never a per-purity rate. Mirrors
   // the backend payable formula (backend stays authoritative); the final figure
   // is also the item's purchase_cost so create satisfies that required field.
@@ -598,7 +808,7 @@ export default function Inventory({ onNavigate }) {
     // From the supplier's Tunch Number, exactly as in Bulk (0 when blank).
     const tunchPct = tunchFromNumber(addForm.tunchNo, addForm.purity).pct;
     const fineGrams = karat > 0 ? net * karat / 24 : 0;
-    const tunchGrams = fineGrams * tunchPct / 100;
+    const tunchGrams = net * tunchPct / 100;
     const base = fineGrams * rate24;
     const tunchAmt = tunchGrams * rate24;
     // Stones are not gold: no purity conversion, no Tunch. A 45 g stone-set
@@ -627,14 +837,14 @@ export default function Inventory({ onNavigate }) {
   const handleAdd = async () => {
     const f = addForm;
     if (!(f.photoFile instanceof File)) { toast("Product photo is required"); return; }
-    if (!f.name.trim()) { toast("Product Name is required"); return; }
+    if (f.name.trim() && f.name.trim().length < 2) { toast("Product Name needs at least 2 characters, or leave it blank"); return; }
     const matchedVendor = vendorList.find(v => v.name === f.vendor);
     if (!matchedVendor) { toast("Select a supplier"); return; }
     if (!f.purchaseDate) { toast("Purchase Date is required"); return; }
     if (f.deliveredNew && f.deliveredBy.trim() && String(f.deliveredByPhone || "").length !== 10) { toast("Enter the new delivery staff's 10-digit phone"); return; }
     if (!f.huid.trim() && (!f.category || !f.subCategory)) { toast("Pick the category and sub-category - the Item Code is made from them"); return; }
     if (!f.huid.trim() && !addCode.code) { toast("The Item Code is still being generated - try again in a moment"); return; }
-    if (tunchFromNumber(f.tunchNo, f.purity).error) { toast(`Tunch Number: ${tunchFromNumber(f.tunchNo, f.purity).error}`); return; }
+    if (tunchFromNumber(f.tunchNo, f.purity).error) { toast(`Arrival Purity: ${tunchFromNumber(f.tunchNo, f.purity).error}`); return; }
     if (!(Number(f.gross) > 0)) { toast("Gross Weight is required"); return; }
     // The rule read from the direction the slip is now typed in. Net is derived,
     // so what can actually be wrong is the stone weight.
@@ -642,7 +852,8 @@ export default function Inventory({ onNavigate }) {
     if (!(addWeights.net > 0)) { toast("Net gold weight must be greater than zero"); return; }
     if (!(Number(f.rate) > 0)) { toast("Purchase Rate/g is required"); return; }
     if (addAmounts.below) { toast(`Purchase Amount cannot be less than the gold value + other charges (${money(addAmounts.auto)})`); return; }
-    if (f.paymentMode === "PARTIAL" && !(Number(f.paidNow) > 0)) { toast("Enter the amount paid now"); return; }
+    { const st = settlementOf({ total: addAmounts.final + addAmounts.gst, goldGrams: addAmounts.payableGrams, goldValue: addAmounts.goldValue }, f); if (st.error) { toast(st.error); return; } }
+    if (reminderError(f)) { toast(reminderError(f)); return; }
 
     setSaving(true);
     // Set only if the catalogue publish fails; the purchase itself is separate.
@@ -656,7 +867,7 @@ export default function Inventory({ onNavigate }) {
       // backend inherits the store's configured defaults.
       const created = await billingService.createInventoryItem({
         productCode: f.huid.trim() ? undefined : addCode.code,
-        productName: f.name.trim(),
+        productName: nameOrDefault(f.name, f.category, f.subCategory),
         category: f.category,
         subcategory: f.subCategory,
         huid: f.huid.trim() || undefined,
@@ -718,6 +929,11 @@ export default function Inventory({ onNavigate }) {
           paidNow: f.paymentMode === "PARTIAL" ? Number(f.paidNow) : undefined,
           // Mode of payment for the initial settlement; CREDIT moves no money.
           paymentMethod: f.paymentMode === "CREDIT" ? "CASH" : f.paymentMethod,
+          settleIn: f.settleIn,
+          metalType: f.metalType,
+          metalRate: f.metalRate,
+          metalPaidGrams: f.metalPaidGrams,
+          reminderDays: f.reminderDays,
           paymentDate: dateOnly(f.purchaseDate),
         });
         // The publish is a SEPARATE call from the purchase. Swallowing its
@@ -783,11 +999,18 @@ export default function Inventory({ onNavigate }) {
   const bulkRowBase = (r) => rowWeights(r).net * ((parseInt(rowPurity(r), 10) || 0) / 24) * (Number(r.rate) || 0);
   // A new row opens with today's 24K rate already in it, so the common case
   // needs no typing at all; the field stays editable for a back-dated invoice.
+  const liveRate24 = rate24kPerGram(todayRate);
+  const bulkRateNum = Number(bulkHeader.rate) > 0 ? Number(bulkHeader.rate) : null;
+  // The header 24K rate: typing it re-prices every row on this slip at once.
+  const applyBulkRate = useCallback((v, edited) => {
+    setBulkHeader((h) => ({ ...h, rate: v, rateEdited: edited }));
+    setBulkRows((rows) => rows.map((r) => ({ ...r, rate: v })));
+  }, [setBulkHeader, setBulkRows]);
   const newBulkRow = useCallback((type = bulkType) => {
-    const live = rate24kPerGram(todayRate);
+    const live = Number(bulkHeaders[type]?.rate) > 0 ? Number(bulkHeaders[type].rate) : rate24kPerGram(todayRate);
     // Raw gold opens at 24K (bars usually are); jewellery at 22K.
     return { ...emptyBulkRow(), purity: type === "RAW_GOLD" ? "24K" : "22K", rate: live != null ? String(live) : "" };
-  }, [todayRate, bulkType]);
+  }, [todayRate, bulkType, bulkHeaders]);
 
   // Seed the OPEN grid's first row with the live 24K rate. Only the grid that
   // happened to be active when the modal opened used to be seeded, so switching
@@ -835,7 +1058,7 @@ export default function Inventory({ onNavigate }) {
     const base = bulkRowBase(r);
     const other = bulkType === "JEWELLERY" ? Number(r.other) || 0 : 0;
     const r2 = (x) => Math.round(x * 100) / 100; // per leg, as the backend rounds
-    const auto = r2(base) + r2(base * rowTunchPct(r) / 100) + other;
+    const auto = r2(base) + r2(rowWeights(r).net * (Number(r.rate) || 0) * rowTunchPct(r) / 100) + other;
     return { auto, ...(bulkType === "JEWELLERY" ? amountOver(r.amount, auto) : { extra: 0, below: false }) };
   };
 
@@ -843,8 +1066,8 @@ export default function Inventory({ onNavigate }) {
   // derives, so the preview and the recorded payable agree to the paisa:
   //   fine (24K equivalent) = net x karat/24
   //   base                  = fine x that row's 24K rate
-  //   Tunch                 = base x that row's Tunch %   (the fine-gold base,
-  //                           matching TUNCH_ON_FULL_NET_WEIGHT = False)
+  //   Tunch                 = net x rate x Tunch %  (Tunch = Arrival - Product
+  //                           Purity, on the FULL net: TUNCH_ON_FULL_NET_WEIGHT)
   //   payable               = base + Tunch
   // Rows are grouped by purity because that is how a vendor's slip reads, and
   // the Tunch column shows "mixed" when one purity carries more than one rate.
@@ -863,8 +1086,8 @@ export default function Inventory({ onNavigate }) {
       const pct = rowTunchPct(r);
       const fine = net * karat / 24;
       const base = fine * rate;
-      const tunchAmt = base * pct / 100;
-      const tunchG = fine * pct / 100;
+      const tunchAmt = net * rate * pct / 100;
+      const tunchG = net * pct / 100;
 
       // Stones are money, not metal: they never enter a GOLD gram total. Their
       // own weight is tracked separately (rowWeights) so the receipt can state
@@ -915,6 +1138,9 @@ export default function Inventory({ onNavigate }) {
   // GST on the whole receipt - compulsory - on the same (paisa-rounded)
   // subtotal the server uses.
   const bulkGst = gstOn(true, BULK_GST_PERCENT, bulkBreakdown.finalAmount || 0);
+  // The gold's own value (base + tunch), as the backend rounds it - what a
+  // silver settlement is converted from.
+  const bulkGoldValue = Math.round(bulkBreakdown.baseTotal * 100) / 100 + Math.round(bulkBreakdown.tunchAmtTotal * 100) / 100;
 
   // What the rows entered so far take out of the lot: weight (jewellery: the
   // gross, as weighed; raw gold: the bar's net) and pieces (one per row).
@@ -992,8 +1218,8 @@ export default function Inventory({ onNavigate }) {
       // Every row carries an Item Code, except a jewellery piece with a HUID.
       if (bulkType === "JEWELLERY" && !r.ident.trim() && (!r.category || !r.subCategory)) { toast("Pick the category and sub-category on every row - the Item Code is made from them"); return; }
       if (!(bulkType === "JEWELLERY" && r.ident.trim()) && !r.code) { toast("Item Codes are still being generated - try again in a moment"); return; }
-      if (r.name.trim().length < 2) { toast("Product Name required (min 2 chars)"); return; }
-      if (bulkType === "JEWELLERY" && tunchFromNumber(r.tunchNo, r.purity).error) { toast(`Tunch Number on "${r.name.trim()}": ${tunchFromNumber(r.tunchNo, r.purity).error}`); return; }
+      if (r.name.trim() && r.name.trim().length < 2) { toast("Product Name needs at least 2 characters, or leave it blank"); return; }
+      if (bulkType === "JEWELLERY" && tunchFromNumber(r.tunchNo, r.purity).error) { toast(`Arrival Purity on "${nameOrDefault(r.name, r.category, r.subCategory)}": ${tunchFromNumber(r.tunchNo, r.purity).error}`); return; }
       if (bulkType === "RAW_GOLD") {
         if (!(rowWeights(r).net > 0)) { toast("Net Weight is required on every row"); return; }
         if (!(Number(r.rate) > 0)) { toast("24K Cost/g is required on every row"); return; }
@@ -1006,9 +1232,10 @@ export default function Inventory({ onNavigate }) {
       if ((Number(r.stoneWt) || 0) > Number(r.gross)) { toast("Stone weight cannot exceed gross on any row"); return; }
       if (!(rowWeights(r).net > 0)) { toast("Net gold weight must be greater than zero on every row"); return; }
       if (!(Number(r.rate) > 0)) { toast("24K Cost/g is required on every row"); return; }
-      if (rowAmounts(r).below) { toast(`Total Cost for "${r.name.trim()}" cannot be less than its gold value + other (${money(rowAmounts(r).auto)})`); return; }
+      if (rowAmounts(r).below) { toast(`Total Cost for "${nameOrDefault(r.name, r.category, r.subCategory)}" cannot be less than its gold value + value addition (${money(rowAmounts(r).auto)})`); return; }
     }
-    if (h.paymentMode === "PARTIAL" && !(Number(h.paidNow) > 0)) { toast("Enter the amount paid now"); return; }
+    { const st = settlementOf({ total: (bulkBreakdown.finalAmount || 0) + bulkGst, goldGrams: bulkBreakdown.payableGrams, goldValue: bulkGoldValue }, h); if (st.error) { toast(st.error); return; } }
+    if (reminderError(h)) { toast(reminderError(h)); return; }
     // The lot check: the rows should add up to what the supplier handed over.
     const lotW = Number(h.lotWeight), lotQ = Number(h.lotQty);
     if (force !== true && (Math.abs(lotW - bulkLotUsed.weight) >= 0.0005 || lotQ !== bulkLotUsed.qty)) {
@@ -1034,7 +1261,14 @@ export default function Inventory({ onNavigate }) {
         gstApplied: true,
         gstPercent: BULK_GST_PERCENT,
         paymentMethod: h.paymentMode === "CREDIT" ? "CASH" : h.paymentMethod,
+        settleIn: h.settleIn,
+        metalType: h.metalType,
+        metalRate: h.metalRate,
+        metalPaidGrams: h.metalPaidGrams,
+        reminderDays: h.reminderDays,
         paymentDate: dateOnly(h.date),
+        // A staff draft is marked recorded by the same call.
+        draftId: draftCtx?.id || undefined,
         // Only the fields this kind of stock actually has. Raw gold has no
         // HUID, no category and no stone: sending them anyway is how jewellery
         // fields end up recorded against a bar of bullion.
@@ -1042,7 +1276,7 @@ export default function Inventory({ onNavigate }) {
           ? {
             // The bar's Item Code is its identifier; billing looks it up by it.
             serial: r.code,
-            name: r.name.trim(),
+            name: nameOrDefault(r.name, r.category, r.subCategory),
             // Typed in the grid, and accepted by the raw-gold endpoint - they
             // used to be dropped here, so a bar's category never saved.
             category: (r.category || "").trim() || undefined,
@@ -1055,7 +1289,7 @@ export default function Inventory({ onNavigate }) {
           : {
             huid: r.ident.trim() || undefined,
             itemCode: r.ident.trim() ? undefined : r.code,
-            name: r.name.trim(),
+            name: nameOrDefault(r.name, r.category, r.subCategory),
             category: r.category || undefined,
             subCategory: r.subCategory || undefined,
             purity: r.purity,
@@ -1074,23 +1308,279 @@ export default function Inventory({ onNavigate }) {
         ? await billingService.bulkPurchaseRawGold(payload)
         : await billingService.bulkPurchase(payload);
       const final = res?.purchase?.purchaseAmount;
+      const fromDraft = !!draftCtx;
       setShowBulk(false);
-      // Both grids, not just the one submitted - a stale draft of the other
-      // kind reappearing after a completed receipt is the same confusion.
-      setBulkRowsByType({ JEWELLERY: [newBulkRow("JEWELLERY")], RAW_GOLD: [newBulkRow("RAW_GOLD")] });
-      clearDraft("bulk"); setBulkDraftAt(null);
+      if (fromDraft) {
+        // The Admin's own unfinished form (browser copy) comes back untouched.
+        exitDraft();
+        loadDrafts();
+      } else {
+        // Both grids, not just the one submitted - a stale draft of the other
+        // kind reappearing after a completed receipt is the same confusion.
+        setBulkRowsByType({ JEWELLERY: [newBulkRow("JEWELLERY")], RAW_GOLD: [newBulkRow("RAW_GOLD")] });
+        clearDraft("bulk"); setBulkDraftAt(null);
+        setBulkHeaders({ JEWELLERY: emptyBulkHeader(nowLocalInput()), RAW_GOLD: emptyBulkHeader(nowLocalInput()) });
+      }
       setNextCodes({});
-      setBulkHeaders({ JEWELLERY: emptyBulkHeader(nowLocalInput()), RAW_GOLD: emptyBulkHeader(nowLocalInput()) });
       await load();
       // Grouped like every other money figure — this was the one place a raw
       // number still reached the screen.
-      toast(final != null ? `Bulk purchase recorded — ${money(final)} payable` : "Bulk purchase recorded");
+      const what = fromDraft ? "Staff draft recorded" : "Bulk purchase recorded";
+      toast(final != null ? `${what} — ${money(final)} payable` : what);
     } catch (err) {
       toast(err?.message || "Bulk purchase failed");
     } finally {
       setBulkSaving(false);
     }
   };
+
+  // ── Purchase drafts ──────────────────────────────────────────────────────
+  const loadDrafts = useCallback(async () => {
+    try {
+      // Admin: what staff are working on or have sent. Staff: their own,
+      // including recently recorded ones so they can see it went through.
+      setPurchaseDrafts(await billingService.listPurchaseDrafts(isAdmin ? "SUBMITTED,DRAFT,RETURNED" : undefined));
+    } catch { setPurchaseDrafts([]); }
+  }, [isAdmin]);
+  useEffect(() => { loadDrafts(); }, [loadDrafts]);
+
+  // What goes to the server: supplier, lot and the rows' weights. Never a
+  // rate, tunch or charge - the server refuses them anyway.
+  const draftBody = () => {
+    const h = bulkHeader;
+    return {
+      kind: bulkType,
+      vendorId: vendorList.find((v) => v.name === h.vendor)?.id || null,
+      purchaseAt: h.date || null,
+      invoiceRef: h.invoice,
+      deliveredBy: h.deliveredBy.trim(),
+      deliveredByPhone: h.deliveredByPhone,
+      lotWeight: h.lotWeight,
+      lotQty: h.lotQty,
+      rows: bulkRows.filter(rowHasContent).map((r) => ({ ident: r.ident, name: r.name, category: r.category, subCategory: r.subCategory, purity: r.purity, gross: r.gross, stoneWt: r.stoneWt, net: r.net })),
+    };
+  };
+  const draftTyped = () => bulkRows.some(rowHasContent) || !!(bulkHeader.lotWeight || bulkHeader.lotQty || bulkHeader.vendor);
+
+  const resetBulkForms = () => {
+    setBulkHeaders({ JEWELLERY: emptyBulkHeader(nowLocalInput()), RAW_GOLD: emptyBulkHeader(nowLocalInput()) });
+    setBulkRowsByType({ JEWELLERY: [newBulkRow("JEWELLERY")], RAW_GOLD: [newBulkRow("RAW_GOLD")] });
+  };
+  // Leave draft mode: staff get a clean form, the Admin their own browser copy.
+  const exitDraft = () => {
+    setDraftCtx(null); setDraftSavedAt(null); setLotConfirm(null);
+    draftIdRef.current = null; lastSavedRef.current = "";
+    const b = isAdmin ? loadDraft("bulk") : null;
+    if (b?.headers && b?.rows) {
+      setBulkHeaders({ JEWELLERY: { ...emptyBulkHeader(nowLocalInput()), ...b.headers.JEWELLERY }, RAW_GOLD: { ...emptyBulkHeader(nowLocalInput()), ...b.headers.RAW_GOLD } });
+      setBulkRowsByType((r) => ({ ...r, ...b.rows }));
+      if (b.type) setBulkType(b.type);
+    } else {
+      resetBulkForms();
+    }
+  };
+
+  const startStaffDraft = () => {
+    resetBulkForms();
+    setBulkType("JEWELLERY");
+    draftIdRef.current = null; lastSavedRef.current = "";
+    setDraftCtx({ id: null, status: "DRAFT" });
+    setDraftSavedAt(null); setNextCodes({}); setShowBulk(true);
+  };
+
+  // Load a draft into the bulk dialog. Staff continue it; an Admin gets the
+  // normal priced form with every row filled in and today's 24K rate.
+  const openDraft = (d) => {
+    const type = d.kind;
+    const vName = vendorList.find((v) => v.id === d.vendorId)?.name || "";
+    const live = rate24kPerGram(todayRate);
+    const rate = isAdmin && live != null ? String(live) : "";
+    const rows = d.rows.length
+      ? d.rows.map((r) => ({ ...emptyBulkRow(), ...r, rate }))
+      : [newBulkRow(type)];
+    // A lot the Admin set opens with one row per piece, ready to fill.
+    const want = Math.min(parseInt(d.lotQty, 10) || 0, MAX_BULK_ROWS);
+    if (d.lotLocked) while (rows.length < want) rows.push({ ...newBulkRow(type), rate });
+    setBulkType(type);
+    setBulkHeaders((p) => ({
+      ...p,
+      [type]: {
+        ...emptyBulkHeader(d.purchaseAt || nowLocalInput()),
+        vendor: vName, invoice: d.invoiceRef, dateEdited: !!d.purchaseAt,
+        deliveredBy: d.deliveredBy, deliveredByPhone: d.deliveredByPhone,
+        deliveredNew: !!d.deliveredBy && !staffListOf(vName).some((x) => x.name === d.deliveredBy),
+        lotWeight: d.lotWeight, lotQty: d.lotQty,
+      },
+    }));
+    setBulkRowsByType((p) => ({ ...p, [type]: rows }));
+    draftIdRef.current = d.id; lastSavedRef.current = ""; baselineRef.current = true;
+    setDraftCtx({
+      id: d.id, status: d.status,
+      // Who keyed the rows: the staff member it was handed to, else its author.
+      authorName: d.assignedToName || d.authorName,
+      submittedAt: d.submittedAt, adminNote: d.adminNote, lotLocked: d.lotLocked,
+      readOnly: !isAdmin && (d.status === "SUBMITTED" || d.status === "RECORDED"),
+    });
+    setDraftSavedAt(d.updatedAt ? new Date(d.updatedAt).getTime() : null);
+    setNextCodes({}); setShowBulk(true);
+  };
+
+  // The checks the server makes before a draft reaches the Admin, shown here
+  // first. Physical rules only - pricing is the Admin's.
+  const draftSubmitError = () => {
+    const h = bulkHeader;
+    if (!vendorList.find((v) => v.name === h.vendor)) return "Select a supplier";
+    if (!h.date) return "Purchase Date is required";
+    if (h.deliveredNew && h.deliveredBy.trim() && String(h.deliveredByPhone || "").length !== 10) return "Enter the new delivery staff's 10-digit phone";
+    if (!(Number(h.lotWeight) > 0)) return "Enter the Total Gold Weight of the lot";
+    if (!(Number(h.lotQty) > 0)) return "Enter the Total Quantity of the lot";
+    const rows = bulkRows.filter(rowHasContent);
+    if (!rows.length) return "Add at least one row";
+    for (const [i, r] of rows.entries()) {
+      const n = i + 1;
+      if (r.name.trim() && r.name.trim().length < 2) return `Row ${n}: Product Name needs at least 2 characters, or leave it blank`;
+      if (bulkType === "RAW_GOLD") { if (!(rowWeights(r).net > 0)) return `Row ${n}: Net Weight is required`; continue; }
+      if (!r.ident.trim() && (!r.category || !r.subCategory)) return `Row ${n}: pick the category and sub-category`;
+      if (!(Number(r.gross) > 0)) return `Row ${n}: Gross Weight is required`;
+      if ((Number(r.stoneWt) || 0) > Number(r.gross)) return `Row ${n}: stone weight cannot exceed gross`;
+      if (!(rowWeights(r).net > 0)) return `Row ${n}: net gold weight must be greater than zero`;
+    }
+    const huids = rows.map((r) => r.ident.trim().toUpperCase()).filter(Boolean);
+    if (new Set(huids).size !== huids.length) return "Each HUID must be unique within the draft";
+    return "";
+  };
+
+  // Saves run one after another, so an autosave and a click can never create
+  // two drafts. submit = send to the Admin; silent = autosave / on close.
+  const saveServerDraft = (submit = false, force = false, silent = false) => {
+    const run = async () => {
+      if (submit) {
+        const err = draftSubmitError();
+        if (err) { toast(err); return false; }
+        const lotW = Number(bulkHeader.lotWeight), lotQ = Number(bulkHeader.lotQty);
+        if (force !== true && (Math.abs(lotW - bulkLotUsed.weight) >= 0.0005 || lotQ !== bulkLotUsed.qty)) {
+          setLotConfirm({ weight: bulkLotUsed.weight, lotW, qty: bulkLotUsed.qty, lotQ });
+          return false;
+        }
+        setLotConfirm(null);
+      }
+      const body = draftBody();
+      const json = JSON.stringify(body);
+      if (!submit && silent && json === lastSavedRef.current) return true;
+      if (!silent) setDraftBusy(true);
+      setDraftSaving(true);
+      try {
+        const d = await billingService.savePurchaseDraft(draftIdRef.current, body, submit);
+        draftIdRef.current = d.id; lastSavedRef.current = json;
+        setDraftSavedAt(Date.now());
+        if (submit) {
+          setShowBulk(false); exitDraft();
+          toast("Product list sent to the Admin — they will price and record it");
+        } else {
+          setDraftCtx((c) => (c ? { ...c, id: d.id, status: d.status } : c));
+          if (!silent) toast(isAdmin ? "Draft saved — rates and payment are added when you record it" : "Draft saved");
+        }
+        loadDrafts();
+        return true;
+      } catch (err) {
+        toast(err?.message || "Could not save the draft");
+        return false;
+      } finally {
+        setDraftSaving(false);
+        if (!silent) setDraftBusy(false);
+      }
+    };
+    const p = inflightRef.current.then(run, run);
+    inflightRef.current = p.catch(() => {});
+    return p;
+  };
+
+  useEffect(() => {
+    if (draftCtx?.id && baselineRef.current) {
+      lastSavedRef.current = JSON.stringify(draftBody());
+      baselineRef.current = false;
+    }
+    // draftBody reads exactly these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftCtx, bulkHeaders, bulkRowsByType, bulkType, vendorList]);
+
+  // Staff drafts save themselves a moment after typing stops.
+  useEffect(() => {
+    if (isAdmin || !showBulk || !draftCtx || draftCtx.readOnly || draftBusy) return;
+    if (!draftTyped()) return;
+    if (JSON.stringify(draftBody()) === lastSavedRef.current) return;
+    const t = setTimeout(() => { saveServerDraft(false, false, true); }, 2500);
+    return () => clearTimeout(t);
+    // draftBody / draftTyped read exactly these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, showBulk, draftCtx, draftBusy, bulkHeaders, bulkRowsByType, bulkType, vendorList]);
+
+  // Every way out of the dialog. Unsaved edits to a draft are kept - staff
+  // or Admin - so closing never throws typing away.
+  const closeBulk = async () => {
+    if (draftCtx && !draftCtx.readOnly && (draftCtx.id || draftTyped()) && JSON.stringify(draftBody()) !== lastSavedRef.current) {
+      const saved = await saveServerDraft(false, false, true);
+      if (!saved) return;
+      toast(draftCtx.id ? "Changes saved to the draft" : "Kept as a draft");
+    }
+    setShowBulk(false);
+    if (draftCtx) exitDraft();
+  };
+
+  // Admin: hand the open bulk form to one staff member as a draft. The lot
+  // becomes their target; the supplier, date and any rows go with it. No rate
+  // or payment is sent - they are entered again when it is recorded.
+  const openAssign = async () => {
+    const h = bulkHeader;
+    if (!vendorList.find((v) => v.name === h.vendor)) { toast("Select a supplier first"); return; }
+    if (!(Number(h.lotWeight) > 0) || !(Number(h.lotQty) > 0)) { toast("Enter the Total Gold Weight and Total Quantity - the staff member fills rows against them"); return; }
+    setDraftAction({ mode: "assign", draft: null, note: "", staffId: "" });
+    if (staffChoices == null) {
+      try {
+        const all = await staffService.listStaff();
+        setStaffChoices(all.filter((x) => x.isActive && x.permissions.some((p) => p === "billing_inventory" || p === "billing")));
+      } catch { setStaffChoices([]); }
+    }
+  };
+
+  const runDraftAction = async () => {
+    const { mode, draft, note } = draftAction;
+    if (mode === "return" && note.trim().length < 2) { toast("Write a short note so the staff know what to fix"); return; }
+    if (mode === "assign") {
+      const who = (staffChoices || []).find((x) => x.id === draftAction.staffId);
+      if (!who) { toast("Pick the staff member who will enter the products"); return; }
+      setDraftBusy(true);
+      try {
+        await billingService.savePurchaseDraft(null, { ...draftBody(), assignTo: who.id });
+        setDraftAction(null);
+        setShowBulk(false);
+        // Handed over: the Admin's own form starts clean.
+        clearDraft("bulk"); setBulkDraftAt(null);
+        resetBulkForms(); setNextCodes({});
+        loadDrafts();
+        toast(`Draft saved for ${who.name} — you'll be notified when the product list is complete`);
+      } catch (err) {
+        toast(err?.message || "Could not save the draft");
+      } finally {
+        setDraftBusy(false);
+      }
+      return;
+    }
+    setDraftBusy(true);
+    try {
+      if (mode === "return") await billingService.returnPurchaseDraft(draft.id, note.trim());
+      else await billingService.deletePurchaseDraft(draft.id);
+      if (draftCtx?.id === draft.id) { setShowBulk(false); exitDraft(); }
+      setDraftAction(null);
+      loadDrafts();
+      toast(mode === "return" ? "Sent back to staff" : "Draft deleted");
+    } catch (err) {
+      toast(err?.message || "Could not update the draft");
+    } finally {
+      setDraftBusy(false);
+    }
+  };
+  const draftsWaiting = purchaseDrafts.filter((d) => d.status === "SUBMITTED").length;
 
   const retire = async (code) => {
     const it = items.find(i => i.code === code);
@@ -1168,10 +1658,63 @@ export default function Inventory({ onNavigate }) {
               back-dating a slip that arrived yesterday is ordinary retail
               practice, so the field is defaulted, never locked. An already
               half-filled form keeps whatever the operator typed. */}
-          <Button variant="outline" size="sm" onClick={() => { setBulkHeaders(p => Object.fromEntries(Object.entries(p).map(([k, h]) => [k, { ...h, date: h.dateEdited && h.date ? h.date : nowLocalInput() }]))); setNextCodes({}); setShowBulk(true); }}>Bulk Purchase</Button>
-          <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => { setAddForm(f => ({ ...f, purchaseDate: f.purchaseDateEdited && f.purchaseDate ? f.purchaseDate : nowLocalInput() })); setNextCodes({}); setShowAdd(true); }}>Add Purchase</Button>
+          {isAdmin ? (<>
+            <Button variant="outline" size="sm" onClick={() => { setBulkHeaders(p => Object.fromEntries(Object.entries(p).map(([k, h]) => [k, { ...h, date: h.dateEdited && h.date ? h.date : nowLocalInput() }]))); setNextCodes({}); setShowBulk(true); }}>Bulk Purchase</Button>
+            <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => { setAddForm(f => ({ ...f, purchaseDate: f.purchaseDateEdited && f.purchaseDate ? f.purchaseDate : nowLocalInput() })); setNextCodes({}); setShowAdd(true); }}>Add Purchase</Button>
+          </>) : (
+            <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={startStaffDraft}>New Purchase Draft</Button>
+          )}
         </div>
       </div>
+
+      {purchaseDrafts.length > 0 && (
+        <Card data-motion="reveal" className={`mb-4 overflow-hidden ${isAdmin && draftsWaiting ? "border-amber-300" : ""}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-6 py-3">
+            <div className="flex items-center gap-2.5">
+              <h3 className="text-sm font-extrabold">{isAdmin ? "Staff purchase drafts" : "My purchase drafts"}</h3>
+              {isAdmin && draftsWaiting > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">{draftsWaiting} to record</span>}
+            </div>
+            <span className="text-[11px] text-muted">{isAdmin ? "Keyed by staff with weights only — you add the rates and payment" : "Weights only · the Admin prices and records them"}</span>
+          </div>
+          <ul className="max-h-[320px] divide-y divide-line-soft overflow-y-auto">
+            {purchaseDrafts.map((d) => {
+              const st = DRAFT_STATUS[d.status] || DRAFT_STATUS.DRAFT;
+              const unit = d.kind === "RAW_GOLD" ? (d.pieces === 1 ? "bar" : "bars") : (d.pieces === 1 ? "piece" : "pieces");
+              const lotW = Number(d.lotWeight) || 0;
+              return (
+                <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3">
+                  <span className={`w-[112px] shrink-0 rounded-full px-2.5 py-1 text-center text-[10px] font-bold uppercase tracking-wide ${st.tone}`}>{isAdmin ? st.admin : d.status === "DRAFT" && d.lotLocked ? "To fill" : st.staff}</span>
+                  <div className="min-w-[200px] flex-1">
+                    <div className="truncate text-sm font-bold">
+                      {d.vendorCode || d.vendorName || "No supplier yet"}
+                      <span className="ml-1.5 font-semibold text-muted">· {d.kind === "RAW_GOLD" ? "Raw gold" : "Jewellery"}</span>
+                    </div>
+                    <div className="num text-xs text-muted">
+                      {isAdmin && <span className="font-semibold text-ink-soft">{d.assignedToName ? `For ${d.assignedToName}` : d.authorName} · </span>}
+                      {!isAdmin && d.lotLocked && <span className="font-semibold text-ink-soft">From Admin · </span>}
+                      {d.pieces} {unit} · {Number(d.totalGross).toFixed(3)} g{lotW ? ` of ${lotW.toFixed(3)} g lot` : ""}
+                      {" · "}{d.status === "RECORDED" ? `recorded ${fmtWhen(d.recordedAt)}` : d.submittedAt && d.status === "SUBMITTED" ? `sent ${fmtWhen(d.submittedAt)}` : `saved ${fmtWhen(d.updatedAt)}`}
+                    </div>
+                    {d.status === "RETURNED" && d.adminNote && <div className="mt-0.5 text-xs font-semibold text-danger">Admin: {d.adminNote}</div>}
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    {isAdmin ? (<>
+                      <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => openDraft(d)}>Open &amp; edit</Button>
+                      {d.status === "SUBMITTED" && <Button size="sm" variant="outline" onClick={() => setDraftAction({ mode: "return", draft: d, note: "" })}>Send back</Button>}
+                      <Button size="sm" variant="outline" className="text-danger" onClick={() => setDraftAction({ mode: "delete", draft: d, note: "" })}>Delete</Button>
+                    </>) : d.status === "DRAFT" || d.status === "RETURNED" ? (<>
+                      <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => openDraft(d)}>Continue</Button>
+                      <Button size="sm" variant="outline" className="text-danger" onClick={() => setDraftAction({ mode: "delete", draft: d, note: "" })}>Delete</Button>
+                    </>) : (
+                      <Button size="sm" variant="outline" onClick={() => openDraft(d)}>View</Button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(220px,280px)_1fr]">
         <Card data-motion="stat" className="p-4">
@@ -1286,7 +1829,7 @@ export default function Inventory({ onNavigate }) {
                   <th className="px-4 py-2.5 text-right">Gross</th>
                   <th className="px-4 py-2.5 text-right">Net</th>
                   <th className="px-4 py-2.5">Supplier</th>
-                  <th className="px-4 py-2.5 text-right">Cost</th>
+                  {isAdmin && <th className="px-4 py-2.5 text-right">Cost</th>}
                   <th className="px-4 py-2.5">Status</th>
                 </tr>
               </thead>
@@ -1299,7 +1842,7 @@ export default function Inventory({ onNavigate }) {
                     <td className="num px-4 py-2.5 text-right">{Number(r.grossWeightGrams).toFixed(3)} g</td>
                     <td className="num px-4 py-2.5 text-right font-semibold">{Number(r.netGoldWeightGrams).toFixed(3)} g</td>
                     <td className="px-4 py-2.5 text-muted">{r.vendorName || "—"}</td>
-                    <td className="num px-4 py-2.5 text-right">{r.purchaseCost != null ? money(r.purchaseCost) : "—"}</td>
+                    {isAdmin && <td className="num px-4 py-2.5 text-right">{r.purchaseCost != null ? money(r.purchaseCost) : "—"}</td>}
                     <td className="px-4 py-2.5">
                       <Badge tone={r.stockStatus === "IN_STOCK" ? "success" : r.stockStatus === "SOLD" ? "warning" : "neutral"} dot>
                         {{ IN_STOCK: "In Stock", SOLD: "Sold" }[r.stockStatus] || String(r.stockStatus || "").replace(/_/g, " ").toLowerCase().replace(/^./, (ch) => ch.toUpperCase())}
@@ -1322,12 +1865,12 @@ export default function Inventory({ onNavigate }) {
             <colgroup>
               <col className="w-[140px]" /><col className="w-[210px]" /><col className="w-[160px]" />
               <col className="w-[170px]" /><col className="w-[80px]" /><col className="w-[100px]" />
-              <col className="w-[130px]" /><col className="w-[70px]" /><col className="w-[110px]" />
+              <col className="w-[130px]" />{isAdmin && <col className="w-[70px]" />}<col className="w-[110px]" />
               <col className="w-[100px]" /><col className="w-[180px]" />
             </colgroup>
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left align-middle text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Item Code / HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Supplier</th><th className="px-3 py-3 text-center">Tunch</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
+                <th className="px-6 py-3">Item Code / HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Supplier</th>{isAdmin && <th className="px-3 py-3 text-center">Tunch</th>}<th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1348,7 +1891,7 @@ export default function Inventory({ onNavigate }) {
                   {/* The tunch this piece was bought at - the vendor's own
                       charge, which sets this piece's billing floors. A dash
                       means the lot never recorded one, not 0%. */}
-                  <td className="px-3 py-3.5 text-center font-mono whitespace-nowrap tabular-nums">{p.tunch != null ? `${p.tunch}%` : "—"}</td>
+                  {isAdmin && <td className="px-3 py-3.5 text-center font-mono whitespace-nowrap tabular-nums">{p.tunch != null ? `${p.tunch}%` : "—"}</td>}
                   <td className="px-3 py-3.5"><Badge tone={p.status==="In Stock"?"success":p.status==="Sold"?"warning":"neutral"} dot>{p.status}</Badge></td>
                   <td className="px-3 py-3.5"><Badge tone={p.catalogue==="Yes"?"success":"neutral"}>{p.catalogue}</Badge></td>
                   <td className="py-3.5 pr-6 whitespace-nowrap">
@@ -1431,13 +1974,13 @@ export default function Inventory({ onNavigate }) {
                   <Input placeholder="Hallmark Unique ID (optional)" value={addForm.huid} onChange={e=>setAddForm({...addForm, huid:e.target.value})} />
                   <span className="text-[11px] text-muted">If entered, replaces the Item Code. Bills <b>Online</b> — rate/g locked.</span>
                 </label>
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name *</span><Input placeholder="e.g. Gold Bangle" value={addForm.name} onChange={e=>setAddForm({...addForm, name:e.target.value})} /></label>
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name <span className="font-semibold text-muted">(optional)</span></span><Input placeholder="e.g. Gold Bangle" value={addForm.name} onChange={e=>setAddForm({...addForm, name:e.target.value})} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><Select value={addForm.category} onValueChange={v=>setAddForm({...addForm, category:v, subCategory:""})} options={catChoices} placeholder={catChoices.length ? "Select category" : "Add categories in Master Inventory"} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category</span><Select value={addForm.subCategory} onValueChange={v=>setAddForm({...addForm, subCategory:v})} options={subChoicesFor(addForm.category)} placeholder={addForm.category ? "Select sub-category" : "Pick a category first"} /></label>
                 {/* Both cells in this row carry one helper line, so the two
                     controls sit on the same baseline and the row below starts
                     level - the grid used to pair Purity with an empty cell. */}
-                <label className="grid gap-1.5"><span className="text-xs font-bold">Purity</span><Select value={addForm.purity} onValueChange={v=>setAddForm({...addForm, purity:v})} options={PURITY_OPTIONS} />
+                <label className="grid gap-1.5"><span className="text-xs font-bold">Product Purity</span><Select value={addForm.purity} onValueChange={v=>setAddForm({...addForm, purity:v})} options={PURITY_OPTIONS} />
                   <span className="text-[11px] text-muted">Converts the net weight into pure gold — {addForm.purity} = {((parseInt(addForm.purity,10)||0)*100/24).toFixed(2)}% of net.</span>
                 </label>
                 {/* The slip states GROSS and STONE WEIGHT. Net is what is left
@@ -1498,13 +2041,8 @@ export default function Inventory({ onNavigate }) {
                   <span className="num text-sm font-extrabold">{money(addAmounts.valueAddition)}</span>
                 </div>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div className="grid content-start gap-1.5">
-                    <span className="text-xs font-bold">Over gold value</span>
-                    <div className="num flex h-10 items-center rounded-xl border border-line bg-canvas/60 px-3.5 font-mono text-sm tabular-nums">{money(addAmounts.stone)}</div>
-                    <span className="text-[11px] text-muted">Whatever the Final Purchase Amount below is above the gold value — stones, work.</span>
-                  </div>
                   <label className="grid gap-1.5">
-                    <span className="text-xs font-bold">Other Charges (₹)</span>
+                    <span className="text-xs font-bold">Value Addition (₹) <span className="font-semibold text-muted">stones &amp; other costs</span></span>
                     <MoneyInput value={addForm.other} onValueChange={v=>setAddForm({...addForm, other:v})} maxDigits={8} placeholder="0" />
                     <span className="text-[11px] text-muted">Polish, certification, packing — anything non-gold.</span>
                   </label>
@@ -1515,8 +2053,8 @@ export default function Inventory({ onNavigate }) {
               <div className="rounded-xl border border-line bg-canvas/40 p-4">
                 <div className="grid items-start gap-4 sm:grid-cols-3">
                   <label className="grid gap-1.5"><span className="text-xs font-bold">Purchase Rate (₹/g) — 24K *</span><Input type="number" value={addForm.rate} onChange={e=>setAddForm({...addForm, rate:e.target.value})} /><span className="text-[11px] text-muted">{rate24kPerGram(todayRate) != null ? (rateIsCarriedForward ? `Always the 24K (pure gold) rate — auto-filled from the rate published on ${rateEffectiveLabel}, as today's is not published yet. Check it before saving.` : "Always the 24K (pure gold) rate — auto-filled from today's 24K rate, editable. Purity only converts the net weight.") : "No live 24K rate set today — enter the 24K rate manually."}</span></label>
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Tunch No.</span>
-                    <Input inputMode="decimal" value={addForm.tunchNo ?? ""} onChange={e=>setAddForm({...addForm, tunchNo: cleanDec(e.target.value), tunchPctText: undefined})} placeholder={String(PURITY_FINENESS[addForm.purity] ?? "")} />
+                  <label className="grid gap-1.5"><span className="text-xs font-bold">Arrival Purity %</span>
+                    <Input inputMode="decimal" value={addForm.tunchNo ?? ""} onChange={e=>setAddForm({...addForm, tunchNo: cleanDec(e.target.value), tunchPctText: undefined})} placeholder={`e.g. ${tunchNoFromPct(4, addForm.purity) || ""}`} />
                     <span className="text-[11px] text-muted">Purity raised by the Tunch — e.g. 22K 916 + 4% = 952.6. Blank = no Tunch.</span>
                   </label>
                   {(() => {
@@ -1532,7 +2070,7 @@ export default function Inventory({ onNavigate }) {
                             placeholder="0" error={t.error || undefined} className="pr-8 text-right" />
                           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-muted">%</span>
                         </div>
-                        <span className={`text-[11px] ${t.error ? "font-semibold text-danger" : "text-muted"}`}>{t.error || "Type the % or the Tunch No. — each fills the other."}</span>
+                        <span className={`text-[11px] ${t.error ? "font-semibold text-danger" : "text-muted"}`}>{t.error || `Tunch = Arrival Purity − Product Purity (${PURITY_PERCENT[addForm.purity] ?? "—"}%). Type either one.`}</span>
                       </div>
                     );
                   })()}
@@ -1556,34 +2094,23 @@ export default function Inventory({ onNavigate }) {
                       <span className="num font-mono tabular-nums">{money(addAmounts.valueAddition)}</span>
                     </div>
                   )}
-                  <label className="mt-1 grid gap-1.5 border-t border-line pt-2">
-                    <span className="font-bold">Final Purchase Amount (₹)</span>
-                    <MoneyInput allowDecimal value={addForm.amount ?? (addAmounts.auto > 0 ? addAmounts.auto.toFixed(2) : "")} onValueChange={v=>setAddForm({...addForm, amount:v})} maxDigits={10} placeholder="0" />
-                    <span className={`text-[11px] ${addAmounts.below ? "font-semibold text-danger" : "text-muted"}`}>
-                      {addAmounts.below ? `Cannot be less than the gold value + other charges (${money(addAmounts.auto)}).` : addForm.amount == null ? "Calculated from gold + Tunch + other. Edit it to the product's whole price — anything above the gold value shows as Value Addition." : `Edited. Calculated price is ${money(addAmounts.auto)}.`}
-                      {addForm.amount != null && <button type="button" onClick={()=>setAddForm({...addForm, amount:null})} className="ml-1.5 font-bold text-accent underline">Use calculated</button>}
-                    </span>
-                  </label>
+                  <div className="mt-1 flex items-center justify-between border-t border-line pt-2">
+                    <span className="font-bold">Total Cost (₹) <span className="text-[11px] font-semibold text-muted">gold + tunch + value addition</span></span>
+                    <span className="num font-mono font-extrabold tabular-nums">{money(addAmounts.auto)}</span>
+                  </div>
                 </div>
                 <div className="mt-3 grid gap-1 border-t border-accent-line pt-3 text-sm">
                   <div className="flex items-center justify-between"><span className="text-muted">+ GST {BULK_GST_PERCENT}% on {money(addAmounts.final)}</span><span className="num font-mono tabular-nums">{money(addAmounts.gst)}</span></div>
                   <div className="flex items-center justify-between"><span className="font-extrabold">Payable to supplier</span><span className="num font-mono text-base font-extrabold tabular-nums">{money(addAmounts.final + addAmounts.gst)}</span></div>
                 </div>
-                <p className="mt-1.5 text-[11px] text-muted">Gold = (24K equivalent × 24K rate) + Tunch % — Tunch is never added to the per-gram rate, and never to the value addition. Backend re-derives this authoritatively.</p>
+                <p className="mt-1.5 text-[11px] text-muted">Gold = Net × Arrival Purity % × 24K rate (Product Purity + Tunch). Value addition carries no Tunch. The server re-derives every figure.</p>
               </div>
 
               <div className="rounded-xl border border-line bg-canvas/40 p-4 space-y-3">
                 <h4 className="text-xs font-extrabold uppercase tracking-widest">Payment</h4>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5"><span className="text-xs font-bold">Payment Type</span><Select value={addForm.paymentMode} onValueChange={v=>setAddForm({...addForm, paymentMode:v})} options={PAYMENT_MODES} /></label>
-                  {addForm.paymentMode !== "CREDIT" && (
-                    <label className="grid gap-1.5"><span className="text-xs font-bold">Mode of Payment</span><Select value={addForm.paymentMethod} onValueChange={v=>setAddForm({...addForm, paymentMethod:v})} options={PAY_METHOD_OPTS} /></label>
-                  )}
-                  {addForm.paymentMode === "PARTIAL" && (
-                    <label className="grid gap-1.5"><span className="text-xs font-bold">Paid Now *</span><MoneyInput value={addForm.paidNow} onValueChange={v=>setAddForm({...addForm, paidNow:v})} /></label>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted">CASH settles in full · CREDIT leaves the full amount outstanding · PARTIAL records Paid Now and leaves the remainder outstanding. Mode of Payment (Cash/UPI/Card/Bank/Cheque) is recorded in the Vendor Payment ledger.</p>
+                <PaymentPanel value={addForm} onChange={(np)=>setAddForm((f)=>({...f, ...np}))} total={addAmounts.final + addAmounts.gst}
+                  goldGrams={addAmounts.payableGrams} goldValue={addAmounts.goldValue}
+                  purchaseDate={addForm.purchaseDate} liveSilver={todayRate?.silver_999 != null && Number(todayRate.silver_999) > 0 ? Number(todayRate.silver_999) : null} />
               </div>
 
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={addForm.addToCatalogue} onChange={e=>setAddForm({...addForm, addToCatalogue:e.target.checked})} /> Add to Catalogue after creating</label>
@@ -1599,19 +2126,52 @@ export default function Inventory({ onNavigate }) {
       {/* Bulk Purchase Receiving — Phase 4. Jewellery (HUID) / Raw Gold (Serial). */}
       {showBulk && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={()=>setShowBulk(false)} aria-label="Close" />
+          <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={closeBulk} aria-label="Close" />
           <div className="relative w-full max-w-[1440px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-line px-6 py-4">
-              <div className="flex items-center gap-3"><h3 className="text-base font-extrabold">Bulk Purchase Receiving</h3>{bulkDraftAt && <span className="text-[11px] text-muted">{draftStamp(bulkDraftAt)} · <button type="button" onClick={discardBulkDraft} className="font-bold text-danger underline underline-offset-2">Discard</button></span>}</div>
-              <button onClick={()=>setShowBulk(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button>
+              <div className="flex flex-wrap items-center gap-3">
+                <h3 className="text-base font-extrabold">{!isAdmin ? "Purchase Draft" : draftCtx ? "Record Staff Draft" : "Bulk Purchase Receiving"}</h3>
+                {draftCtx && <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${(DRAFT_STATUS[draftCtx.status] || DRAFT_STATUS.DRAFT).tone}`}>{(DRAFT_STATUS[draftCtx.status] || DRAFT_STATUS.DRAFT)[isAdmin ? "admin" : "staff"]}</span>}
+                {isAdmin && !draftCtx && bulkDraftAt && <span className="text-[11px] text-muted">{draftStamp(bulkDraftAt)} · <button type="button" onClick={discardBulkDraft} className="font-bold text-danger underline underline-offset-2">Discard</button></span>}
+                {!isAdmin && draftCtx && !draftCtx.readOnly && <span className="text-[11px] text-muted">{draftSaving ? "Saving…" : draftSavedAt ? `Saved ${new Date(draftSavedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : "Not saved yet"}</span>}
+              </div>
+              <button onClick={closeBulk} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-              {/* Type toggle */}
+              {draftCtx && isAdmin && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent-line bg-accent-soft/30 px-4 py-3">
+                  <div className="text-sm">
+                    <b>{draftCtx.authorName}</b> {draftCtx.status === "SUBMITTED" ? `completed the product list · ${fmtWhen(draftCtx.submittedAt)}` : "has not finished the product list yet"}.
+                    <span className="mt-0.5 block text-xs text-muted">Edit anything. <b>Save changes</b> keeps the rows on the draft{draftCtx.status === "SUBMITTED" ? "" : " for the staff member to continue"}; add the 24K rate, Arrival Purity, Value Addition and payment, then <b>Record Purchase</b>.</span>
+                  </div>
+                  {draftCtx.status === "SUBMITTED" && <Button size="sm" variant="outline" onClick={() => setDraftAction({ mode: "return", draft: { id: draftCtx.id, authorName: draftCtx.authorName }, note: "" })}>Send back</Button>}
+                </div>
+              )}
+              {!isAdmin && draftCtx?.status === "RETURNED" && draftCtx.adminNote && (
+                <div className="rounded-xl border border-danger-line bg-danger-soft/40 px-4 py-3 text-sm">
+                  <b className="text-danger">Sent back by Admin:</b> {draftCtx.adminNote}
+                  <span className="mt-0.5 block text-xs text-muted">Fix the rows, then send it again.</span>
+                </div>
+              )}
+              {!isAdmin && draftCtx?.readOnly && (
+                <div className="rounded-xl border border-line bg-canvas/50 px-4 py-3 text-sm">
+                  {draftCtx.status === "RECORDED" ? <><b>Recorded by the Admin.</b> These pieces are in stock now.</> : <><b>With the Admin.</b> They will price and record it. If something is wrong, ask them to send it back.</>}
+                </div>
+              )}
+              {!isAdmin && !draftCtx?.readOnly && (
+                <p className="text-xs text-muted">Enter the lot and every piece&apos;s weights. The Admin adds the rates, Arrival Purity and payment when recording it.</p>
+              )}
+              <fieldset disabled={!!draftCtx?.readOnly} className="m-0 min-w-0 space-y-4 border-0 p-0">
+              {/* Type toggle - fixed once a draft exists on the server. */}
+              {draftCtx?.id ? (
+                <span className="inline-flex h-10 items-center rounded-xl border border-line bg-canvas/50 px-3 text-xs font-bold">{bulkType === "RAW_GOLD" ? "Raw Gold / Bullion" : "Jewellery / Artefacts"}</span>
+              ) : (
               <div className="inline-flex rounded-xl border border-line p-1">
                 {[["JEWELLERY","Jewellery / Artefacts"],["RAW_GOLD","Raw Gold / Bullion"]].map(([val,label])=>(
                   <button key={val} onClick={()=>setBulkType(val)} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors ${bulkType===val ? "bg-accent text-white" : "text-muted hover:text-ink"}`}>{label}</button>
                 ))}
               </div>
+              )}
 
               {/* Header - three even columns, every control 44px tall. */}
               <div className="grid gap-4 rounded-xl border border-line bg-canvas/30 p-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1636,29 +2196,24 @@ export default function Inventory({ onNavigate }) {
                     <span className="ml-auto shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">You</span>
                   </div>
                 </HeaderField>
-                <div className="hidden lg:block" aria-hidden="true" />
-                <HeaderField label="Payment Type">
-                  <Select value={bulkHeader.paymentMode} onValueChange={v=>setBulkHeader({...bulkHeader, paymentMode:v})} options={PAYMENT_MODES} />
+                {/* One 24K rate for the slip: today's live rate, editable, and
+                    copied into every row (each row can still differ). */}
+                {isAdmin && (
+                <HeaderField label="24K Live Rate / g (₹) *" action={bulkHeader.rateEdited && liveRate24 != null && Number(bulkHeader.rate) !== liveRate24 && (
+                  <button type="button" onClick={()=>applyBulkRate(String(liveRate24), false)} className="text-[11px] font-bold text-accent underline">Use live {money(liveRate24)}</button>
+                )}>
+                  <MoneyInput allowDecimal value={bulkHeader.rate || (liveRate24 != null ? String(liveRate24) : "")} onValueChange={v=>applyBulkRate(v, true)} className="h-11" placeholder="0" />
                 </HeaderField>
-                {bulkHeader.paymentMode !== "CREDIT" && (
-                  <HeaderField label="Mode of Payment">
-                    <Select value={bulkHeader.paymentMethod} onValueChange={v=>setBulkHeader({...bulkHeader, paymentMethod:v})} options={PAY_METHOD_OPTS} />
-                  </HeaderField>
-                )}
-                {bulkHeader.paymentMode === "PARTIAL" && (
-                  <HeaderField label="Paid Now *">
-                    <MoneyInput value={bulkHeader.paidNow} onValueChange={v=>setBulkHeader({...bulkHeader, paidNow:v})} className="h-11" />
-                  </HeaderField>
                 )}
               </div>
 
               {/* The lot: the admin types what the supplier handed over; each
                   row entered counts down. Zero left on both = the slip is
                   complete. Jewellery also shows stone weight and V/A. */}
-              <div className={`grid gap-3 sm:grid-cols-2 ${bulkType === "JEWELLERY" ? "lg:grid-cols-4" : ""}`}>
-                <LotCard label="Total Gold Weight" unit="g" decimals value={bulkHeader.lotWeight} onChange={v=>setBulkHeader(h=>({...h, lotWeight:v}))} used={bulkLotUsed.weight}
+              <div className={`grid gap-3 sm:grid-cols-2 ${bulkType !== "JEWELLERY" ? "" : isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
+                <LotCard label="Total Gold Weight" unit="g" decimals value={bulkHeader.lotWeight} onChange={v=>setBulkHeader(h=>({...h, lotWeight:v}))} used={bulkLotUsed.weight} locked={!isAdmin && !!draftCtx?.lotLocked}
                   hint={bulkType === "JEWELLERY" ? "Each row deducts its gross weight, as weighed" : "Each bar deducts its net weight"} />
-                <LotCard label="Total Quantity" unit="pcs" value={bulkHeader.lotQty} onChange={v=>{ setBulkHeader(h=>({...h, lotQty:v})); fitBulkRows(v); }} used={bulkLotUsed.qty}
+                <LotCard label="Total Quantity" unit="pcs" value={bulkHeader.lotQty} onChange={v=>{ setBulkHeader(h=>({...h, lotQty:v})); fitBulkRows(v); }} used={bulkLotUsed.qty} locked={!isAdmin && !!draftCtx?.lotLocked}
                   hint={bulkType === "JEWELLERY" ? "Each row is one piece" : "Each row is one bar"} />
                 {bulkType === "JEWELLERY" && <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
                   <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Stone Weight</div>
@@ -1667,41 +2222,41 @@ export default function Inventory({ onNavigate }) {
                   <div className="mt-1 text-xs text-muted">Net gold {bulkBreakdown.netTotal.toFixed(3)} g</div>
                 </div>}
                 {/* Money, not metal - it is in none of the gram figures. */}
-                {bulkType === "JEWELLERY" && (
+                {isAdmin && bulkType === "JEWELLERY" && (
                   <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Value Addition (V/A)</div>
                     <div className="num mt-2 text-2xl font-extrabold">{money(bulkBreakdown.valueAdditionTotal)}</div>
-                    <div className="mt-1 text-xs text-muted">Over gold {money(bulkBreakdown.stoneTotal)} · Other {money(bulkBreakdown.otherChargesTotal)}</div>
+                    <div className="mt-1 text-xs text-muted">Stones &amp; other charges typed per row · no Tunch</div>
                   </div>
                 )}
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-line">
-                <table className={`table-fixed ${bulkType === "JEWELLERY" ? "w-[1990px]" : "w-[1330px]"} border-collapse text-sm`}>
+                <table className={`table-fixed ${bulkType === "JEWELLERY" ? (isAdmin ? "w-[1990px]" : "w-[1380px]") : (isAdmin ? "w-[1330px]" : "w-[1060px]")} border-collapse text-sm`}>
                   <thead><tr className="bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                     {/* Jewellery: Item Code (blank = auto, Offline) XOR HUID
                         (Online, replaces the Item Code). Raw gold: serial. */}
                     <th className="px-3 py-2 w-[150px]">Item Code</th>
                     {bulkType === "JEWELLERY" && <th className="px-3 py-2 w-[150px]">HUID</th>}
-                    <th className="px-2 py-2 w-[180px]">Product Name *</th>
+                    <th className="px-2 py-2 w-[180px]">Product Name</th>
                     <th className="px-2 py-2 w-[170px]">Category</th>
                     <th className="px-2 py-2 w-[190px]">Sub-category</th>
-                    <th className="px-2 py-2 w-[130px]">Purity</th>
+                    <th className="px-2 py-2 w-[140px]">Product Purity</th>
                     {bulkType === "JEWELLERY" && <th className="py-2 w-[100px]">Gross (g) *</th>}
                     {bulkType === "JEWELLERY" && <th className="py-2 w-[100px]">Stone (g)</th>}
                     {/* Jewellery: derived, not typed - see rowWeights. Raw gold:
                         typed, it is the only weight a bar has. */}
                     <th className="py-2 w-[110px]">{bulkType === "JEWELLERY" ? "Net (g)" : "Net Weight (g) *"}</th>
-                    <th className="py-2 w-[120px]">24K Cost/g (₹) *</th>
+                    {isAdmin && <th className="py-2 w-[120px]">24K Cost/g (₹) *</th>}
                     {/* Bullion has no tunch. It is bought at rate x weight:
                         there is no craftsman's charge on a bar. */}
-                    {bulkType === "JEWELLERY" && <th className="py-2 w-[110px]" title="Purity raised by the Tunch %: 22K 916 + 4% = 952.6">Tunch No.</th>}
-                    {bulkType === "JEWELLERY" && <th className="py-2 w-[100px]">Tunch %</th>}
+                    {isAdmin && bulkType === "JEWELLERY" && <th className="py-2 w-[110px]" title="The purity the supplier bills at: 18K 75% + 4% Tunch = 79">Arrival Purity %</th>}
+                    {isAdmin && bulkType === "JEWELLERY" && <th className="py-2 w-[100px]">Tunch %</th>}
                     {/* Jewellery only: bullion is gold and nothing else. */}
                     {/* The V/A card, per row: the non-gold rupees that are not
                         stones. Money, never metal. */}
-                    {bulkType === "JEWELLERY" && <th className="py-2 w-[120px]">Other (₹)</th>}
-                    <th className="py-2 w-[150px] text-right">{bulkType === "JEWELLERY" ? "Total Cost (₹)" : "Total Cost"}</th>
+                    {isAdmin && bulkType === "JEWELLERY" && <th className="py-2 w-[130px]" title="Stone charges and any other cost">Value Addition (₹)</th>}
+                    {isAdmin && <th className="py-2 w-[150px] text-right">{bulkType === "JEWELLERY" ? "Total Cost (₹)" : "Total Cost"}</th>}
                     <th className="py-2 w-[44px]"></th>
                   </tr></thead>
                   <tbody>
@@ -1756,14 +2311,14 @@ export default function Inventory({ onNavigate }) {
                               <Input type="number" value={r.net} onChange={e=>setCell("net",e.target.value)} placeholder="0.000" className="h-9" />
                             )}
                           </td>
-                          <td className="px-2 py-2"><Input type="number" value={r.rate} onChange={e=>setCell("rate",e.target.value)} className="h-9" /></td>
+                          {isAdmin && <td className="px-2 py-2"><Input type="number" value={r.rate} onChange={e=>setCell("rate",e.target.value)} className="h-9" /></td>}
                           {/* One digit only: Tunch is quoted in whole single digits. */}
                           {/* maxDigits was 1, so a 12% lot could not be typed at
                               all - the second digit was swallowed. */}
-                          {bulkType === "JEWELLERY" && (
-                            <td className="px-2 py-2"><Input inputMode="decimal" value={r.tunchNo ?? ""} onChange={e=>setBulkRows(bulkRows.map((row,ix)=>ix===i?{...row, tunchNo: cleanDec(e.target.value), tunchPctText: undefined}:row))} placeholder={String(PURITY_FINENESS[r.purity] ?? "")} className="h-9" /></td>
+                          {isAdmin && bulkType === "JEWELLERY" && (
+                            <td className="px-2 py-2"><Input inputMode="decimal" value={r.tunchNo ?? ""} onChange={e=>setBulkRows(bulkRows.map((row,ix)=>ix===i?{...row, tunchNo: cleanDec(e.target.value), tunchPctText: undefined}:row))} placeholder={tunchNoFromPct(4, r.purity) || ""} className="h-9" /></td>
                           )}
-                          {bulkType === "JEWELLERY" && (() => {
+                          {isAdmin && bulkType === "JEWELLERY" && (() => {
                             const t = tunchFromNumber(r.tunchNo, r.purity);
                             return (
                               <td className="px-2 py-2">
@@ -1779,20 +2334,16 @@ export default function Inventory({ onNavigate }) {
                               </td>
                             );
                           })()}
-                          {bulkType === "JEWELLERY" && (
+                          {isAdmin && bulkType === "JEWELLERY" && (
                             <td className="px-2 py-2">
                               <MoneyInput value={r.other} onValueChange={v=>setCell("other",v)} maxDigits={8} placeholder="0" className="h-9" />
                             </td>
                           )}
-                          {bulkType === "JEWELLERY" ? (
+                          {!isAdmin ? null : bulkType === "JEWELLERY" ? (
                             <td className="px-2 py-2">
-                              {/* The whole price of this piece. Blank = the auto
-                                  figure (placeholder); anything typed above it is
-                                  the row's value addition. */}
-                              <MoneyInput allowDecimal value={r.amount ?? (ra.auto > 0 ? ra.auto.toFixed(2) : "")} onValueChange={v=>setCell("amount",v)} maxDigits={10} placeholder="0" className={`h-9 ${ra.below ? "border-danger" : ""}`} />
-                              {ra.below && <span className="mt-1 block text-[10px] font-semibold text-danger">Below gold value</span>}
-                              {ra.extra > 0 && <span className="mt-1 block text-[10px] font-semibold text-muted">V/A {money(ra.extra)}</span>}
-                              {r.amount != null && <button type="button" onClick={()=>setCell("amount",null)} className="mt-0.5 block text-[10px] font-bold text-accent underline">Use calculated</button>}
+                              {/* Calculated: gold at Arrival Purity + this row's
+                                  Value Addition. Never typed. */}
+                              <div className="num flex h-9 items-center justify-end rounded-xl border border-line bg-canvas/60 px-3 font-mono text-sm font-bold tabular-nums">{ra.auto > 0 ? money(ra.auto) : "—"}</div>
                             </td>
                           ) : (
                             <td className="px-2 py-2 text-right font-mono tabular-nums">{lineTotal ? money(ra.auto) : "—"}</td>
@@ -1811,7 +2362,46 @@ export default function Inventory({ onNavigate }) {
 
               {/* Settlement breakdown — the same four steps as the vendor's slip:
                   weight by purity, its 24K equivalent, Tunch, then money. */}
-              {bulkBreakdown.groups.length > 0 && (
+              {!isAdmin && bulkBreakdown.groups.length > 0 && (
+                <div className="rounded-xl border border-line bg-canvas/30 p-4">
+                  <div className="text-[11px] font-extrabold uppercase tracking-[0.07em] text-muted">Lot summary</div>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full min-w-[460px] border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b border-line text-left text-[10px] font-bold uppercase tracking-[0.06em] text-muted">
+                          <th className="py-2 pr-3">Purity</th>
+                          <th className="py-2 pr-3 text-right">{bulkType === "RAW_GOLD" ? "Bars" : "Pieces"}</th>
+                          {bulkType === "JEWELLERY" && <th className="py-2 pr-3 text-right">Gross</th>}
+                          {bulkType === "JEWELLERY" && <th className="py-2 pr-3 text-right">Stone</th>}
+                          <th className="py-2 text-right">Net gold</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkBreakdown.groups.map((g) => (
+                          <tr key={g.purity} className="border-b border-line-soft last:border-0">
+                            <td className="py-2 pr-3 font-bold">{purityLabel(g.purity)}</td>
+                            <td className="num py-2 pr-3 text-right font-mono tabular-nums">{g.rows}</td>
+                            {bulkType === "JEWELLERY" && <td className="num py-2 pr-3 text-right font-mono tabular-nums">{(g.net + g.stoneG).toFixed(3)} g</td>}
+                            {bulkType === "JEWELLERY" && <td className="num py-2 pr-3 text-right font-mono tabular-nums">{g.stoneG.toFixed(3)} g</td>}
+                            <td className="num py-2 text-right font-mono font-bold tabular-nums">{g.net.toFixed(3)} g</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-line text-[13px]">
+                          <td className="py-2.5 pr-3 font-extrabold">Total</td>
+                          <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.qty}</td>
+                          {bulkType === "JEWELLERY" && <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.grossTotal.toFixed(3)} g</td>}
+                          {bulkType === "JEWELLERY" && <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.stoneGTotal.toFixed(3)} g</td>}
+                          <td className="num py-2.5 text-right font-mono font-extrabold tabular-nums">{bulkBreakdown.netTotal.toFixed(3)} g</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {isAdmin && bulkBreakdown.groups.length > 0 && (
                 <div className="rounded-xl border border-accent-line bg-accent-soft/25 p-4">
                   <div className="text-[11px] font-extrabold uppercase tracking-[0.07em] text-accent-strong">Settlement breakdown</div>
                   <div className="mt-3 overflow-x-auto">
@@ -1856,7 +2446,7 @@ export default function Inventory({ onNavigate }) {
                           <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.fineTotal.toFixed(3)} g</td>
                           {bulkType === "JEWELLERY" && <td className="num py-2.5 pr-3 text-right font-mono font-bold tabular-nums">{bulkBreakdown.tunchGTotal.toFixed(3)} g</td>}
                           {bulkType === "JEWELLERY" && <td className="num py-2.5 pr-3 text-right font-mono font-extrabold tabular-nums text-accent-strong">{bulkBreakdown.payableGrams.toFixed(3)} g</td>}
-                          <td className="num py-2.5 text-right font-mono font-extrabold tabular-nums">{money(bulkBreakdown.finalAmount)}</td>
+                          <td className="num py-2.5 text-right font-mono font-extrabold tabular-nums">{money(bulkGoldValue)}</td>
                         </tr>
                       </tfoot>
                     </table>
@@ -1907,54 +2497,40 @@ export default function Inventory({ onNavigate }) {
                         apportioned across the items. The server re-derives both
                         from the payment ledger; these are the figures it will
                         arrive at, shown before the button is pressed. */}
-                    {(() => {
-                      const total = (bulkBreakdown.finalAmount || 0) + bulkGst;
-                      const mode = bulkHeader.paymentMode;
-                      const typed = Number(bulkHeader.paidNow);
-                      const paid = mode === "CASH" ? total : mode === "CREDIT" ? 0 : (typed > 0 ? typed : 0);
-                      const balance = Math.max(0, Number((total - paid).toFixed(2)));
-                      // A part payment at or above the total is not a part
-                      // payment; the server refuses it, so say so here.
-                      const over = mode === "PARTIAL" && typed > 0 && typed >= total;
-                      return (
-                        <div className="mt-2 grid gap-1 border-t border-accent-line pt-2 text-sm">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-muted">
-                              Paying now
-                              <span className="ml-1.5 text-[11px] font-bold uppercase tracking-[0.06em] text-accent-strong">{mode}</span>
-                              {mode !== "CREDIT" && <span className="ml-1.5 text-[11px] text-muted">by {bulkHeader.paymentMethod}</span>}
-                            </span>
-                            <span className="num font-mono font-bold tabular-nums">{money(paid)}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span className={balance > 0 ? "font-extrabold text-accent-strong" : "text-muted"}>
-                              Balance owed to vendor
-                            </span>
-                            <span className={`num font-mono font-extrabold tabular-nums ${balance > 0 ? "text-accent-strong" : ""}`}>{money(balance)}</span>
-                          </div>
-                          <div className="text-[11px] text-muted">
-                            {over
-                              ? `A part payment must be less than ${money(total)} \u2014 use CASH to settle in full.`
-                              : mode === "PARTIAL" && !(typed > 0)
-                                ? "Enter the amount being paid now."
-                                : balance > 0
-                                  ? "Recorded as one outstanding payable for this receipt; settle it later from Purchase History."
-                                  : "Settled in full \u2014 nothing left outstanding on this receipt."}
-                          </div>
-                        </div>
-                      );
-                    })()}
                     <p className="text-[11px] text-muted">
-                      Tunch is a percentage of the 24K-equivalent gold value and is never added to the rate per gram.
+                      Tunch = Arrival Purity − Product Purity, charged on the net weight at the 24K rate; never added to the rate per gram.
                       The server re-derives every figure row by row when the purchase is recorded.
                     </p>
                   </div>
                 </div>
               )}
+
+              {isAdmin && (
+              <div className="rounded-xl border border-line bg-canvas/30 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h4 className="text-xs font-extrabold uppercase tracking-widest">Payment</h4>
+                  <span className="text-[11px] text-muted">{bulkHeader.settleIn === "METAL" ? "Paid from your own metal" : "Cash or online"}</span>
+                </div>
+                <PaymentPanel value={bulkHeader} onChange={(np)=>setBulkHeader((h)=>({...h, ...np}))} total={(bulkBreakdown.finalAmount || 0) + bulkGst}
+                  goldGrams={bulkBreakdown.payableGrams} goldValue={bulkGoldValue}
+                  purchaseDate={bulkHeader.date} liveSilver={todayRate?.silver_999 != null && Number(todayRate.silver_999) > 0 ? Number(todayRate.silver_999) : null} />
+              </div>
+              )}
+              </fieldset>
             </div>
-            <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
-              <Button variant="outline" size="sm" onClick={()=>setShowBulk(false)}>Cancel</Button>
-              <Button size="sm" disabled={bulkSaving} className="bg-accent hover:bg-accent-strong" onClick={handleBulkAdd}>{bulkSaving ? "Saving…" : "Record Bulk Purchase"}</Button>
+            <div className="flex flex-wrap justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+              {isAdmin ? (<>
+                <Button variant="outline" size="sm" onClick={closeBulk}>Cancel</Button>
+                {!draftCtx && <Button variant="outline" size="sm" disabled={bulkSaving || draftBusy} onClick={openAssign} title="Set the supplier and lot, and let a staff member enter the products">Save as draft for staff</Button>}
+                {draftCtx && <Button variant="outline" size="sm" disabled={bulkSaving || draftBusy || draftSaving} onClick={() => saveServerDraft(false)} title="Keep your edits on the draft without recording it">{draftBusy ? "Saving…" : "Save changes"}</Button>}
+                <Button size="sm" disabled={bulkSaving} className="bg-accent hover:bg-accent-strong" onClick={handleBulkAdd}>{bulkSaving ? "Saving…" : draftCtx ? "Record Purchase" : "Record Bulk Purchase"}</Button>
+              </>) : draftCtx?.readOnly ? (
+                <Button variant="outline" size="sm" onClick={closeBulk}>Close</Button>
+              ) : (<>
+                <Button variant="outline" size="sm" disabled={draftBusy} onClick={closeBulk}>Close</Button>
+                <Button variant="outline" size="sm" disabled={draftBusy || draftSaving} onClick={() => saveServerDraft(false)}>Save draft</Button>
+                <Button size="sm" disabled={draftBusy} className="bg-accent hover:bg-accent-strong" onClick={() => saveServerDraft(true)}>{draftBusy ? "Sending…" : "Product list complete"}</Button>
+              </>)}
             </div>
           </div>
         </div>
@@ -2077,15 +2653,57 @@ export default function Inventory({ onNavigate }) {
                   );
                 })}
               </div>
-              <p className="px-6 pt-3 text-[11px] text-muted">Keep editing to add the missing rows, or record now if the supplier&apos;s slip itself differs.</p>
+              <p className="px-6 pt-3 text-[11px] text-muted">Keep editing to add the missing rows, or {isAdmin ? "record" : "complete it"} now if the supplier&apos;s slip itself differs.</p>
               <div className="mt-5 flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
                 <Button variant="outline" size="sm" onClick={() => setLotConfirm(null)} autoFocus>Keep editing</Button>
-                <Button size="sm" disabled={bulkSaving} className="bg-accent hover:bg-accent-strong" onClick={() => handleBulkAdd(true)}>{bulkSaving ? "Saving…" : "Record anyway"}</Button>
+                <Button size="sm" disabled={bulkSaving || draftBusy} className="bg-accent hover:bg-accent-strong" onClick={() => (isAdmin ? handleBulkAdd(true) : saveServerDraft(true, true))}>{bulkSaving || draftBusy ? "Saving…" : isAdmin ? "Record anyway" : "Complete anyway"}</Button>
               </div>
             </div>
           </div>
         );
       })()}
+
+      {draftAction && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="draft-action-title">
+          <button className="absolute inset-0 bg-ink/50 backdrop-blur-[2px]" onClick={() => !draftBusy && setDraftAction(null)} aria-label="Cancel" />
+          <div className="relative w-full max-w-[440px] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl">
+            <div className="px-6 pt-6">
+              <h3 id="draft-action-title" className="text-base font-extrabold">{draftAction.mode === "assign" ? "Save as draft for staff" : draftAction.mode === "return" ? "Send back to staff" : "Delete this draft?"}</h3>
+              <p className="mt-1 text-sm text-muted">
+                {draftAction.mode === "assign"
+                  ? `They enter the products against your lot of ${Number(bulkHeader.lotWeight || 0).toFixed(3)} g · ${bulkHeader.lotQty} pcs and cannot change it. Rates and payment are not shared — you add them when you record it.`
+                  : draftAction.mode === "return"
+                  ? `${draftAction.draft.assignedToName || draftAction.draft.authorName || "The staff member"} will see your note, fix the rows and send it again.`
+                  : "The rows keyed in it are removed. Nothing was recorded, so stock and supplier dues are not affected."}
+              </p>
+              {draftAction.mode === "assign" && (
+                <div className="mt-3 grid gap-1.5">
+                  <span className="text-xs font-bold">Staff member *</span>
+                  {staffChoices == null ? (
+                    <div className="flex h-11 items-center rounded-xl border border-line px-3 text-sm text-muted">Loading staff…</div>
+                  ) : staffChoices.length === 0 ? (
+                    <div className="rounded-xl border border-danger-line bg-danger-soft/40 px-3 py-2.5 text-sm">No active staff with Inventory access. Grant it in Staff first.</div>
+                  ) : (
+                    <Select value={draftAction.staffId} onValueChange={(v) => setDraftAction((a) => ({ ...a, staffId: v }))}
+                      options={staffChoices.map((x) => ({ value: x.id, label: x.name || x.email }))} placeholder="Select staff…" />
+                  )}
+                </div>
+              )}
+              {draftAction.mode === "return" && (
+                <textarea value={draftAction.note} onChange={(e) => setDraftAction((a) => ({ ...a, note: e.target.value.slice(0, 500) }))}
+                  rows={3} autoFocus placeholder="e.g. Row 4 gross weight does not match the slip"
+                  className="mt-3 w-full resize-none rounded-xl border border-line bg-white p-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft" />
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+              <Button variant="outline" size="sm" disabled={draftBusy} onClick={() => setDraftAction(null)}>Cancel</Button>
+              <Button size="sm" disabled={draftBusy} className={draftAction.mode === "delete" ? "bg-danger text-white hover:bg-danger/90" : "bg-accent hover:bg-accent-strong"} onClick={runDraftAction}>
+                {draftBusy ? "Saving…" : draftAction.mode === "assign" ? "Save for staff" : draftAction.mode === "return" ? "Send back" : "Delete draft"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAddVendor && <VendorForm vendor={null} onClose={() => setShowAddVendor(false)} onSaved={onVendorCreated} />}
     </div>

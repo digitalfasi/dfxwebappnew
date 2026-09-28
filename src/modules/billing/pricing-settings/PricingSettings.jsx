@@ -150,9 +150,9 @@ export default function PricingSettings() {
   };
   const targetInfo = useMemo(() => {
     if (!target || !gold) return null;
-    const floor = r2(gold * (1 + (tunch + running + goldProfit) / 100) * (1 + GST / 100));
+    const floor = r2(gold * (1 + (tunch + running) / 100) * (1 + GST / 100));
     const t = Number(target);
-    if (t < floor) return { error: `Below the lowest profit price ${money(floor)} — the gold profit would not be kept.` };
+    if (t < floor) return { error: `Below break-even ${money(floor)} — that price is a loss.` };
     const needed = r2(((t / (1 + GST / 100)) / gold - 1) * 100 - tunch - running);
     if (needed > 99.99) return { error: "That needs a making charge above 99%." };
     return { note: `Making set to ${fmtPct(needed)} = ${fmtPct(goldProfit)} gold profit + ${fmtPct(needed - goldProfit)} extra.` };
@@ -178,8 +178,8 @@ export default function PricingSettings() {
   const ex = useMemo(() => {
     if (!f || !pct || !gold) return null;
     const rows = [
-      { key: "be", label: "Break-even", note: "Tunch + running cost — earns nothing", p: tunch + running, tone: "text-danger", dot: "bg-danger" },
-      { key: "pf", label: "Lowest profit price", note: "+ gold profit — a discount stops here", p: tunch + running + goldProfit, tone: "text-amber-700", dot: "bg-amber-500" },
+      { key: "be", label: "Break-even", note: "Tunch + running cost — below this is a loss", p: tunch + running, tone: "text-amber-700", dot: "bg-amber-500" },
+      { key: "pf", label: "With gold profit", note: "+ gold profit — profit", p: tunch + running + goldProfit, tone: "text-emerald-700", dot: "bg-emerald-400" },
       { key: "ls", label: "Full price (list)", note: "+ extra — what the counter starts at", p: tunch + running + making, tone: "text-emerald-700", dot: "bg-emerald-500" },
     ];
     return rows.map((r) => {
@@ -236,7 +236,7 @@ export default function PricingSettings() {
                   <Field label="Making value" error={errors.making} hint={linkNote.making || "Before running cost and the piece's Tunch."}>
                     <PctInput value={f.makingValue} onChange={setMaking} error={errors.making} ariaLabel="Making value %" />
                   </Field>
-                  <Field label="Gold profit" error={errors.goldProfit} hint="Always kept — a discount never goes below it.">
+                  <Field label="Gold profit" error={errors.goldProfit} hint="Profit — a discount may give it away down to break-even.">
                     <PctInput value={f.goldProfitBand} onChange={setGoldProfit} error={errors.goldProfit} ariaLabel="Gold profit %" />
                   </Field>
                   <Field label="Extra profit" error={errors.extra} hint={linkNote.extra || "The discountable part."}>
@@ -296,7 +296,7 @@ export default function PricingSettings() {
                       </div>
                     ))}
                   </div>
-                  <p className="mt-2 text-[11px] text-muted">Incl. 3% GST. A discount can go down to the lowest profit price.</p>
+                  <p className="mt-2 text-[11px] text-muted">Incl. 3% GST. Anything above break-even is profit; a discount can go down to break-even.</p>
                   <label className="mt-auto grid gap-1.5 border-t border-line pt-3.5">
                     <span className="text-xs font-bold">Set by full price <span className="font-normal text-muted">— before Tunch</span></span>
                     <div className="relative">

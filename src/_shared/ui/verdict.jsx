@@ -15,7 +15,7 @@ export const VERDICT = {
   // store's running cost. Staff are not shown the bands at all, so a number
   // here could not be checked against anything.
   PROFIT:     { word: "PROFIT",     line: "border-emerald-200 bg-emerald-50",   text: "text-emerald-700", note: "Gold profit intact" },
-  BREAK_EVEN: { word: "BREAK EVEN", line: "border-amber-200 bg-amber-50",       text: "text-amber-700",   note: "Margin being eaten" },
+  BREAK_EVEN: { word: "BREAK EVEN", line: "border-amber-200 bg-amber-50",       text: "text-amber-700",   note: "Costs covered, no profit" },
   LOSS:       { word: "LOSS",       line: "border-danger-line bg-danger-soft",  text: "text-danger",      note: "Costs not recovered" },
 };
 

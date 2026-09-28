@@ -14,6 +14,13 @@ import { badgeText } from "@/modules/inbox/inboxFormat";
  */
 const PREVIEW = 6;
 const POLL_MS = 60_000;
+// Kinds that also pop up beside the screen, not just in the bell: a supplier
+// payment / metal return whose reminder day has come. Each pops once a session.
+const POP_KINDS = new Set(["SUPPLIER_DUE"]);
+const POP_MS = 12_000;
+const POPPED_KEY = "dfx.inbox.popped";
+const readPopped = () => { try { return new Set(JSON.parse(sessionStorage.getItem(POPPED_KEY) || "[]")); } catch { return new Set(); } };
+const savePopped = (set) => { try { sessionStorage.setItem(POPPED_KEY, JSON.stringify([...set].slice(-200))); } catch { /* private mode */ } };
 
 export default function NotificationBell({ onNavigate }) {
   const ref = useRef(null);
@@ -23,16 +30,35 @@ export default function NotificationBell({ onNavigate }) {
   const [items, setItems] = useState([]);
   const [state, setState] = useState("idle"); // idle | loading | ready | error
   const [busy, setBusy] = useState(false);
+  const [popups, setPopups] = useState([]);
+
+  // Unread reminders that have not popped yet this session slide in beside
+  // the screen, and dismiss themselves after a few seconds.
+  const popDue = useCallback(async () => {
+    try {
+      const r = await inboxService.list({ limit: 10, unread: true });
+      const popped = readPopped();
+      const fresh = r.items.filter((i) => POP_KINDS.has(i.kind) && !i.read && !popped.has(i.key)).slice(0, 3);
+      if (!fresh.length) return;
+      fresh.forEach((i) => popped.add(i.key));
+      savePopped(popped);
+      setPopups((list) => [...list, ...fresh.filter((i) => !list.some((x) => x.key === i.key))]);
+      fresh.forEach((i) => setTimeout(() => setPopups((list) => list.filter((x) => x.key !== i.key)), POP_MS));
+    } catch {
+      // A pop-up is a courtesy; the bell still has the item.
+    }
+  }, []);
 
   const refreshCount = useCallback(async () => {
     try {
       const r = await inboxService.unreadCount();
       setCount(r.count);
       setCapped(r.capped);
+      if (r.count > 0) popDue();
     } catch {
       // A failed count must not invent a badge; keep the last known value.
     }
-  }, []);
+  }, [popDue]);
 
   const loadList = useCallback(async () => {
     setState((s) => (s === "ready" ? s : "loading"));
@@ -77,6 +103,7 @@ export default function NotificationBell({ onNavigate }) {
 
   const openItem = async (item) => {
     setOpen(false);
+    setPopups((list) => list.filter((x) => x.key !== item.key));
     if (!item.read) {
       setItems((list) => list.map((i) => (i.key === item.key ? { ...i, read: true } : i)));
       setCount((c) => Math.max(0, c - 1));
@@ -183,6 +210,23 @@ export default function NotificationBell({ onNavigate }) {
               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
             </button>
           )}
+        </div>
+      )}
+
+      {popups.length > 0 && (
+        <div className="fixed bottom-5 right-5 z-[80] grid w-[min(360px,calc(100vw-32px))] gap-2.5" aria-live="polite">
+          {popups.map((item) => (
+            <div key={item.key} className="animate-[fadein_.25s_ease-out] overflow-hidden rounded-2xl border border-danger-line bg-surface shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)]">
+              <div className="flex items-start">
+                <div className="min-w-0 flex-1">
+                  <InboxRow item={item} onOpen={openItem} compact />
+                </div>
+                <button type="button" aria-label="Dismiss" onClick={() => setPopups((list) => list.filter((x) => x.key !== item.key))}
+                  className="m-2 grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted hover:bg-canvas hover:text-ink">✕</button>
+              </div>
+              <div className="h-0.5 origin-left animate-[shrink_12s_linear_forwards] bg-danger/60" />
+            </div>
+          ))}
         </div>
       )}
     </div>

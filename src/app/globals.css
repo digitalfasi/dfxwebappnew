@@ -161,3 +161,14 @@ input[type="number"] {
 /* Desktop rail: each run is 3x the purities, so it travels 3x as far - a
    longer duration keeps the same calm reading pace. */
 .animate-ticker.ticker-slow { animation-duration: 80s !important; }
+
+/* Reminder pop-ups beside the screen (NotificationBell): slide in, and a thin
+   bar that runs down while the card is on screen. */
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes shrink {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}

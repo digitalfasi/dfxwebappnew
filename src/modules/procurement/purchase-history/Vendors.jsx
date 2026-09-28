@@ -82,10 +82,30 @@ function inWindow(dateStr, win) {
   return dt >= win.from && dt <= win.to;
 }
 
+// A METAL purchase owes grams, not rupees (its rupee figures are the stock's
+// reference cost only).
+const isMetal = (p) => p.settleIn === "METAL";
+const metalOwed = (p) => (isMetal(p) ? Math.max(0, Math.round(((p.metalDueGrams || 0) - (p.metalPaidGrams || 0)) * 1000) / 1000) : 0);
+const metalName = (t) => (t === "SILVER" ? "silver" : "gold");
+const g3 = (v) => `${(Number(v) || 0).toFixed(3)} g`;
+// Days to settle (money) / return the metal, from the reminder set at purchase.
+function dueInfo(p) {
+  const open = isMetal(p) ? metalOwed(p) > 0 : p.amountOutstanding > 0.005;
+  if (!open || !p.reminderAt) return null;
+  const day = 86400000;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(p.reminderAt); due.setHours(0, 0, 0, 0);
+  const days = Math.round((due - today) / day);
+  const verb = isMetal(p) ? "Return" : "Pay";
+  if (days > 0) return { text: `${verb} in ${days} day${days === 1 ? "" : "s"}`, tone: days <= 3 ? "text-warn" : "text-muted", date: due };
+  if (days === 0) return { text: `${verb} today`, tone: "text-danger", date: due };
+  return { text: `${-days} day${days === -1 ? "" : "s"} overdue`, tone: "text-danger", date: due };
+}
+
 function rollupByVendor(purchases) {
   const m = new Map();
   for (const p of purchases) {
-    const r = m.get(p.vendorId) || { count: 0, purchases: 0, paid: 0, outstanding: 0, last: null };
+    const r = m.get(p.vendorId) || { count: 0, purchases: 0, paid: 0, outstanding: 0, goldOwed: 0, silverOwed: 0, last: null };
     r.count += 1;
     // The store staff shown for a supplier is whoever entered its latest purchase.
     const at = p.purchaseAt || p.createdAt || p.purchaseDate || "";
@@ -93,6 +113,7 @@ function rollupByVendor(purchases) {
     r.purchases += p.purchaseAmount;
     r.paid += p.amountPaid;
     r.outstanding += p.amountOutstanding;
+    if (isMetal(p)) r[p.metalType === "SILVER" ? "silverOwed" : "goldOwed"] += metalOwed(p);
     m.set(p.vendorId, r);
   }
   return m;
@@ -279,10 +300,14 @@ export default function Vendors() {
                     </td>
                     <td className="px-4 py-3.5 text-right num font-semibold whitespace-nowrap">{money(r.purchases)}</td>
                     <td className="px-4 py-3.5 text-right num text-emerald-700 whitespace-nowrap">{money(r.paid)}</td>
-                    <td className="px-4 py-3.5 text-right num font-bold text-accent whitespace-nowrap">{money(r.outstanding)}</td>
+                    <td className="px-4 py-3.5 text-right num font-bold text-accent whitespace-nowrap">
+                      {money(r.outstanding)}
+                      {r.goldOwed > 0.0005 && <div className="text-[11px] font-bold text-accent-strong">+ {g3(r.goldOwed)} gold</div>}
+                      {r.silverOwed > 0.0005 && <div className="text-[11px] font-bold text-muted">+ {g3(r.silverOwed)} silver</div>}
+                    </td>
                     <td className="px-4 py-3.5 pr-6">
                       <div className="flex justify-end">
-                        {r.outstanding > 0 ? (
+                        {r.outstanding > 0 || r.goldOwed > 0.0005 || r.silverOwed > 0.0005 ? (
                           <Button size="sm" variant="outline" onClick={() => { setDetailTab("purchases"); setDetailVendor(v); }}>Clear Outstanding</Button>
                         ) : (
                           <Button size="sm" variant="outline" disabled title="Nothing outstanding">Clear Outstanding</Button>
@@ -401,7 +426,7 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
-      <div className="relative w-full max-w-[900px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
+      <div className="relative w-full max-w-[1180px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
         <div className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
           <div>
             <div className="flex items-center gap-2">
@@ -490,55 +515,156 @@ function VendorDetail({ vendor, initialTab = "overview", onClose, onEdit, onReco
 // tab is outstanding — the column is redundant there) and frees that width for
 // the remaining columns, so Outstanding/Status no longer collide.
 function PurchaseTable({ rows, loading, onRecordPayment, emptyHint, hideOutstanding }) {
-  const cols = hideOutstanding ? 7 : 8;
+  const cols = hideOutstanding ? 6 : 7;
+  // Fixed columns: every figure has its own lane, long text wraps inside its
+  // cell instead of running into the next one, and a narrow screen scrolls
+  // sideways rather than squeezing the columns together.
+  const th = "px-3 py-3 text-[11px] font-bold uppercase tracking-[0.06em] text-muted";
+  const action = (p) => (isMetal(p)
+    ? metalOwed(p) > 0 && <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => onRecordPayment(p)}>Give Metal</Button>
+    : p.amountOutstanding > 0 && <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => onRecordPayment(p)}>Record Payment</Button>);
   return (
-    <div className="overflow-x-auto rounded-xl border border-line">
-      <table className={`w-full ${hideOutstanding ? "min-w-[700px]" : "min-w-[820px]"} border-collapse text-sm`}>
+    <>
+    {/* Phones: one card per purchase, every figure labelled - no sideways scroll. */}
+    <div className="grid gap-3 md:hidden">
+      {loading && <div className="rounded-xl border border-line px-4 py-8 text-center font-bold text-muted">Loading…</div>}
+      {!loading && rows.length === 0 && <div className="rounded-xl border border-line px-4 py-8 text-center text-muted">{emptyHint}</div>}
+      {!loading && rows.map((p) => {
+        const metal = isMetal(p);
+        const unit = metalName(p.metalType);
+        const due = dueInfo(p);
+        const cell = (label, value, tone = "", sub = "") => (
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-[0.06em] text-muted">{label}</div>
+            <div className={`num mt-0.5 font-bold ${tone}`}>{value}</div>
+            {sub && <div className="text-[11px] text-muted">{sub}</div>}
+          </div>
+        );
+        return (
+          <div key={p.id} className="rounded-xl border border-line p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-bold">{fmtDate(p.purchaseDate)}</div>
+                <div className={`break-words text-xs ${p.invoiceRef ? "font-semibold" : "text-muted"}`}>{p.invoiceRef || "No invoice no."}</div>
+              </div>
+              <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                <Badge tone={STATUS_TONE[p.paymentStatus] || "neutral"}>{STATUS_LABEL[p.paymentStatus] || p.paymentStatus}</Badge>
+                {metal && <span className="rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.06em] text-accent-strong">{unit}</span>}
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line-soft pt-3 text-sm">
+              {cell("Weight", p.netWeightGrams != null ? `${grams(p.netWeightGrams)}${p.purity ? ` ${p.purity}` : ""}` : `${grams(p.weightGrams)} @ 24K`, "", p.netWeightGrams != null ? `${grams(p.weightGrams)} @ 24K` : "")}
+              {cell("Purchase", money(p.purchaseAmount), "", [p.gstApplied ? `incl. GST ${money(p.gstAmount)}` : "", metal ? `Owed ${g3(p.metalDueGrams)} ${unit}` : ""].filter(Boolean).join(" · "))}
+              {cell("Paid", metal ? `${g3(p.metalPaidGrams)}` : money(p.amountPaid), "text-emerald-700", metal ? `${unit} given` : "")}
+              {!hideOutstanding && cell("Outstanding", metal ? `${g3(metalOwed(p))}` : money(p.amountOutstanding), "text-accent", metal ? `${unit} to give` : "")}
+            </div>
+            {(p.deliveredBy || p.enteredByName) && (
+              <div className="mt-3 text-[11px] leading-snug text-muted">
+                {p.deliveredBy && <div>Delivered by <span className="font-semibold text-ink-soft">{p.deliveredBy}</span>{p.deliveredByPhone ? ` · +91 ${p.deliveredByPhone}` : ""}</div>}
+                {p.enteredByName && <div>Entered by {p.enteredByName}</div>}
+              </div>
+            )}
+            {(due || action(p)) && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line-soft pt-3">
+                {due ? <span className={`text-xs font-bold ${due.tone}`}>{due.text}</span> : <span />}
+                {action(p)}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+    <div className="hidden overflow-x-auto rounded-xl border border-line md:block">
+      <table className={`w-full table-fixed border-collapse text-sm ${hideOutstanding ? "min-w-[880px]" : "min-w-[1000px]"}`}>
+        <colgroup>
+          <col className="w-[110px]" /><col className="w-[190px]" /><col className="w-[112px]" />
+          <col className="w-[190px]" /><col className="w-[112px]" />{!hideOutstanding && <col className="w-[122px]" />}
+          <col className="w-[164px]" />
+        </colgroup>
         <thead>
-          <tr className="whitespace-nowrap bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-            <th className="px-4 py-2.5">Date</th><th className="py-2.5">Invoice</th><th className="py-2.5 text-right" title="The metal received, and beneath it the pure gold the payment was calculated on (net x purity/24)">Weight</th><th className="py-2.5 text-right">Purchase</th><th className="py-2.5 text-right">Paid</th>{!hideOutstanding && <th className="py-2.5 text-right">Outstanding</th>}<th className="py-2.5 pl-6">Status</th><th className="py-2.5 pr-4"></th>
+          <tr className="border-b border-line bg-canvas/60 text-left">
+            <th className={`${th} pl-4`}>Date</th>
+            <th className={th}>Invoice</th>
+            <th className={`${th} text-right`} title="The metal received, and beneath it the pure gold the payment was calculated on (net x purity/24)">Weight</th>
+            <th className={`${th} text-right`}>Purchase</th>
+            <th className={`${th} text-right`}>Paid</th>
+            {!hideOutstanding && <th className={`${th} text-right`}>Outstanding</th>}
+            <th className={`${th} pr-4`}>Status</th>
           </tr>
         </thead>
         <tbody>
           {loading && <tr><td colSpan={cols} className="px-4 py-10 text-center text-muted font-bold">Loading…</td></tr>}
-          {!loading && rows.map((p) => (
-            <tr key={p.id} className="border-t border-line-soft align-middle">
-              <td className="px-4 py-2.5 whitespace-nowrap">{fmtDate(p.purchaseDate)}</td>
-              <td className="py-2.5 text-xs">
-                {p.invoiceRef || "Not provided"}
-                {p.deliveredBy && <div className="text-[11px] text-muted">Delivered by {p.deliveredBy}{p.deliveredByPhone ? ` · +91 ${p.deliveredByPhone}` : ""}</div>}
-                {p.enteredByName && <div className="text-[11px] text-muted">Entered by {p.enteredByName}</div>}
-              </td>
-              {/* Both figures, because they answer different questions: what
-                  came into the safe, and what the vendor was paid for. A row
-                  written before net weight was recorded shows the equivalent
-                  alone rather than implying the two are the same. */}
-              <td className="py-2.5 text-right whitespace-nowrap">
-                {p.netWeightGrams != null ? (
-                  <>
-                    <div className="num font-semibold" title="Metal received">
-                      {grams(p.netWeightGrams)}{p.purity ? <span className="ml-1 text-[11px] font-normal text-muted">{p.purity}</span> : null}
+          {!loading && rows.map((p) => {
+            const metal = isMetal(p);
+            const unit = metalName(p.metalType);
+            const due = dueInfo(p);
+            return (
+              <tr key={p.id} className="border-t border-line-soft align-top transition-colors hover:bg-canvas/40">
+                <td className="py-3.5 pl-4 pr-3 font-semibold whitespace-nowrap">{fmtDate(p.purchaseDate)}</td>
+                <td className="px-3 py-3.5">
+                  <div className={`break-words text-[13px] font-semibold ${p.invoiceRef ? "" : "text-muted"}`}>{p.invoiceRef || "No invoice no."}</div>
+                  {p.deliveredBy && (
+                    <div className="mt-1 break-words text-[11px] leading-snug text-muted">
+                      Delivered by <span className="font-semibold text-ink-soft">{p.deliveredBy}</span>
+                      {p.deliveredByPhone && <span className="whitespace-nowrap"> · +91 {p.deliveredByPhone}</span>}
                     </div>
-                    <div className="num text-[11px] text-muted" title="Pure gold the payment was calculated on">{grams(p.weightGrams)} @ 24K</div>
-                  </>
-                ) : (
-                  <div className="num" title="Pure gold the payment was calculated on — this purchase predates the received-weight column">{grams(p.weightGrams)} @ 24K</div>
+                  )}
+                  {p.enteredByName && <div className="mt-0.5 break-words text-[11px] leading-snug text-muted">Entered by {p.enteredByName}</div>}
+                </td>
+                {/* Both figures, because they answer different questions: what
+                    came into the safe, and what the vendor was paid for. A row
+                    written before net weight was recorded shows the equivalent
+                    alone rather than implying the two are the same. */}
+                <td className="px-3 py-3.5 text-right">
+                  {p.netWeightGrams != null ? (
+                    <>
+                      <div className="num font-semibold whitespace-nowrap" title="Metal received">
+                        {grams(p.netWeightGrams)}{p.purity ? <span className="ml-1 text-[11px] font-normal text-muted">{p.purity}</span> : null}
+                      </div>
+                      <div className="num mt-0.5 text-[11px] text-muted whitespace-nowrap" title="Pure gold the payment was calculated on">{grams(p.weightGrams)} @ 24K</div>
+                    </>
+                  ) : (
+                    <div className="num whitespace-nowrap" title="Pure gold the payment was calculated on — this purchase predates the received-weight column">{grams(p.weightGrams)} @ 24K</div>
+                  )}
+                </td>
+                <td className="px-3 py-3.5 text-right">
+                  <div className="num font-bold whitespace-nowrap">{money(p.purchaseAmount)}</div>
+                  {p.gstApplied && <div className="num mt-0.5 text-[11px] text-muted whitespace-nowrap">incl. GST {p.gstPercent}% · {money(p.gstAmount)}</div>}
+                  {metal && (
+                    <div className="num mt-1 text-[11px] font-bold leading-snug text-accent-strong">
+                      <span className="whitespace-nowrap">Owed: {g3(p.metalDueGrams)} {unit}</span>
+                      {p.metalType === "SILVER" && p.metalRatePerGram ? <span className="block whitespace-nowrap font-semibold text-muted">at {money(p.metalRatePerGram)}/g</span> : null}
+                    </div>
+                  )}
+                </td>
+                <td className="px-3 py-3.5 text-right text-emerald-700">
+                  {metal ? (
+                    <><div className="num font-semibold whitespace-nowrap">{g3(p.metalPaidGrams)}</div><div className="text-[11px] text-muted">{unit} given</div></>
+                  ) : <div className="num font-semibold whitespace-nowrap">{money(p.amountPaid)}</div>}
+                </td>
+                {!hideOutstanding && (
+                  <td className="px-3 py-3.5 text-right text-accent">
+                    {metal ? (
+                      <><div className="num font-bold whitespace-nowrap">{g3(metalOwed(p))}</div><div className="text-[11px] text-muted">{unit} to give</div></>
+                    ) : <div className="num font-bold whitespace-nowrap">{money(p.amountOutstanding)}</div>}
+                  </td>
                 )}
-              </td>
-              <td className="py-2.5 text-right num font-semibold whitespace-nowrap">
-                {money(p.purchaseAmount)}
-                {p.gstApplied && <div className="text-[11px] font-normal text-muted">incl. GST {p.gstPercent}% {money(p.gstAmount)}</div>}
-              </td>
-              <td className="py-2.5 text-right num text-emerald-700 whitespace-nowrap">{money(p.amountPaid)}</td>
-              {!hideOutstanding && <td className="py-2.5 text-right num font-bold text-accent whitespace-nowrap">{money(p.amountOutstanding)}</td>}
-              <td className="py-2.5 pl-6"><Badge tone={STATUS_TONE[p.paymentStatus] || "neutral"}>{STATUS_LABEL[p.paymentStatus] || p.paymentStatus}</Badge></td>
-              <td className="py-2.5 pr-4 text-right">{p.amountOutstanding > 0 && <Button size="sm" variant="outline" onClick={() => onRecordPayment(p)}>Record Payment</Button>}</td>
-            </tr>
-          ))}
+                <td className="py-3.5 pl-3 pr-4">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge tone={STATUS_TONE[p.paymentStatus] || "neutral"}>{STATUS_LABEL[p.paymentStatus] || p.paymentStatus}</Badge>
+                    {metal && <span className="whitespace-nowrap rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.06em] text-accent-strong">{unit}</span>}
+                  </div>
+                  {due && <div className={`mt-1.5 text-[11px] font-bold leading-snug ${due.tone}`} title={`Reminder date ${due.date.toLocaleDateString("en-IN")}`}>{due.text}</div>}
+                  {action(p) && <div className="mt-2">{action(p)}</div>}
+                </td>
+              </tr>
+            );
+          })}
           {!loading && rows.length === 0 && <tr><td colSpan={cols} className="px-4 py-10 text-center text-muted">{emptyHint}</td></tr>}
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
@@ -733,7 +859,67 @@ export function VendorForm({ vendor, onClose, onSaved }) {
 /* ------------------------------------------------------------------ */
 /* Record payment against an outstanding purchase                     */
 /* ------------------------------------------------------------------ */
-function RecordPayment({ purchase, onClose, onSaved }) {
+function RecordPayment(props) {
+  return isMetal(props.purchase) ? <RecordMetal {...props} /> : <RecordMoney {...props} />;
+}
+
+// Metal handed back to the supplier against a METAL purchase, in grams.
+function RecordMetal({ purchase, onClose, onSaved }) {
+  const owed = metalOwed(purchase);
+  const [f, setF] = useState({ grams: owed.toFixed(3), paymentDate: todayISO(), remarks: "" });
+  const [saving, setSaving] = useState(false);
+  const gramsNum = Number(f.grams) || 0;
+  const over = gramsNum > owed + 0.0005;
+  const valid = gramsNum > 0 && !over;
+  const name = metalName(purchase.metalType);
+  const submit = async () => {
+    if (!valid) { toast(over ? `Only ${g3(owed)} is owed` : "Enter the grams given"); return; }
+    setSaving(true);
+    try {
+      await billingService.recordVendorMetalPayment(purchase.id, { grams: gramsNum, paymentDate: f.paymentDate, remarks: f.remarks });
+      toast(`${g3(gramsNum)} ${name} recorded`);
+      await onSaved();
+    } catch (err) { toast(err?.message || "Could not record the metal"); }
+    finally { setSaving(false); }
+  };
+  const due = dueInfo(purchase);
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
+      <div className="relative flex max-h-[92vh] w-full max-w-[520px] flex-col rounded-2xl border border-line bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-line px-6 py-4"><h3 className="text-base font-extrabold">Give {name === "gold" ? "Gold" : "Silver"} to Supplier</h3><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas">✕</button></div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+            <div className="flex items-center justify-between text-xs"><span className="font-bold text-muted">{purchase.vendorName}{purchase.invoiceRef ? ` · ${purchase.invoiceRef}` : ""}</span>{due && <span className={`font-bold ${due.tone}`}>{due.text}</span>}</div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <MiniStat label={`Owed (${name})`} value={g3(purchase.metalDueGrams)} />
+              <MiniStat label="Given" value={g3(purchase.metalPaidGrams)} tone="text-emerald-700" />
+              <MiniStat label="To return" value={g3(owed)} tone="text-accent" />
+            </div>
+            <div className="mt-2 text-[11px] text-muted">{money(purchase.purchaseAmount)} at {money(purchase.metalRatePerGram)}/g - the rupee figure is reference only.</div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5"><span className="text-xs font-bold">{name === "gold" ? "Gold" : "Silver"} given (g) *</span>
+              <Input inputMode="decimal" value={f.grams} onChange={(e) => setF({ ...f, grams: e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1") })} error={over ? "More than owed" : undefined} className="text-right font-mono" />
+              {over && <span className="text-[11px] font-semibold text-danger">Cannot exceed {g3(owed)}</span>}
+            </label>
+            <label className="grid gap-1.5"><span className="text-xs font-bold">Date *</span><Input type="date" value={f.paymentDate} onChange={(e) => setF({ ...f, paymentDate: e.target.value })} /></label>
+            <label className="grid gap-1.5 sm:col-span-2"><span className="text-xs font-bold">Remarks</span><Input value={f.remarks} onChange={(e) => setF({ ...f, remarks: e.target.value })} placeholder="e.g. 24K bar, 2 pieces" /></label>
+          </div>
+          <div className="rounded-lg border border-dashed border-line bg-canvas/40 p-3">
+            <PreviewRow label="Still to return after this" value={g3(Math.max(0, owed - gramsNum))} strong />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={saving || !valid} className="bg-accent hover:bg-accent-strong" onClick={submit}>{saving ? "Recording…" : `Record ${name === "gold" ? "Gold" : "Silver"} Given`}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecordMoney({ purchase, onClose, onSaved }) {
   const [f, setF] = useState({ amount: String(purchase.amountOutstanding || ""), payMode: "OFFLINE", paymentDate: todayISO(), referenceNo: "", remarks: "" });
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });

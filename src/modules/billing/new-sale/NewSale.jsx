@@ -140,6 +140,9 @@ export default function NewSale() {
   // the admin's own number behind their back - they type 8,000 and the field
   // answers 7,996.80. The machine advises; it does not overrule.
   const [discountText, setDiscountText] = useState(null);
+  // Exchange value (owner 2026-09-28): what the customer's old gold is worth.
+  // It comes off what they pay now; the bill's value and GST do not change.
+  const [exchangeText, setExchangeText] = useState("");
   // GST is compulsory on every bill - there is no off (owner 2026-09-26).
   const [gst, setGst] = useState(true);
   // Profit / cost figures stay hidden until the admin asks for them, so a
@@ -324,10 +327,13 @@ export default function NewSale() {
     : minSafe != null
       ? Math.max(0, round2(askingPretax - toPretax(minSafe)))
       : bands
-        ? Math.max(0, pctToRupees(listPct - profitFloorPct))
+        ? Math.max(0, pctToRupees(listPct - breakEvenPct))
         : null;
+  // Past the ceiling the bill eats the gold profit (BREAK_EVEN) or loses
+  // money (LOSS). Owner rule 2026-09-28: that is shown, never blocked.
   const discountExceedsProfit = discountCeiling != null && concession > discountCeiling + 1e-6;
-  const ceilingReason = "beyond that the bill starts eating the gold profit";
+  const discountBlocks = false;
+  const ceilingReason = "beyond that the bill goes below break-even";
 
   /** The three setters. Each writes the ONE number and releases the other two
    *  boxes back to being derived, so no box can hold a figure typed against an
@@ -376,12 +382,11 @@ export default function NewSale() {
     product?.profitLabel
     || (impliedMakingPct == null
           ? "BREAK_EVEN"
-          // Same inclusive rule the backend applies: on the profit floor is a
-          // profit, on the break-even floor is a loss, between them is the
-          // band that is being eaten.
-          : impliedMakingPct >= profitFloorPct - 0.005
+          // Same rule the backend applies: above break-even (tunch + running)
+          // is profit, exactly on it is break-even, below it is a loss.
+          : impliedMakingPct > breakEvenPct + 0.005
             ? "PROFIT"
-            : impliedMakingPct <= breakEvenPct + 0.005
+            : impliedMakingPct < breakEvenPct - 0.005
               ? "LOSS"
               : "BREAK_EVEN");
 
@@ -602,7 +607,11 @@ export default function NewSale() {
   // and GST already stripped from the scheme-covered slice). The scheme credit
   // then settles that covered slice, so the customer's cash balance is the rest.
   const billTotal = product ? product.finalAmount : 0;
-  const remaining = Math.max(0, Number((billTotal - redeemTotal).toFixed(2)));
+  // Not with a scheme on the same bill: the scheme re-prices the invoice after
+  // the OTP, so the two settlements are kept apart.
+  const exchangeValue = schemeSelected ? 0 : round2(num(exchangeText));
+  const exchangeInvalid = exchangeValue > billTotal + 0.005;
+  const remaining = Math.max(0, Number((billTotal - redeemTotal - exchangeValue).toFixed(2)));
 
   const partialNum = num(partialAmount);
   const partialInvalid = payStatus === "PARTIAL" && !(partialNum > 0 && partialNum < remaining);
@@ -674,6 +683,7 @@ export default function NewSale() {
       // redemption - but a discount that could not survive that carve is now
       // refused here, at the counter, instead of at the OTP step.
       schemeValue: schemeSelected ? schemeRedeemRequested : undefined,
+      exchangeValue: exchangeValue > 0 ? exchangeValue : undefined,
     };
   };
 
@@ -737,13 +747,13 @@ export default function NewSale() {
   const belowCostIncomplete = allowBelowCost && belowCostReason.trim().length < 3;
 
   const canCreate =
-    !!product && !creating && !requoting && !discountExceedsProfit &&
+    !!product && !creating && !requoting && !discountBlocks &&
     customerIdentified && paymentChosen && !partialInvalid && !anyLineOverBalance &&
-    !redeemOverGold && !belowCostIncomplete && !rateOutOfBand;
+    !redeemOverGold && !rateOutOfBand && !exchangeInvalid;
 
   const resetAll = () => {
     setProduct(null); setProductCode(""); setCode("");
-    setRate(""); setMakingVal(""); setWastageVal(""); setDiscountText(null); setGst(true); setShowProfit(false);
+    setRate(""); setMakingVal(""); setWastageVal(""); setDiscountText(null); setExchangeText(""); setGst(true); setShowProfit(false);
     setAllowBelowCost(false); setBelowCostReason(""); setPublishedRate(null);
     setPayMethod(""); setPayStatus(""); setPartialAmount(""); setPayRef("");
     setSaleMode(null); setPriceText(null); setQuoteError("");
@@ -755,11 +765,12 @@ export default function NewSale() {
   const handleCreateBill = async () => {
     if (!canCreate || !product) {
       if (!customerIdentified) toast("Select a customer or enter a walk-in name");
-      else if (discountExceedsProfit) toast("Discount exceeds this bill’s making charge");
+      else if (discountBlocks) toast("Discount exceeds this bill’s making charge");
       else if (anyLineOverBalance) toast("A redemption exceeds its scheme balance");
       else if (redeemOverGold) toast(`Scheme redemption can't exceed the item's gold value (${money(goldValue)})`);
       else if (!paymentChosen) toast("Choose the payment method and status before billing");
       else if (partialInvalid) toast("Partial amount must be greater than 0 and less than the amount remaining");
+      else if (exchangeInvalid) toast(`Exchange value can't be more than the bill total (${money(billTotal)})`);
       return;
     }
     setCreating(true);
@@ -823,7 +834,7 @@ export default function NewSale() {
 
   const handleQuotation = async () => {
     if (!product || !customerIdentified) { toast("Load a product and identify the customer first"); return; }
-    if (discountExceedsProfit) { toast("Discount exceeds this bill’s making charge"); return; }
+
     try {
       const schemePreview = {};
       for (const l of redeemLines) schemePreview[l.enrollmentId] = l.amount;
@@ -1608,12 +1619,12 @@ export default function NewSale() {
                               counter needs the decision, not the derivation. */}
                           {bands
                             ? billVerdict === "LOSS"
-                              ? `At ${round2(impliedMakingPct)}% this bill loses money — ${round2(breakEvenPct)}% only covers costs.`
+                              ? `At ${round2(impliedMakingPct)}% this bill loses money — break-even is ${round2(breakEvenPct)}% (tunch + running cost).`
                               : billVerdict === "BREAK_EVEN"
-                                ? `At ${round2(impliedMakingPct)}% the gold profit is being eaten — ${round2(profitFloorPct)}% keeps it whole.`
-                                : `At ${round2(impliedMakingPct)}% the gold profit is intact.`
+                                ? `At ${round2(impliedMakingPct)}% the bill only covers tunch + running cost — no profit.`
+                                : `At ${round2(impliedMakingPct)}% the bill is in profit — ${round2(impliedMakingPct - breakEvenPct)}% above break-even.`
                             : billVerdict === "LOSS" ? "This bill loses money."
-                              : billVerdict === "BREAK_EVEN" ? "Costs recovered, margin being eaten."
+                              : billVerdict === "BREAK_EVEN" ? "Costs recovered, no profit."
                               : "In profit."}
                         </span>
                       )}
@@ -1637,7 +1648,7 @@ export default function NewSale() {
                         type="number" step="0.01" min="0"
                         value={discountText != null ? discountText : (concession > 0 ? String(concession) : "")}
                         onChange={(e) => onDiscountInput(e.target.value)}
-                        error={discountExceedsProfit ? "Exceeds making charge" : undefined}
+
                         placeholder="0" />
                       {concession > 0 && (
                         <span className="text-[11px] text-muted">
@@ -1647,14 +1658,33 @@ export default function NewSale() {
                         </span>
                       )}
                       {discountCeiling != null && (showProfit || discountExceedsProfit) ? (
-                        <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-danger" : "text-muted"}`}>
+                        <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-amber-700" : "text-muted"}`}>
                           {discountExceedsProfit
-                            ? `Max discount ${money(discountCeiling)} — ${ceilingReason}.`
+                            ? `Beyond ${money(discountCeiling)} this bill sells below break-even (LOSS). You can still bill it.`
                             : schemeSelected
-                              ? `Up to ${money(discountCeiling)} — the negotiable extra on the grams the scheme has not covered. That takes ${money(round2(discountCeiling * taxFactor))} off the bill, with the GST no longer due on it.`
-                              : `Up to ${money(discountCeiling)} — the negotiable extra on this piece. That takes ${money(round2(discountCeiling * taxFactor))} off the bill, with the GST no longer due on it. Past it the gold profit starts going.`}
+                              ? `Up to ${money(discountCeiling)} — the profit above break-even on the grams the scheme has not covered. That takes ${money(round2(discountCeiling * taxFactor))} off the bill, with the GST no longer due on it.`
+                              : `Up to ${money(discountCeiling)} — the profit above break-even on this piece. That takes ${money(round2(discountCeiling * taxFactor))} off the bill, with the GST no longer due on it. Past it the bill is a loss.`}
                         </span>
                       ) : <span className="text-[11px] text-muted">A discount is the making charge coming down, and nothing else.</span>}
+                    </label>
+                    <label className="grid gap-1.5 sm:col-span-2">
+                      <span className="text-xs font-bold">Exchange Value (₹) <span className="font-normal text-muted">— the customer&apos;s old gold</span></span>
+                      <Input
+                        type="number" step="0.01" min="0" inputMode="decimal"
+                        value={exchangeText}
+                        onChange={(e) => setExchangeText(e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 12))}
+                        disabled={schemeSelected}
+                        error={exchangeInvalid ? "More than the bill total" : undefined}
+                        placeholder="0" />
+                      <span className={`text-[11px] ${exchangeInvalid ? "font-semibold text-danger" : "text-muted"}`}>
+                        {schemeSelected
+                          ? "Not available on a scheme bill — the scheme settles this bill."
+                          : exchangeInvalid
+                            ? `Can't be more than the bill total of ${money(billTotal)}.`
+                            : exchangeValue > 0
+                              ? `Taken off what the customer pays: ${money(billTotal)} − ${money(exchangeValue)} = ${money(round2(billTotal - exchangeValue))}. The bill value and GST stay the same.`
+                              : "Comes off what the customer pays. The bill value, GST and profit stay the same."}
+                      </span>
                     </label>
                   </div>
                 </Card>
@@ -1861,7 +1891,17 @@ export default function NewSale() {
                 })() : (
                   <>
                     <Row label={goldValueLabel} value={money(goldValueShown)} />
-                    <Row label={`Making Charge${chargePct(product.makingChargeType, makingVal || product.makingChargeValue) ? ` ${chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}` : ""}`} value={money(product.makingChargeAmount)} />
+                    {/* A discount is given as a lower making charge. The bill
+                        states it the way the invoice does: making at the list
+                        rate, then the discount taken off it. */}
+                    {concession > 0.004 ? (
+                      <>
+                        <Row label={`Making Charge ${round2(listPct)}%`} value={money(round2((product.makingChargeAmount || 0) + concession))} />
+                        <Row label="Discount" value={`− ${money(concession)}`} tone="text-emerald-700" />
+                      </>
+                    ) : (
+                      <Row label={`Making Charge${chargePct(product.makingChargeType, makingVal || product.makingChargeValue) ? ` ${chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}` : ""}`} value={money(product.makingChargeAmount)} />
+                    )}
                     <Row label={`Wastage${chargePct(product.wastageType, wastageVal || product.wastageValue) ? ` ${chargePct(product.wastageType, wastageVal || product.wastageValue)}` : ""}`} value={money(product.wastageAmount)} />
                     {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
                     {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
@@ -1878,6 +1918,12 @@ export default function NewSale() {
                     )}
                     <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
                     <BillTotalBand label="Bill Total" value={money(billTotal)} />
+                    {exchangeValue > 0 && !exchangeInvalid && (
+                      <>
+                        <Row label="Less: Exchange Value" value={`− ${money(exchangeValue)}`} tone="text-emerald-700" divider />
+                        <Row label="Amount to Pay" value={money(round2(billTotal - exchangeValue))} strong />
+                      </>
+                    )}
                     {/* Mirrors the Payment card — see the note in the scheme
                         layout for why nothing shows until it is chosen. */}
                     {paymentChosen ? (
@@ -1911,8 +1957,8 @@ export default function NewSale() {
                     </div>
                     <div className="mt-2 text-[10px] leading-snug text-emerald-800/80">
                       {discountCeiling != null && discountCeiling > 0
-                        ? <>Type up to <b>{money(discountCeiling)}</b> in Discount &mdash; that is the lowest price that still keeps the gold profit whole. The bill falls by {money(round2(discountCeiling * taxFactor))}: the discount plus the {product.taxRatePercent || 0}% GST no longer due on it.</>
-                        : <>The lowest price that still keeps the gold profit whole.</>}
+                        ? <>Type up to <b>{money(discountCeiling)}</b> in Discount &mdash; that is the lowest price before the bill goes below break-even. The bill falls by {money(round2(discountCeiling * taxFactor))}: the discount plus the {product.taxRatePercent || 0}% GST no longer due on it.</>
+                        : <>The lowest price before the bill goes below break-even.</>}
                     </div>
                     {product.safePrice.message && <div className={`mt-2 text-[11px] ${product.safePrice.isLoss ? "font-semibold text-danger" : "text-emerald-800"}`}>{product.safePrice.message}</div>}
                   </div>
@@ -1926,13 +1972,13 @@ export default function NewSale() {
                   it can be withdrawn). Selling under cost is legitimate —
                   clearance, damaged stock — but it is recorded against a name:
                   the sale carries the reason into its own audit row. */}
-              {(product.safePrice?.isLoss || allowBelowCost) && !canApproveBelowCost && (
+              {product.safePrice?.isLoss && (
                 <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50/70 p-3.5 text-[11px] leading-snug text-amber-900">
-                  This price is below what the piece cost. Only an Admin can approve a below-cost sale — ask an Admin to price this bill.
+                  <b>This bill sells at a loss.</b> It can still be created — the verdict is recorded on the sale.
                 </div>
               )}
 
-              {(product.safePrice?.isLoss || allowBelowCost) && canApproveBelowCost && (
+              {false && (product.safePrice?.isLoss || allowBelowCost) && canApproveBelowCost && (
                 <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50/70 p-3.5">
                   <label className="flex items-start gap-2">
                     <input
@@ -1973,7 +2019,7 @@ export default function NewSale() {
                   {!customerIdentified ? "Identify the buyer to enable billing."
                     : !paymentChosen ? "Select the payment method and status to enable billing."
                     : partialInvalid ? "Enter a valid part payment to enable billing."
-                    : discountExceedsProfit ? "Reduce the discount to enable billing."
+                    : discountBlocks ? "Reduce the discount to enable billing."
                     : redeemOverGold ? "Reduce the scheme redemption to enable billing."
                     : belowCostIncomplete ? "Enter the reason for selling below cost to enable billing."
                     : rateOutOfBand ? "Bring the sale rate back inside the allowed range to enable billing."

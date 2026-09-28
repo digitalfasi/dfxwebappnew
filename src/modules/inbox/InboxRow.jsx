@@ -7,6 +7,12 @@ const KIND = {
   APP_PAYMENT: { tone: "bg-emerald-50 text-emerald-700", d: <><path d="M6 4h12M6 9h12M13 20 6 13h3a5 5 0 0 0 0-10" /></> },
   SUPPORT_TICKET: { tone: "bg-warn-soft text-warn", d: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></> },
   SUPPORT_REPLY: { tone: "bg-warn-soft text-warn", d: <><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 5 5v6" /></> },
+  // A supplier credit / metal return whose reminder date has come.
+  SUPPLIER_DUE: { tone: "bg-danger-soft text-danger", d: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M9 2h6" /></> },
+  // Staff sent a bulk purchase draft for the Admin to price and record.
+  // An Admin handed this staff member a purchase draft, or sent one back.
+  DRAFT_FOR_YOU: { tone: "bg-amber-100 text-amber-800", d: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3" /></> },
+  PURCHASE_DRAFT: { tone: "bg-accent-soft text-accent-strong", d: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h4" /></> },
 };
 
 export default function InboxRow({ item, onOpen, compact = false }) {

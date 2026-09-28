@@ -32,11 +32,22 @@ export const PURITY_FINENESS = {
   "9K": 375,
 };
 
-// "22K" -> "22K – 916". An unknown value (old stock saved under a purity that
+// The same purity as the trade says it, in percent (18K = 75%, 22K = 91.6%).
+// This is what the screens show; Arrival Purity and Tunch are typed against it.
+export const PURITY_PERCENT = {
+  "24K": 99.9,
+  "22K": 91.6,
+  "20K": 83.3,
+  "18K": 75,
+  "14K": 58.5,
+  "9K": 37.5,
+};
+
+// "22K" -> "22K – 91.6%". An unknown value (old stock saved under a purity that
 // is no longer offered) passes through unchanged rather than being hidden.
 export function purityLabel(value) {
-  const fineness = PURITY_FINENESS[value];
-  return fineness ? `${value} – ${fineness}` : String(value ?? "");
+  const pct = PURITY_PERCENT[value];
+  return pct != null ? `${value} – ${pct}%` : String(value ?? "");
 }
 
 // Ready-made options for <Select>, which normalizes {value,label} pairs.
