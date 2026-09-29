@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/_shared/AuthContext";
 import DfxLogo from "@/_shared/DfxLogo";
+import TrialSignup from "@/_shared/TrialSignup";
 
 /**
  * Minimum auth boundary for the new UI. Renders children only when a session
@@ -34,6 +35,16 @@ export default function AuthGate({ children }) {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // "#/register" opens the free-trial sign-up, so the link can be shared.
+  const [signup, setSignup] = useState(false);
+  useEffect(() => {
+    const sync = () => setSignup(window.location.hash.startsWith("#/register"));
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+  const openSignup = () => { window.location.hash = "/register"; };
+  const closeSignup = () => { window.location.hash = "/dashboard"; };
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -61,6 +72,7 @@ export default function AuthGate({ children }) {
   }
 
   if (isAuthenticated) return children;
+  if (signup) return <TrialSignup onBack={closeSignup} />;
 
   const fieldBase =
     "w-full rounded-xl border border-line bg-white/70 py-3 pl-11 text-[0.9rem] text-ink outline-none transition-all duration-300 placeholder:text-faint/80 hover:border-accent/50 hover:bg-white/90 focus:-translate-y-px focus:border-accent focus:bg-white focus:shadow-md focus:shadow-accent/10 focus:ring-4 focus:ring-accent/15";
@@ -277,6 +289,17 @@ export default function AuthGate({ children }) {
                   )}
                 </button>
               </form>
+
+            <div className="dfx-step mt-5 rounded-xl border border-accent-line bg-accent-soft/60 px-4 py-3 text-center [animation-delay:540ms]">
+              <p className="text-[0.8rem] text-ink/75">New jewellery store on DFX?</p>
+              <button type="button" onClick={openSignup}
+                className="group mt-0.5 inline-flex items-center gap-1.5 text-sm font-semibold text-accent-strong hover:underline">
+                Create account · Start your free trial
+                <svg className="transition-transform group-hover:translate-x-0.5" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4 12h15m0 0-5.5-5.5M19 12l-5.5 5.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
 
             {/* What the product does, inside the card and hung off the form
                 rather than floating below it. It was an outer panel that read

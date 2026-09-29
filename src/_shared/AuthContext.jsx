@@ -75,6 +75,15 @@ export function AuthProvider({ children }) {
     return u;
   }, []);
 
+  // Free-trial sign-up returns a token pair: sign the new owner straight in.
+  const signInWithTokens = useCallback(async (access, refresh) => {
+    tokenStore.setTokens(access, refresh);
+    const u = await authService.fetchCurrentUser();
+    setUser(u);
+    setTenantName(u?.tenantName || null);
+    return u;
+  }, []);
+
   const logout = useCallback(() => {
     // Clear client session immediately so the UI returns to login without
     // waiting on the network; revoke the refresh token best-effort in the
@@ -129,6 +138,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: !!user,
     loading,
     login,
+    signInWithTokens,
     logout,
     refreshUser,
   };
