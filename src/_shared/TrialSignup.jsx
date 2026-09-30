@@ -27,13 +27,6 @@ const EMPTY = { gstin: "", store_name: "", city: "", address: "", pincode: "", c
 
 // Per-position GSTIN rule: 2 digits, 5 letters, 4 digits, letter, 1-9/A-Z, 'Z', check.
 const POS = [/\d/, /\d/, /[A-Z]/, /[A-Z]/, /[A-Z]/, /[A-Z]/, /[A-Z]/, /\d/, /\d/, /\d/, /\d/, /[A-Z]/, /[1-9A-Z]/, /Z/, /[0-9A-Z]/];
-const PARTS = [
-  { label: "State", short: "State", from: 0, to: 2 },
-  { label: "PAN", short: "PAN", from: 2, to: 12 },
-  { label: "Entity", short: "No.", from: 12, to: 13 },
-  { label: "Z", short: "Z", from: 13, to: 14 },
-  { label: "Check", short: "Chk", from: 14, to: 15 },
-];
 const gstBadAt = (g) => g.split("").findIndex((ch, i) => !POS[i]?.test(ch));
 
 function strength(pw) {
@@ -145,7 +138,7 @@ export default function TrialSignup({ onBack }) {
 
   async function verifyGst(value = g) {
     if (value.length !== 15 || gstBadAt(value) !== -1) {
-      setErr({ gstin: value.length !== 15 ? `GSTIN is 15 characters - ${15 - value.length} more to go` : "Some characters are in the wrong place - see the highlighted box" });
+      setErr({ gstin: value.length !== 15 ? `GSTIN is 15 characters - ${15 - value.length} more to go` : "Character " + (gstBadAt(value) + 1) + " looks wrong - check the GSTIN on your GST certificate" });
       return false;
     }
     setGstBusy(true);
@@ -349,24 +342,6 @@ export default function TrialSignup({ onBack }) {
                     gstVerified ? "bg-emerald-500" : "bg-ink-deep hover:brightness-110"} disabled:cursor-default`}>
                   {gstBusy ? <Spinner /> : gstVerified ? <><Svg d={I.check} sw={2.6} /> Verified</> : "Verify"}
                 </button>
-              </div>
-
-              {/* The GSTIN, read in its five parts. */}
-              <div className="mt-3 grid grid-cols-[2fr_7fr_1.3fr_1.3fr_1.3fr] gap-1 sm:gap-1.5">
-                {PARTS.map((p) => {
-                  const chunk = g.slice(p.from, p.to);
-                  const bad = badAt !== -1 && badAt >= p.from && badAt < p.to;
-                  const full = chunk.length === p.to - p.from;
-                  return (
-                    <div key={p.label} className={`min-w-0 rounded-lg border px-0.5 py-1.5 sm:px-2 text-center transition ${
-                      bad ? "border-rose-300 bg-rose-50" : full ? "border-emerald-200 bg-emerald-50/70" : "border-line-soft bg-white"}`}>
-                      <div className={`truncate font-mono text-[0.7rem] font-semibold sm:text-[0.82rem] sm:tracking-wider ${bad ? "text-rose-600" : "text-ink"}`}>
-                        {chunk.padEnd(p.to - p.from, "·")}
-                      </div>
-                      <div className="truncate text-[0.52rem] font-semibold uppercase tracking-wide text-faint sm:text-[0.6rem] sm:tracking-wider"><span className="sm:hidden">{p.short}</span><span className="max-sm:hidden">{p.label}</span></div>
-                    </div>
-                  );
-                })}
               </div>
 
               {err.gstin === "taken" ? (
