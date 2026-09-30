@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/_shared/apiClient";
 import { useAuth } from "@/_shared/AuthContext";
 import DfxLogo from "@/_shared/DfxLogo";
+import LoginBackdrop from "@/_shared/LoginBackdrop";
 
 /**
  * "Start your free trial": GST -> store -> contact person -> password.
@@ -532,7 +533,7 @@ export default function TrialSignup({ onBack }) {
 /** Same photographic ground as the sign-in page, with a wider card. */
 function Shell({ children }) {
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-canvas">
+    <div className="relative min-h-dvh w-full overflow-hidden bg-canvas">
       <style>{`
         @keyframes dfxSlide { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
         @keyframes dfxPop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.06); } 100% { transform: scale(1); opacity: 1; } }
@@ -541,10 +542,7 @@ function Shell({ children }) {
         .dfx-pop { animation: dfxPop .55s cubic-bezier(.2,.8,.2,1) both; }
         .dfx-rise2 { animation: dfxRise2 .6s cubic-bezier(.2,.8,.2,1) both; }
       `}</style>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/login-bg.jpg" alt="" aria-hidden="true" className="absolute inset-0 h-full w-full scale-105 object-cover" />
-      <div className="absolute inset-0 bg-gradient-to-br from-white/90 via-white/70 to-white/45" />
-      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_45%,transparent_40%,rgba(45,38,28,0.22)_100%)]" />
+      <LoginBackdrop veil="from-white/75 via-white/45 to-white/15" />
       <main className="relative z-10 flex min-h-dvh items-start justify-center px-4 py-5 sm:items-center sm:py-6 [@media(max-height:820px)]:py-3 [@media(max-height:700px)]:py-2">
         <div className="dfx-rise2 w-full max-w-[46rem] rounded-[1.75rem] border border-white/50 bg-white/85 p-5 shadow-[0_24px_70px_-30px_rgba(30,41,59,0.45)] backdrop-blur-xl sm:px-8 sm:py-7 [@media(max-height:820px)]:sm:py-5">
           {children}

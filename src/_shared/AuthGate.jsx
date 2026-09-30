@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/_shared/AuthContext";
 import DfxLogo from "@/_shared/DfxLogo";
 import TrialSignup from "@/_shared/TrialSignup";
+import LoginBackdrop from "@/_shared/LoginBackdrop";
 
 /**
  * Minimum auth boundary for the new UI. Renders children only when a session
@@ -78,7 +79,7 @@ export default function AuthGate({ children }) {
     "w-full rounded-xl border border-line bg-white/70 py-2.5 pl-11 text-[0.9rem] text-ink outline-none transition-all duration-300 placeholder:text-faint/80 hover:border-accent/50 hover:bg-white/90 focus:-translate-y-px focus:border-accent focus:bg-white focus:shadow-md focus:shadow-accent/10 focus:ring-4 focus:ring-accent/15";
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-canvas">
+    <div className="relative min-h-dvh w-full overflow-hidden bg-canvas">
       <style>{`
         /* A slow pan and push on the photograph - 40s, so it is felt rather
            than watched. Scaled past 100% first, or the edges would show. */
@@ -127,24 +128,8 @@ export default function AuthGate({ children }) {
         }
       `}</style>
 
-      {/* Background scene */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/login-bg.jpg"
-        alt=""
-        aria-hidden="true"
-        className="dfx-drift absolute inset-0 h-full w-full object-cover will-change-transform"
-      />
-      <div className="absolute inset-0 bg-gradient-to-br from-white/85 via-white/55 to-white/25" />
-      {/* The moving light, under the vignette so it never washes the card out. */}
-      <div
-        className="dfx-glow pointer-events-none absolute inset-0 will-change-transform"
-        style={{
-          background:
-            "radial-gradient(45% 40% at 30% 35%, rgba(201,168,76,0.35), transparent 70%)",
-        }}
-      />
-      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_45%,transparent_35%,rgba(45,38,28,0.28)_100%)]" />
+      {/* Background scene: the still, then the looping film of it. */}
+      <LoginBackdrop />
 
       {/* Centred card */}
       <main className="relative z-10 flex min-h-dvh items-center justify-center px-4 py-6 sm:py-8 [@media(max-height:760px)]:py-4">
