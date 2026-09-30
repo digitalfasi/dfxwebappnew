@@ -18,7 +18,8 @@ export const MON_PAGES = [
 
 function readHash() {
   if (typeof window === "undefined") return { mod: "monitor", tab: "live" };
-  const [, root, mod, tab] = window.location.hash.replace(/^#/, "").split("/");
+  // A KPI card can link with filters: #/control/monitor/sessions?status=active
+  const [, root, mod, tab] = window.location.hash.replace(/^#/, "").split("?")[0].split("/");
   if (root !== "control") return { mod: "monitor", tab: "live" };
   // #/control/monitor/shops was the old second shops list - it is the Shops page now.
   const isShops = mod === "tenants" || mod === "shops" || tab === "shops";
@@ -41,7 +42,7 @@ export default function SuperAdminApp() {
   }, []);
   useEffect(() => {
     const h = route.mod === "tenants" ? "#/control/shops" : `#/control/monitor/${route.tab}`;
-    if (window.location.hash !== h) window.history.replaceState(null, "", h);
+    if (window.location.hash.split("?")[0] !== h) window.history.replaceState(null, "", h);
     const pg = MON_PAGES.find((p) => p.key === route.tab);
     document.title = `${route.mod === "tenants" ? "Shops" : pg?.title} · DFX Control`;
   }, [route]);

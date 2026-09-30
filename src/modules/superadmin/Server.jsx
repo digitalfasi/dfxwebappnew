@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { saService, fmtDateTime, fmtTime, fmtDate, ago, dur, bytes } from "@/modules/superadmin/saService";
-import { Card, Kpi, Pill, Icon, Empty, Skel, usePoll } from "@/modules/superadmin/saUi";
+import { saService, fmtDateTime, fmtTime, fmtDate, ago, seenAt, dur, bytes } from "@/modules/superadmin/saService";
+import { Card, Kpi, Pill, Icon, Empty, Skel, usePoll, hashParam, scrollToId } from "@/modules/superadmin/saUi";
 import { DataExplorer } from "@/modules/superadmin/DevTools";
 
 const SECTIONS = [
@@ -22,7 +22,7 @@ const breakIns = (t) => ["SQL injection", "Code injection", "Path traversal", "P
 const attackCount = (t) => (t ? Math.max(0, (t.total || 0) - ((t.by_kind || {})[AUTO] || 0)) : 0);
 
 export default function ServerTab({ live }) {
-  const [sec, setSec] = useState("overview");
+  const [sec, setSec] = useState(() => (SECTIONS.some(([k]) => k === hashParam("sec")) ? hashParam("sec") : "overview"));
   const res = usePoll(() => saService.system(), [], { ms: 30000, live });
   const ev = usePoll(() => saService.events({ limit: 1 }), [], { ms: 60000, live });
   const d = res.data;
@@ -48,18 +48,18 @@ export default function ServerTab({ live }) {
             <code className="mono" style={{ display: "block", marginTop: 6, fontSize: 12 }}>sudo cp /opt/dfx-backend/host-status.sh /usr/local/bin/dfx-host-status && sudo chmod 755 /usr/local/bin/dfx-host-status && echo '* * * * * root /usr/local/bin/dfx-host-status &gt;/dev/null 2&gt;&amp;1' | sudo tee /etc/cron.d/dfx-host-status</code></div>
         </div>
       )}
-      {sec === "overview" && <Overview d={d} h={h} />}
+      {sec === "overview" && <Overview d={d} h={h} setSec={setSec} />}
       {sec === "security" && <Security h={h} counts={ev.data?.summary_24h?.counts || {}} failedTop={ev.data?.summary_24h?.top_failed_ips || []} />}
-      {sec === "traffic" && <Traffic t={h?.web_traffic} />}
-      {sec === "logs" && <Logs h={h} />}
-      {sec === "database" && <Database db={d.database || {}} />}
+      {sec === "traffic" && <Traffic t={h?.web_traffic} setSec={setSec} />}
+      {sec === "logs" && <Logs h={h} setSec={setSec} />}
+      {sec === "database" && <Database db={d.database || {}} setSec={setSec} />}
       {sec === "server" && <ServerInfo d={d} h={h} />}
     </div>
   );
 }
 
 // ── Overview: is anything under pressure? ───────────────────────────────
-function Overview({ d, h }) {
+function Overview({ d, h, setSec }) {
   const db = d.database || {};
   const m = d.machine || {};
   const disk = h?.disk || m.disk;
@@ -76,12 +76,12 @@ function Overview({ d, h }) {
   return (
     <>
       <div className="sa-kpis six">
-        <Kpi icon="activity" hue={cpuPct >= 85 ? "bad" : cpuPct >= 60 ? "warn" : "live"} label="CPU load" value={cpuPct != null ? `${cpuPct}%` : "—"} sub={`${load.toFixed(2)} on ${m.cpus || "?"} cores`} />
-        <Kpi icon="server" hue={memPct >= 90 ? "bad" : memPct >= 75 ? "warn" : "web"} label="Memory" value={memPct != null ? `${memPct}%` : "—"} sub={mem.MemTotal ? `${bytes(mem.MemTotal - mem.MemAvailable)} of ${bytes(mem.MemTotal)}` : ""} />
-        <Kpi icon="archive" hue={diskPct >= 90 ? "bad" : diskPct >= 80 ? "warn" : "app"} label="Disk" value={diskPct != null ? `${diskPct}%` : "—"} sub={disk ? `${bytes(disk.free)} free` : ""} />
-        <Kpi icon="db" hue={db.healthy ? "teal" : "bad"} label="Database" value={db.healthy ? bytes(db.size_bytes) : "Down"} sub={`${conns} of ${db.max_connections || "?"} connections`} />
-        <Kpi icon="archive" hue={dumpH == null || dumpH > 30 ? "bad" : "live"} label="Last backup" value={dumpH != null ? `${dumpH} h ago` : "—"} sub="runs nightly 07:45 IST" />
-        <Kpi icon="lock" hue={certDays != null && certDays < 20 ? "bad" : "live"} label="SSL certificate" value={certDays != null ? `${certDays} days` : "—"} sub={h?.certificate?.expires ? `until ${fmtDate(h.certificate.expires)}` : ""} />
+        <Kpi go={() => setSec("server")} icon="activity" hue={cpuPct >= 85 ? "bad" : cpuPct >= 60 ? "warn" : "live"} label="CPU load" value={cpuPct != null ? `${cpuPct}%` : "—"} sub={`${load.toFixed(2)} on ${m.cpus || "?"} cores`} />
+        <Kpi go={() => setSec("server")} icon="server" hue={memPct >= 90 ? "bad" : memPct >= 75 ? "warn" : "web"} label="Memory" value={memPct != null ? `${memPct}%` : "—"} sub={mem.MemTotal ? `${bytes(mem.MemTotal - mem.MemAvailable)} of ${bytes(mem.MemTotal)}` : ""} />
+        <Kpi go={() => setSec("server")} icon="archive" hue={diskPct >= 90 ? "bad" : diskPct >= 80 ? "warn" : "app"} label="Disk" value={diskPct != null ? `${diskPct}%` : "—"} sub={disk ? `${bytes(disk.free)} free` : ""} />
+        <Kpi go={() => setSec("database")} icon="db" hue={db.healthy ? "teal" : "bad"} label="Database" value={db.healthy ? bytes(db.size_bytes) : "Down"} sub={`${conns} of ${db.max_connections || "?"} connections`} />
+        <Kpi go={() => { setSec("server"); setTimeout(() => scrollToId("srv-backups"), 50); }} icon="archive" hue={dumpH == null || dumpH > 30 ? "bad" : "live"} label="Last backup" value={dumpH != null ? `${dumpH} h ago` : "—"} sub="runs nightly 07:45 IST" />
+        <Kpi go={() => setSec("server")} icon="lock" hue={certDays != null && certDays < 20 ? "bad" : "live"} label="SSL certificate" value={certDays != null ? `${certDays} days` : "—"} sub={h?.certificate?.expires ? `until ${fmtDate(h.certificate.expires)}` : ""} />
       </div>
       {h && (
         <Card title="What is using the machine" icon="box" hue="web" pad={false} right={<small>heaviest first · live snapshot</small>}>
@@ -121,13 +121,13 @@ function Security({ h, counts, failedTop }) {
   return (
     <>
       <div className="sa-kpis six">
-        <Kpi icon="shield" hue={attacks ? "warn" : "live"} tone={injections ? "bad" : undefined} label="Attack attempts · 24 h" value={t ? attacks : "—"}
+        <Kpi go={() => scrollToId("sec-attacks")} icon="shield" hue={attacks ? "warn" : "live"} tone={injections ? "bad" : undefined} label="Attack attempts · 24 h" value={t ? attacks : "—"}
           sub={t ? (attacks ? "scanners and break-in tries" : "nothing tried to break in") : "needs root agent"} />
-        <Kpi icon="db" hue={injections ? "bad" : "ink"} label="Break-in tricks" value={t ? injections : "—"} sub="SQL / code injection, path tricks" />
-        <Kpi icon="alert" hue={k["Scanner probe"] ? "warn" : "ink"} label="Scanner probes" value={t ? k["Scanner probe"] || 0 : "—"} sub="looking for .env, wp-admin, .git" />
-        <Kpi icon="key" hue={counts.LOGIN_FAILED ? "warn" : "ink"} label="Failed logins · 24 h" value={counts.LOGIN_FAILED || 0} sub={`${counts.LOGIN_BLOCKED || 0} blocked`} />
-        <Kpi icon="lock" hue="teal" label="Banned right now" value={h?.fail2ban ? h.fail2ban.reduce((s, j) => s + Number(j.currently_banned || 0), 0) : "—"} sub="IPs blocked by fail2ban" />
-        <Kpi icon="box" hue="ink" label="Scripts & tools" value={t ? k[AUTO] || 0 : "—"} sub="not attacks - mostly our own jobs" />
+        <Kpi go={() => scrollToId("sec-attacks")} icon="db" hue={injections ? "bad" : "ink"} label="Break-in tricks" value={t ? injections : "—"} sub="SQL / code injection, path tricks" />
+        <Kpi go={() => scrollToId("sec-recent")} icon="alert" hue={k["Scanner probe"] ? "warn" : "ink"} label="Scanner probes" value={t ? k["Scanner probe"] || 0 : "—"} sub="looking for .env, wp-admin, .git" />
+        <Kpi go={"#/control/monitor/signins?event=LOGIN_FAILED"} icon="key" hue={counts.LOGIN_FAILED ? "warn" : "ink"} label="Failed logins · 24 h" value={counts.LOGIN_FAILED || 0} sub={`${counts.LOGIN_BLOCKED || 0} blocked`} />
+        <Kpi go={() => scrollToId("sec-fail2ban")} icon="lock" hue="teal" label="Banned right now" value={h?.fail2ban ? h.fail2ban.reduce((s, j) => s + Number(j.currently_banned || 0), 0) : "—"} sub="IPs blocked by fail2ban" />
+        <Kpi go={() => scrollToId("sec-scripts")} icon="box" hue="ink" label="Scripts & tools" value={t ? k[AUTO] || 0 : "—"} sub="not attacks - mostly our own jobs" />
       </div>
       {t && attacks > 0 && !injections && (
         <div className="sa-alert info"><Icon name="alert" />
@@ -135,7 +135,7 @@ function Security({ h, counts, failedTop }) {
         </div>
       )}
 
-      <Card title="Attack attempts - who tried" icon="shield" hue={attacks ? "warn" : "live"} pad={false} right={<small>last 24 hours · most active first</small>}>
+      <Card id="sec-attacks" title="Attack attempts - who tried" icon="shield" hue={attacks ? "warn" : "live"} pad={false} right={<small>last 24 hours · most active first</small>}>
         {!t ? <Empty title="Needs the root agent">nginx logs are readable by root only.</Empty> : !attackers.length ? <Empty title="No attack attempts in the last 24 hours" /> : (
           <div className="sa-tbl"><table>
             <thead><tr><th>Source IP</th><th>What they tried</th><th className="r">Requests</th><th>Last seen</th><th>Tool / browser</th></tr></thead>
@@ -144,7 +144,7 @@ function Security({ h, counts, failedTop }) {
                 <td className="mono">{s.ip}</td>
                 <td className="wrap"><div className="sa-row" style={{ gap: 6 }}>{Object.entries(s.kinds).map(([kk, n]) => <Pill key={kk} tone={KIND_TONE[kk] || "mute"}>{kk} · {n}</Pill>)}</div></td>
                 <td className="r">{s.count}</td>
-                <td className="sa-muted">{ago(s.last)}</td>
+                <td className="sa-muted">{seenAt(s.last)}</td>
                 <td className="sa-dim" style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }} title={s.ua}>{s.ua || "—"}</td>
               </tr>
             ))}</tbody>
@@ -153,7 +153,7 @@ function Security({ h, counts, failedTop }) {
       </Card>
 
       {scripts.length > 0 && (
-        <Card title="Scripts & tools calling the server" icon="box" hue="web" pad={false} right={<small>normal - listed so you can spot a stranger</small>}>
+        <Card id="sec-scripts" title="Scripts & tools calling the server" icon="box" hue="web" pad={false} right={<small>normal - listed so you can spot a stranger</small>}>
           <div className="sa-tbl"><table>
             <thead><tr><th>Source IP</th><th>Who it is</th><th className="r">Requests</th><th>Last seen</th><th>Tool</th></tr></thead>
             <tbody>{scripts.map((s) => (
@@ -161,7 +161,7 @@ function Security({ h, counts, failedTop }) {
                 <td className="mono">{s.ip}</td>
                 <td>{s.ip === "127.0.0.1" || s.ip === "::1" ? <b>This server (gold-rate job)</b> : <span className="sa-muted">A script - yours if you ran curl or Python</span>}</td>
                 <td className="r">{s.count}</td>
-                <td className="sa-muted">{ago(s.last)}</td>
+                <td className="sa-muted">{seenAt(s.last)}</td>
                 <td className="sa-dim" style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }} title={s.ua}>{s.ua || "—"}</td>
               </tr>
             ))}</tbody>
@@ -170,7 +170,7 @@ function Security({ h, counts, failedTop }) {
       )}
 
       <div className="sa-two">
-        <Card title="Latest attack attempts" icon="alert" hue="warn" fill>
+        <Card id="sec-recent" title="Latest attack attempts" icon="alert" hue="warn" fill>
           {!recent.length ? <Empty title="Nothing in the last 24 hours" /> : (
             <div className="sa-feed">{recent.map((e, i) => (
               <div key={i}>
@@ -183,7 +183,7 @@ function Security({ h, counts, failedTop }) {
           )}
         </Card>
         <div className="sa-grid">
-          <Card title="Blocked by fail2ban" icon="lock" hue="teal">
+          <Card id="sec-fail2ban" title="Blocked by fail2ban" icon="lock" hue="teal">
             {!h?.fail2ban ? <Empty title="Needs the root agent" /> : h.fail2ban.map((j) => (
               <div key={j.name} className="sa-row" style={{ justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--rule2)" }}>
                 <span className="mono" style={{ fontSize: 13 }}>{j.name}</span>
@@ -217,19 +217,19 @@ function Security({ h, counts, failedTop }) {
 }
 
 // ── Traffic ─────────────────────────────────────────────────────────────
-function Traffic({ t }) {
+function Traffic({ t, setSec }) {
   if (!t) return <Card><Empty title="Traffic needs the root agent">nginx logs are readable by root only.</Empty></Card>;
   const max = Math.max(1, ...t.per_minute.map((x) => x.n));
   const s = t.status_last_hour;
   return (
     <>
       <div className="sa-kpis">
-        <Kpi icon="web" hue="web" label="Requests · last hour" value={t.requests_last_hour.toLocaleString("en-IN")} sub={`${bytes(t.bytes_last_hour)} sent`} />
-        <Kpi icon="activity" hue="teal" label="Requests · 24 h" value={t.requests_24h.toLocaleString("en-IN")} />
-        <Kpi icon="check" hue="live" label="Answered OK · last hour" value={`${Math.round(((s["2xx"] || 0) + (s["3xx"] || 0)) * 100 / Math.max(1, t.requests_last_hour))}%`} sub={`${s["4xx"] || 0} refused (4xx)`} />
-        <Kpi icon="alert" hue={t.server_errors_24h ? "bad" : "ink"} label="Server errors (5xx) · 24 h" value={t.server_errors_24h} />
+        <Kpi go={() => scrollToId("trf-chart")} icon="web" hue="web" label="Requests · last hour" value={t.requests_last_hour.toLocaleString("en-IN")} sub={`${bytes(t.bytes_last_hour)} sent`} />
+        <Kpi go={() => scrollToId("trf-chart")} icon="activity" hue="teal" label="Requests · 24 h" value={t.requests_24h.toLocaleString("en-IN")} />
+        <Kpi go={() => scrollToId("trf-chart")} icon="check" hue="live" label="Answered OK · last hour" value={`${Math.round(((s["2xx"] || 0) + (s["3xx"] || 0)) * 100 / Math.max(1, t.requests_last_hour))}%`} sub={`${s["4xx"] || 0} refused (4xx)`} />
+        <Kpi go={() => setSec("logs")} icon="alert" hue={t.server_errors_24h ? "bad" : "ink"} label="Server errors (5xx) · 24 h" value={t.server_errors_24h} />
       </div>
-      <Card title="Requests per minute" icon="activity" hue="web" right={<small>last 60 minutes</small>}>
+      <Card id="trf-chart" title="Requests per minute" icon="activity" hue="web" right={<small>last 60 minutes</small>}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(60,1fr)", gap: 2, alignItems: "end", height: 110 }}>
           {t.per_minute.map((x) => <div key={x.t} title={`${x.t} UTC · ${x.n}`} style={{ height: `${Math.max(3, (x.n / max) * 106)}px`, background: "linear-gradient(180deg,#5B7CFF,#3563F0)", borderRadius: 2, opacity: x.n ? 1 : 0.2 }} />)}
         </div>
@@ -255,7 +255,7 @@ function Rank({ rows, k }) {
 
 // ── Logs: one line per entry, open for detail ───────────────────────────
 const LOG_RX = /^\[([^\]]+)\]\s*\[(\w+)\]\s*\[([^\]]+)\]:\s*(.*)$/;
-function Logs({ h }) {
+function Logs({ h, setSec }) {
   const [open, setOpen] = useState(null);
   const L = h?.app_logs;
   if (!L) return <Card><Empty title="Logs need the server agent" /></Card>;
@@ -267,11 +267,11 @@ function Logs({ h }) {
   return (
     <>
       <div className="sa-kpis">
-        <Kpi icon="alert" hue={L.errors_last_hour ? "bad" : "live"} label="Errors · last hour" value={L.errors_last_hour} sub="real faults in the backend" />
-        <Kpi icon="alert" hue={L.warnings_last_hour ? "warn" : "live"} label="Warnings · last hour" value={L.warnings_last_hour} sub="refused or unusual requests" />
-        <Kpi icon="server" hue="ink" label="nginx errors" value={h.nginx_errors ? h.nginx_errors.length : "—"} sub={h.nginx_errors ? "recent lines" : "needs root agent"} />
+        <Kpi go={() => scrollToId("log-lines")} icon="alert" hue={L.errors_last_hour ? "bad" : "live"} label="Errors · last hour" value={L.errors_last_hour} sub="real faults in the backend" />
+        <Kpi go={() => scrollToId("log-lines")} icon="alert" hue={L.warnings_last_hour ? "warn" : "live"} label="Warnings · last hour" value={L.warnings_last_hour} sub="refused or unusual requests" />
+        <Kpi go={() => scrollToId("log-nginx")} icon="server" hue="ink" label="nginx errors" value={h.nginx_errors ? h.nginx_errors.length : "—"} sub={h.nginx_errors ? "recent lines" : "needs root agent"} />
       </div>
-      <Card title="Backend log · last hour" icon="list" hue="ink" pad={false} right={<small>click a line for the full text</small>}>
+      <Card id="log-lines" title="Backend log · last hour" icon="list" hue="ink" pad={false} right={<small>click a line for the full text</small>}>
         {!rows.length ? <Empty title="Nothing logged in the last hour" /> : (
           <div className="sa-tbl"><table>
             <thead><tr><th>Time (UTC)</th><th>Level</th><th>Where</th><th>Message</th></tr></thead>
@@ -286,21 +286,21 @@ function Logs({ h }) {
           </table></div>
         )}
       </Card>
-      {h.nginx_errors?.length > 0 && <Card title="nginx error log" icon="server" hue="ink"><pre className="sa-log">{h.nginx_errors.join("\n")}</pre></Card>}
+      {h.nginx_errors?.length > 0 && <Card id="log-nginx" title="nginx error log" icon="server" hue="ink"><pre className="sa-log">{h.nginx_errors.join("\n")}</pre></Card>}
     </>
   );
 }
 
 // ── Database ────────────────────────────────────────────────────────────
-function Database({ db }) {
+function Database({ db, setSec }) {
   const conns = Object.values(db.connections || {}).reduce((s, n) => s + n, 0);
   return (
     <>
       <div className="sa-kpis">
-        <Kpi icon="db" hue={db.healthy ? "live" : "bad"} label="Status" value={db.healthy ? "Healthy" : "Down"} sub={(db.version || "").split(" on ")[0]} />
-        <Kpi icon="archive" hue="teal" label="Size" value={bytes(db.size_bytes)} sub={`${db.table_count ?? "—"} tables`} />
-        <Kpi icon="activity" hue={conns / (db.max_connections || 100) > 0.7 ? "warn" : "web"} label="Connections" value={`${conns} / ${db.max_connections ?? "—"}`} sub={Object.entries(db.connections || {}).map(([k, v]) => `${v} ${k}`).join(" · ")} />
-        <Kpi icon="clock" hue="app" label="Running since" value={db.started_at ? ago(db.started_at) : "—"} sub={`migration ${db.migration || "—"}`} />
+        <Kpi go={() => setSec("overview")} icon="db" hue={db.healthy ? "live" : "bad"} label="Status" value={db.healthy ? "Healthy" : "Down"} sub={(db.version || "").split(" on ")[0]} />
+        <Kpi go={() => scrollToId("db-tables")} icon="archive" hue="teal" label="Size" value={bytes(db.size_bytes)} sub={`${db.table_count ?? "—"} tables`} />
+        <Kpi go={() => setSec("overview")} icon="activity" hue={conns / (db.max_connections || 100) > 0.7 ? "warn" : "web"} label="Connections" value={`${conns} / ${db.max_connections ?? "—"}`} sub={Object.entries(db.connections || {}).map(([k, v]) => `${v} ${k}`).join(" · ")} />
+        <Kpi go={() => setSec("server")} icon="clock" hue="app" label="Running since" value={db.started_at ? ago(db.started_at) : "—"} sub={`migration ${db.migration || "—"}`} />
       </div>
       <DataExplorer />
     </>
@@ -339,7 +339,7 @@ function ServerInfo({ d, h }) {
         </Card>
       </div>
       <div className="sa-two">
-        <Card title="Backups" icon="archive" hue="warn" pad={false} right={<small>{h?.backups?.count ?? 0} files · {bytes(h?.backups?.total_bytes)}</small>}>
+        <Card id="srv-backups" title="Backups" icon="archive" hue="warn" pad={false} right={<small>{h?.backups?.count ?? 0} files · {bytes(h?.backups?.total_bytes)}</small>}>
           <div className="sa-tbl"><table>
             <thead><tr><th>File</th><th>Kind</th><th className="r">Size</th><th>Taken</th></tr></thead>
             <tbody>{(h?.backups?.files || []).slice(0, 10).map((f) => (

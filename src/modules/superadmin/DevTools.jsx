@@ -26,7 +26,7 @@ export function DataExplorer() {
 
   return (
     <div className="sa-dev">
-      <Card title="Tables" icon="db" hue="teal" pad={false} right={<small>{list.data?.tables?.length ?? "…"}</small>}>
+      <Card id="db-tables" title="Tables" icon="db" hue="teal" pad={false} right={<small>{list.data?.tables?.length ?? "…"}</small>}>
         <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--rule2)" }}>
           <input className="sa-in" style={{ maxWidth: "none", width: "100%", minWidth: 0 }} placeholder="Find a table" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Find a table" />
         </div>

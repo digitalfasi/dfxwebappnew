@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useState } from "react";
 import ServerTab from "@/modules/superadmin/Server";
 import {
-  saService, fmtDateTime, fmtTime, fmtDate, ago, dur, bytes, inr, EVENT_LABEL, END_LABEL,
+  saService, fmtDateTime, fmtTime, fmtDate, ago, seenAt, dur, bytes, inr, EVENT_LABEL, END_LABEL,
 } from "@/modules/superadmin/saService";
 import {
   Card, Kpi, Pill, Icon, Empty, Skel, Pager, Drawer, HourChart, ClientTag, Who, Donut, HealthBanner, SystemMap,
-  STATUS_TONE, STATUS_LABEL, ROLE_TONE, usePoll, useNow,
+  STATUS_TONE, STATUS_LABEL, ROLE_TONE, usePoll, useNow, hashParam, scrollToId,
 } from "@/modules/superadmin/saUi";
 
 const TABS = [
@@ -139,14 +139,14 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
       </Card>
 
       <div className="sa-kpis">
-        <Kpi live hue="live" label="Online now" value={d.live.total} sub={`using DFX in the last ${d.active_window_minutes} min`} />
-        <Kpi icon="users" hue="teal" label="People today" value={d.today.unique_users} sub="different people since midnight" />
-        <Kpi icon="shop" hue="app" label="Shops open today" value={(d.tenants || []).filter((t) => t.users_today > 0).length} sub={`of ${d.accounts.tenants} shops used DFX`} />
-        <Kpi icon={d.today.failed_logins || d.today.token_reuse ? "alert" : "check"} hue="web" tone={d.today.token_reuse ? "bad" : d.today.failed_logins ? "warn" : undefined}
+        <Kpi go={"#/control/monitor/sessions?status=active"} live hue="live" label="Live now" value={d.live.total} sub="DFX open in a browser or the app right now" />
+        <Kpi go={"#/control/monitor/people?role=all"} icon="users" hue="teal" label="People today" value={d.today.unique_users} sub="different people since midnight" />
+        <Kpi go={"#/control/shops"} icon="shop" hue="app" label="Shops open today" value={(d.tenants || []).filter((t) => t.users_today > 0).length} sub={`of ${d.accounts.tenants} shops used DFX`} />
+        <Kpi go={"#/control/monitor/signins?event=LOGIN_SUCCESS"} icon={d.today.failed_logins || d.today.token_reuse ? "alert" : "check"} hue="web" tone={d.today.token_reuse ? "bad" : d.today.failed_logins ? "warn" : undefined}
           label="Logins today" value={d.today.logins}
           sub={d.today.token_reuse ? `${d.today.token_reuse} security alarm${d.today.token_reuse > 1 ? "s" : ""} - see Sign-ins`
             : `${d.today.failed_logins} failed · ${d.today.blocked_logins} blocked`} />
-        <Kpi icon="plus" hue="warn" label="New customers today" value={d.today.new_customers} sub="joined any shop" />
+        <Kpi go={"#/control/monitor/people?role=Customer"} icon="plus" hue="warn" label="New customers today" value={d.today.new_customers} sub="joined any shop" />
       </div>
 
       <div className="sa-two">
@@ -171,7 +171,7 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
       </div>
 
       <div className="sa-two">
-        <Card title="Online right now" icon="pulse" hue="live" pad={false} right={<small>{byPerson.length} people · click a row for their history</small>}>
+        <Card title="Live right now" icon="pulse" hue="live" pad={false} right={<small>{byPerson.length} people · click a row for their history</small>}>
           <SessionTable rows={byPerson} loading={online.loading && !online.data} onPerson={onPerson} compact now={now}
             empty="Nobody has used DFX in the last few minutes." />
         </Card>
@@ -213,7 +213,7 @@ function EventFeed({ items, now, onPerson }) {
             <span style={{ display: "inline", color: "var(--muted)" }}>{(EVENT_LABEL[e.event] || e.event).toLowerCase()}</span>
             <span>{[e.tenant_name || (e.role === "SuperAdmin" ? "Platform" : null), e.role, e.client === "app" ? "App" : e.client === "web" ? "Web" : null, e.ip].filter(Boolean).join(" · ")}{e.reason ? ` · ${e.reason}` : ""}</span>
           </div>
-          <time title={fmtDateTime(e.at)}>{ago(e.at, now)}</time>
+          <time title={fmtDateTime(e.at)}>{seenAt(e.at)}</time>
         </div>
       ))}
     </div>
@@ -227,7 +227,7 @@ function ShopTable({ rows, now, onShop }) {
     <div className="sa-tbl">
       <table>
         <thead><tr>
-          <th>Shop</th><th className="r">Online now</th><th className="r">People today</th><th className="r">Logins</th>
+          <th>Shop</th><th className="r">Live now</th><th className="r">People today</th><th className="r">Logins</th>
           <th className="r">Failed logins</th><th className="r">Sales today</th><th>Owner last seen</th>
         </tr></thead>
         <tbody>
@@ -240,7 +240,7 @@ function ShopTable({ rows, now, onShop }) {
               <td className="r">{t.failed_today ? <Pill tone="bad">{t.failed_today}</Pill> : <span className="sa-dim">0</span>}</td>
               <td className="r">{t.sales_today ? <><b>{inr(t.sales_today_amount)}</b> <span className="sa-dim">· {t.sales_today}</span></> : <span className="sa-dim">No sales</span>}</td>
               <td>{t.last_admin_seen_at
-                ? <span title={fmtDateTime(t.last_admin_seen_at)} style={{ color: t.admin_idle_days >= 3 ? "var(--warn)" : undefined }}>{ago(t.last_admin_seen_at, now)}</span>
+                ? <span title={fmtDateTime(t.last_admin_seen_at)} style={{ color: t.admin_idle_days >= 3 ? "var(--warn)" : undefined }}>{seenAt(t.last_admin_seen_at)}</span>
                 : <span className="sa-dim">Never</span>}</td>
             </tr>
           ))}
@@ -258,14 +258,14 @@ const PEOPLE_GROUPS = [
 ];
 const PRESENCE = [
   { k: "", label: "All", n: "all" },
-  { k: "online", label: "Online", n: "online" },
+  { k: "online", label: "Live", n: "online" },
   { k: "idle", label: "Away", n: "idle" },
   { k: "offline", label: "Logged out", n: "offline" },
   { k: "never", label: "Never logged in", n: "never" },
 ];
 
 function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
-  const [role, setRole] = useState("Team");
+  const [role, setRole] = useState(() => { const r = hashParam("role"); return r === "all" ? "" : r || "Team"; });
   const [presence, setPresence] = useState("");
   const [q, setQ] = useState("");
   const [qd, setQd] = useState("");
@@ -299,7 +299,7 @@ function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
           </div>
         </div>
         <div className="sa-dim" style={{ fontSize: 12.5, padding: "0 16px 10px" }}>
-          <b>Online</b> = used DFX in the last 5 minutes · <b>Away</b> = still logged in, not using it right now · click a person to see their full history.
+          <b>Live</b> = DFX is open in their browser right now (checked every minute, even if they are not clicking) or they used the app in the last 3 minutes · <b>Away</b> = still logged in, but the browser or app is closed · click a person for their full history.
         </div>
         {res.loading && !d ? <div className="sa-card-b"><Skel h={160} /></div> : !d?.items?.length ? <Empty title="Nobody here">Try another group, status, shop or search.</Empty> : (
           <div className="sa-tbl">
@@ -314,7 +314,7 @@ function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
                     <td><Pill tone={ROLE_TONE[u.role]}>{u.role === "Admin" ? "Owner" : u.role === "SuperAdmin" ? "Super admin" : u.role}</Pill></td>
                     <td><Pill dot tone={STATUS_TONE[u.presence]}>{STATUS_LABEL[u.presence]}</Pill></td>
                     <td>{u.last_seen_at
-                      ? <><span title={fmtDateTime(u.last_seen_at)}>{ago(u.last_seen_at, now)}</span><div className="sa-dim" style={{ fontSize: 12 }}>last login {fmtDateTime(u.last_login_at)}</div></>
+                      ? <><span title={fmtDateTime(u.last_seen_at)}>{u.presence === "online" ? <b style={{ color: "var(--live, #0B7A4F)" }}>Live now</b> : seenAt(u.last_seen_at)}</span><div className="sa-dim" style={{ fontSize: 12 }}>last login {fmtDateTime(u.last_login_at)}</div></>
                       : <span className="sa-dim">—</span>}</td>
                     <td className="r">{u.today_seconds || u.sessions_today
                       ? <><b>{dur(u.today_seconds)}</b><div className="sa-dim" style={{ fontSize: 12, fontFamily: "inherit" }}>{u.sessions_today} login{u.sessions_today === 1 ? "" : "s"}</div></>
@@ -342,7 +342,7 @@ function ShopSelect({ tenants, value, onChange }) {
 
 // ── Sessions ───────────────────────────────────────────────────────────
 const SESSION_STATUS = [
-  { k: "active", label: "Online now" },
+  { k: "active", label: "Live now" },
   { k: "idle", label: "Away" },
   { k: "ended", label: "Logged out" },
   { k: "expired", label: "Timed out" },
@@ -350,7 +350,7 @@ const SESSION_STATUS = [
 ];
 
 function SessionsTab({ tenants, live, onPerson }) {
-  const [f, setF] = useState({ status: "active", tenant_id: "", role: "", client: "", date_from: "", date_to: "", q: "" });
+  const [f, setF] = useState({ status: hashParam("status") || "active", tenant_id: "", role: "", client: "", date_from: "", date_to: "", q: "" });
   const [qd, setQd] = useState("");
   const [page, setPage] = useState(1);
   useEffect(() => { const t = setTimeout(() => setQd(f.q), 350); return () => clearTimeout(t); }, [f.q]);
@@ -384,7 +384,7 @@ function SessionsTab({ tenants, live, onPerson }) {
         </div>
       </div>
       <div className="sa-dim" style={{ fontSize: 12.5, padding: "0 16px 10px" }}>
-        A session is one login on one device, from login to logout. <b>Away</b> sessions can come back without a password for up to 2 days, then they <b>time out</b>.
+        A session is one login on one device, from login to logout. <b>Live</b> = that browser has DFX open right now. <b>Away</b> = the browser or app is closed but still logged in - it can come back without a password for up to 2 days, then it <b>times out</b>.
       </div>
       <SessionTable rows={res.data?.items} loading={res.loading && !res.data} onPerson={onPerson} now={now}
         empty={f.status === "active" ? "Nobody is using DFX right now." : "No sessions match these filters."} />
@@ -414,7 +414,7 @@ function SessionTable({ rows, loading, onPerson, compact, now, empty, hidePerson
               <td><ClientTag client={s.client} device={s.device} />
                 {!compact && <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{[s.browser, s.ip].filter(Boolean).join(" · ")}</div>}</td>
               {!compact && <td>{fmtDateTime(s.started_at)}{s.login_method === "google" ? <span className="sa-dim"> · Google</span> : null}</td>}
-              <td title={fmtDateTime(s.last_seen_at)}>{ago(s.last_seen_at, now)}</td>
+              <td title={fmtDateTime(s.last_seen_at)}>{s.status === "active" ? <b style={{ color: "var(--live, #0B7A4F)" }}>Live now</b> : seenAt(s.last_seen_at)}</td>
               <td className="r">{lengthOf(s.duration_seconds)}</td>
             </tr>
           ))}
@@ -426,7 +426,7 @@ function SessionTable({ rows, loading, onPerson, compact, now, empty, hidePerson
 
 // ── Sign-ins & security ────────────────────────────────────────────────
 function SignInsTab({ tenants, live, onPerson }) {
-  const [f, setF] = useState({ event: "", tenant_id: "", date_from: "", date_to: "", q: "" });
+  const [f, setF] = useState({ event: hashParam("event") || "", tenant_id: "", date_from: "", date_to: "", q: "" });
   const [qd, setQd] = useState("");
   const [page, setPage] = useState(1);
   useEffect(() => { const t = setTimeout(() => setQd(f.q), 350); return () => clearTimeout(t); }, [f.q]);
@@ -439,10 +439,10 @@ function SignInsTab({ tenants, live, onPerson }) {
   return (
     <div className="sa-grid">
       <div className="sa-kpis">
-        <Kpi icon="key" hue="live" label="Logins · last 24 h" value={c.LOGIN_SUCCESS || 0} sub="successful" />
-        <Kpi icon="alert" hue={c.LOGIN_FAILED ? "bad" : "ink"} label="Failed logins · 24 h" value={c.LOGIN_FAILED || 0} sub="wrong password or unknown login" />
-        <Kpi icon="lock" hue="warn" label="Blocked logins · 24 h" value={c.LOGIN_BLOCKED || 0} sub="account disabled or shop switched off" />
-        <Kpi icon="shield" hue={c.TOKEN_REUSE ? "bad" : "app"} label="Security alarms · 24 h" value={c.TOKEN_REUSE || 0}
+        <Kpi go={() => { setF((s) => ({ ...s, event: "LOGIN_SUCCESS" })); scrollToId("signin-events"); }} icon="key" hue="live" label="Logins · last 24 h" value={c.LOGIN_SUCCESS || 0} sub="successful" />
+        <Kpi go={() => { setF((s) => ({ ...s, event: "LOGIN_FAILED" })); scrollToId("signin-events"); }} icon="alert" hue={c.LOGIN_FAILED ? "bad" : "ink"} label="Failed logins · 24 h" value={c.LOGIN_FAILED || 0} sub="wrong password or unknown login" />
+        <Kpi go={() => { setF((s) => ({ ...s, event: "LOGIN_BLOCKED" })); scrollToId("signin-events"); }} icon="lock" hue="warn" label="Blocked logins · 24 h" value={c.LOGIN_BLOCKED || 0} sub="account disabled or shop switched off" />
+        <Kpi go={() => { setF((s) => ({ ...s, event: "TOKEN_REUSE" })); scrollToId("signin-events"); }} icon="shield" hue={c.TOKEN_REUSE ? "bad" : "app"} label="Security alarms · 24 h" value={c.TOKEN_REUSE || 0}
           sub={c.TOKEN_REUSE ? "a copied login was used - that person was logged out everywhere" : "no copied logins detected"} />
       </div>
       <div className="sa-split">
@@ -453,7 +453,7 @@ function SignInsTab({ tenants, live, onPerson }) {
           <RankList rows={d?.summary_24h?.top_failed_identifiers} k="identifier" />
         </Card>
       </div>
-      <Card pad={false}>
+      <Card pad={false} id="signin-events">
         <div className="sa-filters" style={{ justifyContent: "space-between" }}>
           <div className="sa-seg" role="tablist" aria-label="Show">
             {[["", "Everything"], ["LOGIN_FAILED,LOGIN_BLOCKED,TOKEN_REUSE", "Problems only"], ["LOGIN_SUCCESS", "Logins"],
@@ -666,11 +666,11 @@ function PersonDrawer({ id, onClose }) {
       {!d ? <Skel h={200} /> : (
         <>
           <div className="sa-kpis">
-            <Kpi hue={current ? "live" : "ink"} live={current?.status === "active"} icon={current ? undefined : "clock"} label="Right now"
+            <Kpi go={() => scrollToId("person-sessions")} hue={current ? "live" : "ink"} live={current?.status === "active"} icon={current ? undefined : "clock"} label="Right now"
               value={current ? STATUS_LABEL[current.status] : "Signed out"}
-              sub={current ? `${current.client === "app" ? "App" : "Web"} · since ${fmtTime(current.started_at)}` : `last seen ${ago(d.sessions[0]?.last_seen_at, now)}`} />
-            <Kpi icon="clock" hue="web" label="Time on platform · 14 days" value={dur(total14)} sub={`${d.sessions.length} sessions in ${days} days`} />
-            <Kpi icon="users" hue={u.is_active ? "teal" : "bad"} label="Account" value={u.is_active ? "Active" : "Disabled"} sub={`created ${fmtDate(u.created_at)}`} />
+              sub={current ? `${current.client === "app" ? "App" : "Web"} · since ${fmtTime(current.started_at)}` : `last seen ${seenAt(d.sessions[0]?.last_seen_at)}`} />
+            <Kpi go={() => scrollToId("person-sessions")} icon="clock" hue="web" label="Time on platform · 14 days" value={dur(total14)} sub={`${d.sessions.length} sessions in ${days} days`} />
+            <Kpi go={() => scrollToId("person-sessions")} icon="users" hue={u.is_active ? "teal" : "bad"} label="Account" value={u.is_active ? "Active" : "Disabled"} sub={`created ${fmtDate(u.created_at)}`} />
           </div>
           <Card title="Daily time (IST)" icon="activity">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(14,1fr)", gap: 6, alignItems: "end", height: 120 }}>
@@ -683,7 +683,7 @@ function PersonDrawer({ id, onClose }) {
               ))}
             </div>
           </Card>
-          <div className="sa-tabs" role="tablist" style={{ marginBottom: 0 }}>
+          <div id="person-sessions" className="sa-tabs" role="tablist" style={{ marginBottom: 0, scrollMarginTop: 20 }}>
             {[["sessions", `Sessions (${d.sessions.length})`], ["events", `Sign-in log (${d.events.length})`], ["activity", `Actions (${d.activity.length})`]].map(([k, l]) => (
               <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
             ))}

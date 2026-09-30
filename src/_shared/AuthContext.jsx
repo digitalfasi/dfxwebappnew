@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { authService } from "@/_shared/authService";
-import { tokenStore, SESSION_EXPIRED_EVENT } from "@/_shared/apiClient";
+import { apiClient, tokenStore, SESSION_EXPIRED_EVENT } from "@/_shared/apiClient";
 
 /**
  * App-wide authentication context. Infrastructure only — no visual output.
@@ -21,6 +21,18 @@ export function AuthProvider({ children }) {
   // The shop's contact phone, for a signed-in person with none of their own.
   const [tenantPhone, setTenantPhone] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Heartbeat: once a minute while this tab is open (even in the background
+  // or idle), tell the server this login is still here. The Super Admin shows
+  // a person as Live exactly as long as their browser has DFX open. A failure
+  // is ignored - it only means the next beat tries again.
+  useEffect(() => {
+    if (!user) return undefined;
+    const beat = () => { apiClient.get("/auth/heartbeat", { auth: true }).catch(() => {}); };
+    beat();
+    const id = setInterval(beat, 60000);
+    return () => clearInterval(id);
+  }, [user]);
 
   // On mount: if a token exists, resolve the current user; drop to signed-out
   // when the token is missing/expired/revoked.

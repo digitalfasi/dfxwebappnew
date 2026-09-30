@@ -43,9 +43,9 @@ export function Icon({ name, size = 18, stroke = 1.75, className, style }) {
   );
 }
 
-export function Card({ title, icon, hue = "web", right, children, pad = true, style, fill }) {
+export function Card({ title, icon, hue = "web", right, children, pad = true, style, fill, id }) {
   return (
-    <section className={`sa-card h-${hue}`} style={style}>
+    <section id={id} className={`sa-card h-${hue}`} style={{ scrollMarginTop: 90, ...style }}>
       {(title || right) && (
         <div className="sa-card-h">
           <h3>{icon && <span className="ic"><Icon name={icon} size={15} /></span>}{title}</h3>
@@ -58,10 +58,22 @@ export function Card({ title, icon, hue = "web", right, children, pad = true, st
 }
 
 // hue: live | web | app | warn | bad | teal | ink
-export function Kpi({ label, value, sub, live, icon = "activity", hue = "web", tone }) {
+// Where a KPI card leads. A string is a page (#/control/...), a function runs
+// in place (switch a filter, scroll to a section).
+export const goTo = (path) => { window.location.hash = path; };
+export const scrollToId = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+export const hashParam = (k) => {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.hash.split("?")[1] || "").get(k);
+};
+
+export function Kpi({ label, value, sub, live, icon = "activity", hue = "web", tone, go }) {
   const h = tone === "bad" ? "bad" : tone === "warn" ? "warn" : hue;
+  const open = go ? () => (typeof go === "function" ? go() : goTo(go)) : undefined;
   return (
-    <div className={`sa-kpi h-${h}`}>
+    <div className={`sa-kpi h-${h}${go ? " go" : ""}`} onClick={open} role={go ? "button" : undefined} tabIndex={go ? 0 : undefined}
+      onKeyDown={go ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } } : undefined}
+      title={go ? `Open ${label}` : undefined}>
       <span className="chip">{live ? <span className="sa-pulse" /> : <Icon name={icon} size={19} />}</span>
       <div className="lbl">{label}</div>
       <div className="val">{value}</div>
@@ -88,7 +100,7 @@ export function Pill({ tone = "mute", children, dot, box }) {
 export const STATUS_TONE = { active: "live", online: "live", idle: "warn", ended: "mute", expired: "mute", offline: "mute", never: "mute" };
 // Plain words. "Away" = still logged in on that device but not used in the
 // last 5 minutes (tab closed, phone locked); they come back without a login.
-export const STATUS_LABEL = { active: "Online", online: "Online", idle: "Away", ended: "Logged out", expired: "Timed out", offline: "Logged out", never: "Never logged in" };
+export const STATUS_LABEL = { active: "Live", online: "Live", idle: "Away", ended: "Logged out", expired: "Timed out", offline: "Logged out", never: "Never logged in" };
 export const ROLE_TONE = { SuperAdmin: "pri", Admin: "sky", Staff: "app", Customer: "mute" };
 
 export function ClientTag({ client, device }) {

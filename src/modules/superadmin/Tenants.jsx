@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { saService, fmtDateTime, fmtDate, inr } from "@/modules/superadmin/saService";
-import { Card, Kpi, Pill, Icon, Empty, Skel, Drawer, usePoll } from "@/modules/superadmin/saUi";
+import { saService, fmtDateTime, fmtDate, inr, seenAt } from "@/modules/superadmin/saService";
+import { Card, Kpi, Pill, Icon, Empty, Skel, Drawer, usePoll, hashParam, scrollToId } from "@/modules/superadmin/saUi";
 
 const PLANS = ["Starter", "Professional", "Business", "Enterprise"];
 // Same rule as the server (password_policy.py): 8+ characters, not a common one.
@@ -75,16 +75,6 @@ const FILTERS = [
   { k: "EXPIRED", label: "Expired" },
   { k: "OFF", label: "Switched off" },
 ];
-const agoShort = (iso) => {
-  if (!iso) return null;
-  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-  if (m < 2) return "just now";
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.round(h / 24);
-  return d === 1 ? "yesterday" : `${d} days ago`;
-};
 
 function PlanCell({ t }) {
   const a = ACCESS[t.access] || { label: "—", tone: "mute" };
@@ -103,7 +93,7 @@ function PlanCell({ t }) {
 }
 
 export default function Tenants({ onWatch }) {
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(() => (FILTERS.some((f) => f.k === hashParam("filter")) ? hashParam("filter") : ""));
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState(null);
@@ -136,12 +126,12 @@ export default function Tenants({ onWatch }) {
   return (
     <div className="sa-grid">
       <div className="sa-kpis">
-        <Kpi icon="shop" hue="web" label="Shops" value={list.data ? all.length : "—"}
+        <Kpi go={() => { setFilter(""); scrollToId("shop-list"); }} icon="shop" hue="web" label="Shops" value={list.data ? all.length : "—"}
           sub={list.data ? `${count("PAID")} paid · ${count("TRIAL")} on trial · ${count("EXPIRED") + count("OFF")} closed` : ""} />
-        <Kpi icon="clock" hue="warn" tone={soon.length || expired.length ? "warn" : undefined} label={`Access ending in ${SOON_DAYS} days`}
+        <Kpi go={() => { setFilter("SOON"); scrollToId("shop-list"); }} icon="clock" hue="warn" tone={soon.length || expired.length ? "warn" : undefined} label={`Access ending in ${SOON_DAYS} days`}
           value={list.data ? soon.length : "—"} sub={expired.length ? `${expired.length} already expired` : "shops that need a decision"} />
-        <Kpi icon="activity" hue="live" label="Shops that used DFX today" value={ov.data ? activeToday : "—"} sub={ov.data ? `of ${all.length} shops` : ""} />
-        <Kpi icon="check" hue="app" label="Sales today, all shops" value={ov.data ? inr(salesAmt) : "—"} sub={ov.data ? `${salesN} bill${salesN === 1 ? "" : "s"} · ${customers} customers in total` : ""} />
+        <Kpi go="#/control/monitor/live" icon="activity" hue="live" label="Shops that used DFX today" value={ov.data ? activeToday : "—"} sub={ov.data ? `of ${all.length} shops` : ""} />
+        <Kpi go={() => scrollToId("shop-list")} icon="check" hue="app" label="Sales today, all shops" value={ov.data ? inr(salesAmt) : "—"} sub={ov.data ? `${salesN} bill${salesN === 1 ? "" : "s"} · ${customers} customers in total` : ""} />
       </div>
 
       {(soon.length > 0 || expired.length > 0) && (
@@ -154,7 +144,7 @@ export default function Tenants({ onWatch }) {
         </div>
       )}
 
-      <Card pad={false}>
+      <Card pad={false} id="shop-list">
         <div className="sa-filters" style={{ justifyContent: "space-between" }}>
           <div className="sa-seg" role="tablist" aria-label="Filter shops">
             {FILTERS.map((f) => (
@@ -192,8 +182,8 @@ export default function Tenants({ onWatch }) {
                   <td className="who"><b>{d.customers ?? "—"} customers</b><span>{d.staff ?? 0} staff</span></td>
                   <td className="r">{d.sales_today ? <><b>{inr(d.sales_today_amount)}</b><div className="sa-dim" style={{ fontSize: 12 }}>{d.sales_today} bill{d.sales_today === 1 ? "" : "s"}</div></> : <span className="sa-dim" style={{ fontFamily: "inherit" }}>No sales</span>}</td>
                   <td>
-                    {d.live_now > 0 ? <Pill dot tone="live">{d.live_now} online now</Pill>
-                      : d.last_activity_at ? <span title={fmtDateTime(d.last_activity_at)}>{agoShort(d.last_activity_at)}</span>
+                    {d.live_now > 0 ? <Pill dot tone="live">{d.live_now} live now</Pill>
+                      : d.last_activity_at ? <span title={fmtDateTime(d.last_activity_at)}>{seenAt(d.last_activity_at)}</span>
                       : <span className="sa-dim">Never</span>}
                   </td>
                   <td className="r" style={{ color: "var(--acc)" }}><Icon name="arrow" size={16} /></td>
@@ -399,12 +389,12 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
         <>
           {msg && <div className={`sa-alert ${msg.tone}`} role="status"><Icon name={msg.tone === "ok" ? "check" : "alert"} />{msg.text}</div>}
           <div className="sa-kpis">
-            <Kpi icon="shop" hue={tenant.status === "Active" && !(trialLeft != null && trialLeft < 0) ? "live" : "bad"} label="Shop status"
+            <Kpi go={() => scrollToId("td-controls")} icon="shop" hue={tenant.status === "Active" && !(trialLeft != null && trialLeft < 0) ? "live" : "bad"} label="Shop status"
               value={tenant.status !== "Active" ? "Switched off" : trialLeft != null && trialLeft < 0 ? "Locking" : "Open"}
               sub={tenant.status !== "Active" ? "nobody can log in" : trialLeft != null && trialLeft < 0 ? "trial ended - locked at the next login" : "people can log in"} />
-            <Kpi icon="clock" hue={trialLeft != null && trialLeft < 7 ? "warn" : "web"} label="Access" value={trialLeft == null ? "Paid · no end date" : trialLeft >= 0 ? `${trialLeft} days left` : "Trial ended"}
+            <Kpi go={() => scrollToId("td-plan")} icon="clock" hue={trialLeft != null && trialLeft < 7 ? "warn" : "web"} label="Access" value={trialLeft == null ? "Paid · no end date" : trialLeft >= 0 ? `${trialLeft} days left` : "Trial ended"}
               sub={tenant.subscription ? `${tenant.subscription.plan} · ${tenant.subscription.status}` : "no subscription"} />
-            <Kpi icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st ? `${st.active_enrollments} active enrolments` : ""} />
+            <Kpi go={() => { onWatch(id); onClose(); }} icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st ? `${st.active_enrollments} active enrolments` : ""} />
           </div>
 
           {tenant.subscription && (
@@ -458,7 +448,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
           )}
 
           {sub && (
-            <Card title="Plan and access" icon="clock">
+            <Card id="td-plan" title="Plan and access" icon="clock">
               <div className="sa-form">
                 <div className="sa-field"><label htmlFor="td-plan">Plan</label>
                   <select id="td-plan" className="sa-sel" value={sub.plan} onChange={(e) => setSub((x) => ({ ...x, plan: e.target.value }))}>
@@ -481,7 +471,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
             </Card>
           )}
 
-          <Card title="Controls" icon="shield">
+          <Card id="td-controls" title="Controls" icon="shield">
             <div style={{ display: "grid", gap: 12 }}>
               <Control title={tenant.status === "Active" ? "Suspend this shop" : "Re-activate this shop"}
                 text={tenant.status === "Active" ? "Everyone at this shop is blocked at their next sign-in or refresh (within 30 minutes)." : "People at this shop can sign in again."}

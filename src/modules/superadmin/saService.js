@@ -74,6 +74,20 @@ export function ago(iso, now = Date.now()) {
   return `${d} day${d === 1 ? "" : "s"} ago`;
 }
 
+// Exact time something was last seen, in India time: "5:42:13 pm" today,
+// "Yesterday, 6:36 pm", else "29 Sept, 6:36 pm". Never "just now".
+export function seenAt(iso) {
+  if (!iso) return "never";
+  const t = new Date(iso);
+  const day = (x) => x.toLocaleDateString("en-CA", { timeZone: IST });
+  const today = new Date();
+  const yest = new Date(today.getTime() - 86400000);
+  const time = (o) => t.toLocaleTimeString("en-IN", { timeZone: IST, hour: "numeric", minute: "2-digit", ...o });
+  if (day(t) === day(today)) return time({ second: "2-digit" });
+  if (day(t) === day(yest)) return `Yesterday, ${time()}`;
+  return `${t.toLocaleDateString("en-IN", { timeZone: IST, day: "numeric", month: "short" })}, ${time()}`;
+}
+
 export function dur(sec) {
   if (sec == null) return "—";
   const s = Math.max(0, Math.round(sec));
