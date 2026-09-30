@@ -139,14 +139,15 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             genuinely needed. */}
         {/* Our brand, always: the DFX GOLD mark (owner rule 2026-09-30).
             The shop's own name is not repeated here. */}
-        {/* Brand band: the DFX GOLD logo centred on the sidebar's own cream. */}
+        {/* Brand band: the DFX GOLD logo centred on the sidebar's own cream,
+            with a soft gold glow behind it. */}
         {collapsed ? (
-          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-2" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
-            <img src="/dfx-gold-mark.png" alt="DFX GOLD" width={44} height={44} className="h-11 w-11 object-contain" />
+          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-2 bg-[radial-gradient(ellipse_at_center,rgba(212,168,67,0.30)_0%,rgba(212,168,67,0.12)_38%,transparent_70%)]" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
+            <img src="/dfx-gold-mark.png" alt="DFX GOLD" width={44} height={44} className="h-11 w-11 object-contain drop-shadow-[0_0_8px_rgba(212,168,67,0.45)]" />
           </div>
         ) : (
-          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-4" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
-            <img src="/dfx-gold-logo.png" alt="DFX GOLD" width={124} height={58} className="h-[54px] w-auto object-contain" />
+          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-4 bg-[radial-gradient(ellipse_at_center,rgba(212,168,67,0.30)_0%,rgba(212,168,67,0.12)_38%,transparent_70%)]" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
+            <img src="/dfx-gold-logo.png" alt="DFX GOLD" width={124} height={58} className="h-[54px] w-auto object-contain drop-shadow-[0_0_10px_rgba(212,168,67,0.45)]" />
           </div>
         )}
 
