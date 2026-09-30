@@ -56,6 +56,13 @@ export const goldRateService = {
     return res.data?.rate;
   },
 
+  /** POST /api/v1/gold-rates/today/back-to-live — end today's manual override. */
+  async backToLive() {
+    const res = await apiClient.post("/gold-rates/today/back-to-live", {}, { auth: true });
+    notifyRatePublished();
+    return res.data?.rate;
+  },
+
   /** PUT /api/v1/gold-rates/today — update today's rate. */
   async updateTodayRate(rates) {
     const res = await apiClient.put("/gold-rates/today", toBody(rates), { auth: true });

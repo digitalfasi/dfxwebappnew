@@ -21,6 +21,7 @@ export const saService = {
   events: (params) => get("/superadmin/monitor/events", params),
   activity: (params) => get("/superadmin/monitor/activity", params),
   system: () => get("/superadmin/monitor/system"),
+  rateFeed: () => get("/superadmin/monitor/rate-feed"),
 
   // Tenants
   dashboard: async () => (await get("/superadmin/dashboard")).dashboard,

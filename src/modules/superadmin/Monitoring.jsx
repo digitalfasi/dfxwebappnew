@@ -56,8 +56,10 @@ export default function Monitoring({ tab, setTab, shopFilter, setShopFilter }) {
 }
 
 // ── Live now ───────────────────────────────────────────────────────────
-function healthOf(d, sys) {
+function healthOf(d, sys, feed) {
   const bad = [], warn = [], ok = [];
+  // The 5-minute gold-rate feed: every shop bills at the rate it writes.
+  if (feed?.stale) bad.push(`Gold rate feed stopped - no live rate for ${feed.minutes_since_live != null ? `${feed.minutes_since_live} min` : "today"}`);
   const db = sys?.database, h = sys?.host;
   if (db && !db.healthy) bad.push("Database is not answering");
   const down = (h?.containers || []).filter((c) => c.state !== "running" || (c.health && c.health !== "healthy"));
@@ -82,6 +84,7 @@ function healthOf(d, sys) {
   if (dumpH != null && dumpH <= 30) ok.push(`Backup ${Math.round(dumpH)} h ago`);
   if (diskPct != null && diskPct < 80) ok.push(`Disk ${diskPct}% used`);
   if (certDays != null && certDays >= 20) ok.push(`SSL valid ${certDays} days`);
+  if (feed && !feed.stale) ok.push(feed.market_open ? `Gold rate live${feed.minutes_since_live != null ? ` (${feed.minutes_since_live} min ago)` : ""}` : "Gold rate: market closed, last rate carried");
   const level = bad.length ? "bad" : warn.length ? "warn" : "ok";
   const title = bad.length ? "Something needs fixing now" : warn.length ? "Running, a few things need attention" : "Everything is running normally";
   return { level, title, points: [...bad, ...warn, ...(level === "ok" ? ok : [])], dumpH, diskPct, certDays, errs };
@@ -91,11 +94,12 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
   const d = ov.data;
   const online = usePoll(() => saService.sessions({ status: "active", limit: 100 }), [], { ms: 15000, live });
   const sys = usePoll(() => saService.system(), [], { ms: 30000, live });
+  const feed = usePoll(() => saService.rateFeed(), [], { ms: 60000, live });
   if (!d) return <div className="sa-kpis">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="sa-kpi"><Skel h={40} w={40} /><Skel h={30} w="60%" /></div>)}</div>;
   const r = d.live.by_role || {};
   const c = d.live.by_client || {};
   const S = sys.data;
-  const hh = healthOf(d, S);
+  const hh = healthOf(d, S, feed.data);
   const H = S?.host;
   const api = (H?.containers || []).find((x) => x.name === "dfx-backend");
   const lastMin = H?.web_traffic?.per_minute?.slice(-5) || [];

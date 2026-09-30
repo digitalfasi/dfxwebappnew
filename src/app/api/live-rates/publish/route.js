@@ -93,8 +93,11 @@ function toBody(form) {
   return body;
 }
 
-async function backend(path, { method = "GET", body, token } = {}) {
+async function backend(path, { method = "GET", body, token, internal } = {}) {
   const headers = { Accept: "application/json" };
+  // The machine-only endpoints: no user login, a shared secret over the
+  // private Docker network (see backend gold_rate/internal_router.py).
+  if (internal) headers["x-internal-secret"] = internal;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${API_URL}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: "no-store" });
@@ -116,9 +119,23 @@ export async function POST(request) {
     return Response.json({ published: false, error: "unauthorized" }, { status: 401 });
   }
 
-  // 2. Market-hours gate.
+  const internal = process.env.INTERNAL_CRON_SECRET || "";
+
+  // 2. Market-hours gate. Closed: nothing new to publish, but every shop must
+  // still have a rate for TODAY or billing refuses - so carry each shop's last
+  // rate forward (idempotent: shops that already have today's row are left
+  // alone). This is what lets a shop bill at 8 am and all weekend.
   if (!marketOpen()) {
-    return Response.json({ published: false, skipped: "market-closed", checkedAt: new Date().toISOString() });
+    const out = { published: false, skipped: "market-closed", checkedAt: new Date().toISOString() };
+    if (internal && !dryRun) {
+      try {
+        const r = await backend("/internal/gold-rates/carry-forward", { method: "POST", internal });
+        out.carried = r.data?.carried ?? 0;
+      } catch (e) {
+        out.carryError = String(e?.message || e);
+      }
+    }
+    return Response.json(out);
   }
 
   // 3. Scrape + sanity.
@@ -139,7 +156,30 @@ export async function POST(request) {
     return Response.json({ published: false, dryRun: true, wouldPublish: body, fetchedAt: data.fetchedAt });
   }
 
-  // 4. Authenticate to the backend and write today's rate.
+  // 4a. Preferred: the internal endpoint - no login, so a password change can
+  // never stop the feed, and no login session every five minutes.
+  if (internal) {
+    try {
+      const res = await backend("/internal/gold-rates/publish-all", { method: "POST", body, internal });
+      const d = res.data ?? {};
+      return Response.json({
+        published: true,
+        scope: "all-tenants",
+        via: "internal",
+        tenantsCreated: d.created ?? 0,
+        tenantsUpdated: d.updated ?? 0,
+        manualKept: d.manual_kept ?? 0,
+        effectiveDate: d.effective_date,
+        rate: body,
+        fetchedAt: data.fetchedAt,
+        publishedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      return Response.json({ published: false, error: String(e?.message || e) }, { status: 502 });
+    }
+  }
+
+  // 4b. Fallback (no internal secret configured): authenticate and write.
   const username = process.env.DFX_SERVICE_USERNAME;
   const password = process.env.DFX_SERVICE_PASSWORD;
   if (!username || !password) {

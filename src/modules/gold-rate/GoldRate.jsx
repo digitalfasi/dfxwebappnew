@@ -52,6 +52,13 @@ export default function GoldRate() {
   usePageMotion(scope, [loading]);
   const [saving, setSaving] = useState(false);
   const [todayExists, setTodayExists] = useState(false);
+  // Rates are automatic (owner rule 2026-09-30): LIVE / CARRIED come from the
+  // feed, MANUAL is this shop's own override. The form only shows for an
+  // override; otherwise the card just says what the live rate is.
+  const [todaySource, setTodaySource] = useState(null);
+  const [todayUpdated, setTodayUpdated] = useState(null);
+  const [overriding, setOverriding] = useState(false);
+  const manualMode = overriding || todaySource === "MANUAL";
   // DFX Collector Engine: live rates scraped from KJPL + MJDTA (server-side).
   const [live, setLive] = useState(null);
   const [liveLoading, setLiveLoading] = useState(false);
@@ -128,9 +135,13 @@ export default function GoldRate() {
           silver: today.silver_999 != null ? String(today.silver_999) : "",
         });
         setTodayExists(true);
+        setTodaySource(today.source || "LIVE");
+        setTodayUpdated(today.updated_at || null);
       } else {
         setRates(EMPTY);
         setTodayExists(false);
+        setTodaySource(null);
+        setTodayUpdated(null);
       }
     } catch {
       setRates(EMPTY);
@@ -150,11 +161,16 @@ export default function GoldRate() {
   // mounted — the whole app keys off these live rates, so it keeps ticking even
   // when the tab is in the background. Paced at ~1 request/min via the 20s
   // server cache, so it stays gentle on the source sites.
+  // Automatic mode shows the PUBLISHED rate, so it re-reads today's rate; the
+  // override form keeps pulling the live source as a guide.
   useEffect(() => {
     const REFRESH_MS = 60000;
-    const id = setInterval(() => fetchLive("auto"), REFRESH_MS);
+    const id = setInterval(() => {
+      fetchLive("auto");
+      if (!manualMode) { loadRate(); loadHistory(); }
+    }, REFRESH_MS);
     return () => clearInterval(id);
-  }, [fetchLive]);
+  }, [fetchLive, loadRate, loadHistory, manualMode]);
 
   async function publishRate() {
     const r24 = Number(rates.r24);
@@ -164,10 +180,27 @@ export default function GoldRate() {
       if (todayExists) await goldRateService.updateTodayRate(rates);
       else await goldRateService.createTodayRate(rates);
       await loadRate();
+      setOverriding(false);
       loadHistory();
-      toast(`Gold rate published at ${formatINR(r24)}/g (24K)`);
+      toast(`Your rate is set: ${formatINR(r24)}/g (24K). The live feed will leave it alone today.`);
     } catch (err) {
       toast(err?.message || "Publish failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function goLive() {
+    setSaving(true);
+    try {
+      await goldRateService.backToLive();
+      setOverriding(false);
+      dirty.current.clear();
+      await loadRate();
+      loadHistory();
+      toast("Back to live — today's rate follows the market again");
+    } catch (err) {
+      toast(err?.message || "Could not switch back to live");
     } finally {
       setSaving(false);
     }
@@ -206,7 +239,7 @@ export default function GoldRate() {
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Gold Rate</h2>
           <p className="mt-1 max-w-[55ch] text-sm text-muted">
-            Set the daily rate. Updates publish to the storefront and apply to new bills instantly.
+            Updated automatically from the live market. Billing and the storefront always use today&apos;s rate.
           </p>
         </div>
         <Badge tone={liveErr ? "danger" : "info"} dot>
@@ -256,60 +289,84 @@ export default function GoldRate() {
         </div>
 
         <Card data-motion="stat" className="lg:col-span-3">
-          <CardHeader>
-            <div>
-              <CardTitle>Update today&apos;s rate</CardTitle>
-              <CardDescription>Publishes to storefront and billing immediately</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {/* One cell shape for all six rates: label, then input. Nothing
-                else goes inside a cell — a note in only some cells changes those
-                rows' heights and breaks the shared baseline across the pair. */}
-            <div className="grid grid-cols-1 items-start gap-x-4 gap-y-3.5 sm:grid-cols-2">
-              {[
-                ["24K rate / gram", "r24"],
-                ["22K rate / gram", "r22"],
-                ["18K rate / gram", "r18"],
-                ["14K rate / gram", "r14"],
-                ["9K rate / gram", "r9"],
-                ["Silver / gram", "silver"],
-              ].map(([label, key]) => (
-                <label key={key} className="grid gap-1.5">
-                  <span className="h-4 text-[11px] font-bold uppercase leading-4 tracking-[0.07em]">{label}</span>
-                  <Input type="number" inputMode="decimal" value={rates[key]} onChange={setField(key)} />
-                </label>
-              ))}
-            </div>
-            {/* The per-rate notes that used to sit inside individual cells. */}
-            {(live?.rates?.gold_22k?.withGst != null || live?.rates?.gold_14k?.derived || live?.rates?.gold_9k?.derived) && (
-              <ul className="mt-3 space-y-0.5">
+          {!manualMode ? (
+            <>
+              <CardHeader>
+                <div>
+                  <CardTitle>Today&apos;s rate is automatic</CardTitle>
+                  <CardDescription>Updated from the live market every 5 minutes — nothing to save or publish.</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border px-3.5 py-2.5 text-sm ${
+                  todaySource === "CARRIED" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
+                  <span className="inline-flex items-center gap-1.5 font-bold">
+                    <span className={`h-2 w-2 rounded-full ${todaySource === "CARRIED" ? "bg-amber-500" : "animate-pulse bg-emerald-500"}`} />
+                    {todaySource === "CARRIED" ? "Market closed — last live rate carried forward" : todaySource ? "Live" : "Waiting for the first live rate"}
+                  </span>
+                  {todayUpdated && <span className="text-[12px] opacity-80">Last updated {new Date(todayUpdated).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</span>}
+                  {todaySource === "CARRIED" && <span className="text-[12px] opacity-80">Live updates resume when the market opens (Mon–Fri, 9:05 AM)</span>}
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  {[["24K", "r24"], ["22K", "r22"], ["18K", "r18"], ["14K", "r14"], ["9K", "r9"], ["Silver", "silver"]].map(([label, key]) => (
+                    <div key={key} className="rounded-xl border border-line bg-canvas/40 px-3 py-2">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{label} / g</div>
+                      <div className="num mt-0.5 text-[15px] font-extrabold">{num(rates[key]) != null ? formatINR(num(rates[key])) : "—"}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-muted">Billing and the storefront use this rate. Want your own rate today? Override it — the live feed will leave it alone until you switch back.</p>
+                <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                  <Button size="sm" variant="outline" disabled={loading} onClick={() => { dirty.current.clear(); setOverriding(true); }}>Override today&apos;s rate</Button>
+                  {liveErr ? <span className="text-[11px] text-red-500">Live source: {liveErr}</span> : null}
+                </div>
+              </CardContent>
+            </>
+          ) : (
+            <>
+              <CardHeader>
+                <div>
+                  <CardTitle>{todaySource === "MANUAL" ? "Your own rate for today" : "Override today's rate"}</CardTitle>
+                  <CardDescription>
+                    {todaySource === "MANUAL" ? "The live feed is paused for your shop today. Go back to live any time." : "Set your own rate. The live feed will not change it until you go back to live."}
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 items-start gap-x-4 gap-y-3.5 sm:grid-cols-2">
+                  {[
+                    ["24K rate / gram", "r24"],
+                    ["22K rate / gram", "r22"],
+                    ["18K rate / gram", "r18"],
+                    ["14K rate / gram", "r14"],
+                    ["9K rate / gram", "r9"],
+                    ["Silver / gram", "silver"],
+                  ].map(([label, key]) => (
+                    <label key={key} className="grid gap-1.5">
+                      <span className="h-4 text-[11px] font-bold uppercase leading-4 tracking-[0.07em]">{label}</span>
+                      <Input type="number" inputMode="decimal" value={rates[key]} onChange={setField(key)} />
+                    </label>
+                  ))}
+                </div>
                 {live?.rates?.gold_22k?.withGst != null && (
-                  <li className="text-[11px] text-muted">
-                    Live 22K — without GST {formatINR(live.rates.gold_22k.withoutGst)} · with GST {formatINR(live.rates.gold_22k.withGst)}
-                  </li>
+                  <p className="mt-3 text-[11px] text-muted">
+                    Live 22K right now — without GST {formatINR(live.rates.gold_22k.withoutGst)} · with GST {formatINR(live.rates.gold_22k.withGst)}
+                  </p>
                 )}
-                {live?.rates?.gold_14k?.derived && <li className="text-[11px] text-muted">14K is derived · 24K × 14/24</li>}
-                {live?.rates?.gold_9k?.derived && <li className="text-[11px] text-muted">9K is derived · 24K × 9/24</li>}
-              </ul>
-            )}
-            <p className="mt-3 text-xs text-muted">
-              Existing bill drafts are unaffected. Rate history keeps a full audit trail.
-            </p>
-            <div className="mt-4 flex flex-wrap items-center gap-2.5">
-              <Button size="sm" disabled={saving || loading} onClick={publishRate}>{saving ? "Publishing…" : "Save & publish"}</Button>
-              <Button size="sm" variant="outline" disabled={liveLoading || saving} onClick={() => fetchLive("force")}>
-                {liveLoading ? "Refreshing…" : "Refresh now"}
-              </Button>
-              {liveErr ? (
-                <span className="text-[11px] text-red-500">Live: {liveErr}</span>
-              ) : live?.fetchedAt ? (
-                <span className="text-[11px] text-muted">
-                  Live Sync · auto 60s · {new Date(live.fetchedAt).toLocaleTimeString()}
-                </span>
-              ) : null}
-            </div>
-          </CardContent>
+                <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                  <Button size="sm" disabled={saving || loading} onClick={publishRate}>{saving ? "Saving…" : "Save my rate"}</Button>
+                  {todaySource === "MANUAL" ? (
+                    <Button size="sm" variant="outline" disabled={saving} onClick={goLive}>Back to live</Button>
+                  ) : (
+                    <Button size="sm" variant="outline" disabled={saving} onClick={() => { setOverriding(false); loadRate(); }}>Cancel</Button>
+                  )}
+                  <Button size="sm" variant="ghost" disabled={liveLoading || saving} onClick={() => fetchLive("force")}>
+                    {liveLoading ? "Filling…" : "Fill with live rate"}
+                  </Button>
+                </div>
+              </CardContent>
+            </>
+          )}
         </Card>
       </div>
 
