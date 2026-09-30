@@ -95,6 +95,16 @@ export const paymentService = {
   },
 
   /**
+   * PUT /api/v1/payments/{id} — settle a PENDING payment (e.g. one a customer
+   * sent from the app). SUCCESS credits the gold and writes the passbook;
+   * FAILED/CANCELLED closes it. The backend refuses any other move.
+   */
+  async setStatus(paymentId, status) {
+    const res = await apiClient.put(`/payments/${encodeURIComponent(paymentId)}`, { payment_status: status }, { auth: true });
+    return res.data?.payment;
+  },
+
+  /**
    * POST /api/v1/payments/manual — canonical scheme manual payment. The caller
    * supplies the backend enrollment id (chosen in the customer-first picker), so
    * no enrollment lookup happens here. Amount, months coverage and maturity caps

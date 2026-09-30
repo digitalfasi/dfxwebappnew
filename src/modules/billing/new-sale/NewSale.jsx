@@ -703,11 +703,11 @@ export default function NewSale() {
     setRate(modeRate(m));
   };
 
-  // The band the backend enforces on a negotiated rate/g (+/-50% of the rate
+  // The band the backend enforces on a negotiated rate/g (+/-15% of the rate
   // published for this purity today). Checked here so a mistyped rate is a
   // field message instead of a rejected request.
   const rateBand = publishedRate != null
-    ? { low: publishedRate * 0.5, high: publishedRate * 1.5 }
+    ? { low: publishedRate * 0.85, high: publishedRate * 1.15 }
     : null;
   const rateOutOfBand =
     saleMode === "OFFLINE" && rate !== "" && rateBand != null &&
@@ -1590,7 +1590,7 @@ export default function NewSale() {
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
                       <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
                       <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Locked at the published ${product.purity || ""} rate ${publishedRate != null ? money(publishedRate) : "—"}, before tax. GST is added on the bill.` : `Editable. Default ${publishedRate != null ? money(publishedRate) : "—"} — the published ${product.purity || ""} rate, before tax.`}</span>
-                      {/* The backend refuses a rate more than 50% either side of
+                      {/* The backend refuses a rate more than 15% either side of
                           the published one — a tamper/typo net, not a haggling
                           limit. Stating the range here means the counter never
                           meets that rejection blind. */}

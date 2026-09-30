@@ -165,6 +165,8 @@ export default function Payments() {
   const f = filters[tab];
   const patch = (p) => setFilters((prev) => ({ ...prev, [tab]: { ...prev[tab], ...p } }));
   const [selected, setSelected] = useState(null);
+  const [settling, setSettling] = useState(null);
+  const [settleErr, setSettleErr] = useState(null);
   // The opened bill's payment ledger. Fetched from the SAME endpoint the Sales
   // History invoice panel uses (GET /billing/sales/{id}/payments), so the two
   // screens cannot disagree about how a bill was collected.
@@ -233,6 +235,22 @@ export default function Payments() {
       setLoading(false);
     }
   }, []);
+
+  async function settle(r, status) {
+    if (status === "SUCCESS" && !window.confirm(`Confirm ₹${r.amount.toLocaleString("en-IN")} from ${r.customer}? Gold will be credited to the passbook.`)) return;
+    if (status === "FAILED" && !window.confirm(`Reject this payment from ${r.customer}? No gold will be credited.`)) return;
+    setSettling(r.paymentId);
+    setSettleErr(null);
+    try {
+      await paymentService.setStatus(r.paymentId, status);
+      await loadPayments();
+      setKpiTick((t) => t + 1);
+    } catch (err) {
+      setSettleErr({ id: r.paymentId, msg: err?.message || "Could not update this payment" });
+    } finally {
+      setSettling(null);
+    }
+  }
 
   useEffect(() => {
     loadPayments();
@@ -619,7 +637,18 @@ export default function Payments() {
                       <div className="num font-bold">₹{r.amount.toLocaleString("en-IN")}</div>
                       <div className="text-xs font-semibold text-muted">{r.monthsCovered} {r.monthsCovered === 1 ? "installment" : "installments"}</div>
                     </td>
-                    <td className="!pr-6"><Badge tone={r.status === "PENDING" ? "warning" : (TONE[r.status] || "success")}>{r.status}</Badge></td>
+                    <td className="!pr-6">
+                      <Badge tone={r.status === "PENDING" ? "warning" : (TONE[r.status] || "success")}>{r.status}</Badge>
+                      {/* A customer's app payment waits here until the shop has
+                          seen the money - only then is gold credited. */}
+                      {r.status === "PENDING" && (
+                        <div className="mt-1.5 flex gap-1.5">
+                          <Button size="sm" disabled={settling === r.paymentId} onClick={() => settle(r, "SUCCESS")}>Confirm</Button>
+                          <Button size="sm" variant="outline" disabled={settling === r.paymentId} onClick={() => settle(r, "FAILED")}>Reject</Button>
+                        </div>
+                      )}
+                      {settleErr?.id === r.paymentId && <div className="mt-1 max-w-[220px] text-[11px] font-semibold text-danger">{settleErr.msg}</div>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
