@@ -140,15 +140,15 @@ const nextConfig = {
       // right, and setting it explicitly here would also apply in dev, where
       // it serves stale chunks to whoever is working on the app.
       {
-        source: "/:path((?!_next/static|login-bg\.).*)",
+        source: "/:path((?!_next/static|login-(?:bg|film)).*)",
         headers: [...securityHeaders, { key: "Cache-Control", value: "no-store, must-revalidate" }],
       },
-      // The sign-in background film and its still: 2.7 MB that never changes
+      // The sign-in background films and their still: ~8 MB that never changes
       // between deploys. no-store made every visit download it again (twice,
       // for the cross-fade copy). Cached for a week; ship a new file under a
       // new name rather than overwriting it.
       {
-        source: "/login-bg.:ext(mp4|jpg)",
+        source: "/:file(login-bg|login-film|login-film-rev).:ext(mp4|jpg)",
         headers: [...securityHeaders, { key: "Cache-Control", value: "public, max-age=604800" }],
       },
       { source: "/_next/static/:path*", headers: securityHeaders },

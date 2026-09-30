@@ -2,46 +2,30 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * The sign-in / free-trial background: the marble-and-gold still, brought to
- * life by a short film of the same scene.
+ * The sign-in / free-trial background: a slow push-in on the marble-and-gold
+ * still, played forward and then backward, forever, with no seam.
  *
- * The photograph is always painted first and stays underneath, so the page is
- * never blank while the film loads, on a slow line, or where autoplay is
- * refused. The film is the original file, untouched - no re-encode, no
- * quality loss - and fills the viewport with object-cover, so there is never
- * a gap at any aspect ratio. Data Saver users get the still alone.
+ * Why two files. The film zooms, so its last frame is not its first and a
+ * plain loop would jump. Played forward (login-film.mp4) and then reversed
+ * (login-film-rev.mp4, the same frames in reverse order), each clip ENDS on
+ * exactly the frame the other STARTS on, so the hand-over is invisible - no
+ * cut, no dissolve. The reversed file exists because browsers cannot play a
+ * video backwards smoothly.
  *
- * Framing: the file is 1920x1080 but its picture is 1620x1080 - the
- * generator padded a 3:2 shot with 150 px black bars each side. The element is
- * sized so that inner 3:2 picture covers the viewport (exactly like the 3:2
- * still beneath it) and the bars fall outside, clipped. Same pixels, no
- * re-encode, and the still and the film line up frame-for-frame.
- *
- * Seamless loop: the film's camera drifts, so its last frame is not its
- * first and a plain `loop` jumps every 8 s. Two copies take turns instead:
- * FADE seconds before one ends, the other starts from the top and dissolves
- * in over it, so the seam is a soft cross-fade rather than a cut.
+ * Both files are cropped to the picture's own 3:2 frame (the generator had
+ * padded it with black bars) and fill the viewport with object-cover, like
+ * the still beneath them, which is the film's own first frame. The still is
+ * always painted first, so the page is never blank; the film shows only once
+ * it is playing. Data Saver users get the still alone.
  */
-const SRC = "/login-bg.mp4";
-const FADE = 1.2; // seconds of cross-fade at the seam
-// The picture inside the frame: 1620 of 1920 px wide, full height.
-const FRAME_W = 1920, FRAME_H = 1080, PIC_W = 1620;
-const FILM_STYLE = {
-  // Cover the box with the 3:2 picture, then add the bars back outside it.
-  width: `max(100cqw * ${FRAME_W / PIC_W}, 100cqh * ${FRAME_W / FRAME_H})`,
-  aspectRatio: `${FRAME_W} / ${FRAME_H}`,
-  left: "50%",
-  top: "50%",
-  transform: "translate(-50%, -50%)",
-};
+const FWD = "/login-film.mp4";
+const REV = "/login-film-rev.mp4";
+const STILL = "/login-film.jpg";
 
 export default function LoginBackdrop({ veil = "from-white/60 via-white/30 to-white/5" }) {
-  const a = useRef(null);
-  const b = useRef(null);
-  const [front, setFront] = useState(null); // "a" | "b" | null (still showing)
-  // The copy being faded OVER stays fully visible underneath until the new one
-  // is opaque; fading both at once would let the still show through mid-seam.
-  const [back, setBack] = useState(null);
+  const fwd = useRef(null);
+  const rev = useRef(null);
+  const [front, setFront] = useState(null); // "f" | "r" | null (still showing)
   const [still, setStill] = useState(false);
 
   useEffect(() => {
@@ -49,64 +33,71 @@ export default function LoginBackdrop({ veil = "from-white/60 via-white/30 to-wh
     // Windows reports it whenever "Animation effects" is off, which is common
     // on office PCs, and the owner wants this slow, calm film seen there.
     if (typeof navigator !== "undefined" && navigator.connection?.saveData) { setStill(true); return; }
-    const A = a.current, B = b.current;
-    if (!A || !B) return;
-    for (const v of [A, B]) {
+    const F = fwd.current, R = rev.current;
+    if (!F || !R) return;
+    for (const v of [F, R]) {
       // React does not write `muted` as an HTML attribute, so the browser's
       // autoplay check sees a film with sound and refuses it. Say it directly.
       v.muted = true; v.defaultMuted = true; v.setAttribute("muted", "");
     }
-    let active = A, handing = false, alive = true;
+    let alive = true, active = F;
     const play = (v) => { const p = v.play?.(); if (p && p.catch) p.catch(() => {}); };
 
-    const start = () => { if (active.paused) play(active); };
-    const onPlaying = (e) => { if (e.target === active && alive) setFront(active === A ? "a" : "b"); };
-    const onTime = (e) => {
-      const v = e.target;
-      if (v !== active || handing || !v.duration) return;
-      if (v.currentTime >= v.duration - FADE) {
-        // Hand over: the other copy starts at 0 and fades in on top.
-        handing = true;
-        const next = v === A ? B : A;
-        if (!next.getAttribute("src")) { next.src = SRC; }
-        next.currentTime = 0;
-        play(next);
-        active = next;
-        setBack(v === A ? "a" : "b");
-        setFront(next === A ? "a" : "b");
-        setTimeout(() => { v.pause(); v.currentTime = 0; if (alive) setBack(null); handing = false; }, FADE * 1000 + 150);
-      }
+    // The reversed copy loads once the forward one has the whole file, so the
+    // first film starts as soon as possible.
+    const warm = () => { if (!R.getAttribute("src")) { R.src = REV; R.load(); } };
+
+    // Hand over on the shared frame. The finished clip holds its last frame
+    // on screen until the other is ready to play from its first - which is
+    // the same picture - so a slow line never shows a jump.
+    const handOver = (from) => {
+      if (!alive || from !== active) return;
+      const to = from === F ? R : F;
+      if (!to.getAttribute("src")) warm();
+      const go = () => {
+        if (!alive) return;
+        to.currentTime = 0;
+        setFront(to === F ? "f" : "r");
+        active = to;
+        play(to);
+        // Rewind the one now hidden, ready for its next turn.
+        setTimeout(() => { from.pause(); from.currentTime = 0; }, 250);
+      };
+      if (to.readyState >= 3) go();
+      else to.addEventListener("canplay", go, { once: true });
     };
+    const onEndF = () => handOver(F);
+    const onEndR = () => handOver(R);
+    const onPlaying = (e) => { if (alive && e.target === active) setFront(active === F ? "f" : "r"); };
+
+    const start = () => { if (active.paused && !active.ended) play(active); };
     // A background tab may not start a film until it is shown.
     const onVis = () => { if (document.visibilityState === "visible") start(); };
 
-    for (const v of [A, B]) {
-      v.addEventListener("playing", onPlaying);
-      v.addEventListener("timeupdate", onTime);
-    }
-    A.addEventListener("canplay", start);
-    // The second copy loads only once the first has the whole file, so it is
-    // read from the browser cache instead of downloading 2.7 MB again.
-    const warm = () => { if (!B.getAttribute("src")) { B.src = SRC; B.load(); } };
-    A.addEventListener("canplaythrough", warm);
+    F.addEventListener("ended", onEndF);
+    R.addEventListener("ended", onEndR);
+    F.addEventListener("playing", onPlaying);
+    R.addEventListener("playing", onPlaying);
+    F.addEventListener("canplay", start);
+    F.addEventListener("canplaythrough", warm);
     document.addEventListener("visibilitychange", onVis);
     start();
     return () => {
       alive = false;
-      for (const v of [A, B]) {
-        v.removeEventListener("playing", onPlaying);
-        v.removeEventListener("timeupdate", onTime);
-      }
-      A.removeEventListener("canplay", start);
-      A.removeEventListener("canplaythrough", warm);
+      F.removeEventListener("ended", onEndF);
+      R.removeEventListener("ended", onEndR);
+      F.removeEventListener("playing", onPlaying);
+      R.removeEventListener("playing", onPlaying);
+      F.removeEventListener("canplay", start);
+      F.removeEventListener("canplaythrough", warm);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
 
-  const film = (ref, id) => (
+  const film = (ref, id, src) => (
     <video
       ref={ref}
-      src={id === "a" ? SRC : undefined}
+      src={src}
       muted
       playsInline
       preload="auto"
@@ -114,20 +105,19 @@ export default function LoginBackdrop({ veil = "from-white/60 via-white/30 to-wh
       disableRemotePlayback
       aria-hidden="true"
       tabIndex={-1}
-      style={{ ...FILM_STYLE, transitionDuration: `${FADE}s` }}
-      className={`pointer-events-none absolute max-w-none object-fill transition-opacity ease-in-out ${
-        front === id ? "z-[1] opacity-100" : back === id ? "z-0 opacity-100" : "z-0 opacity-0"}`}
+      className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
+        front === id ? "z-[1] opacity-100" : front ? "z-0 opacity-100" : "z-0 opacity-0"}`}
     />
   );
 
   return (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/login-bg.jpg" alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" />
+      <img src={STILL} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" />
       {!still && (
-        <div className="pointer-events-none absolute inset-0 overflow-hidden [container-type:size]">
-          {film(a, "a")}
-          {film(b, "b")}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {film(fwd, "f", FWD)}
+          {film(rev, "r", undefined)}
         </div>
       )}
       {/* A light veil so the card reads, without washing the film out. */}
