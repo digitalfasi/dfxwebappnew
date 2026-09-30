@@ -50,6 +50,10 @@ background:var(--page)}
 .sa-grid{display:grid;gap:16px}
 /* KPI tiles */
 .sa-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+/* Six cards read as two even rows of three, never 5 + 1. */
+.sa-kpis.six{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:760px){.sa-kpis.six{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:420px){.sa-kpis.six{grid-template-columns:1fr}}
 .sa-kpi{position:relative;overflow:hidden;background:var(--paper);border:1px solid var(--rule);border-radius:12px;box-shadow:0 1px 2px rgba(16,24,64,.04);padding:14px 16px;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;align-items:center}
 
 .sa-kpi .chip{grid-row:1/3;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--cb,var(--acc-soft));color:var(--c,var(--acc));position:relative;z-index:1}

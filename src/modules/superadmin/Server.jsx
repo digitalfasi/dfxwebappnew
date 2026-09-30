@@ -13,6 +13,14 @@ const KIND_TONE = {
   "Scanner probe": "warn", "Automated client": "app", "Rate limited": "sky",
 };
 
+// "Automated client" = a script or tool (curl, Python...) calling the API.
+// Most of those are ours - the gold-rate job on this server (127.0.0.1) and
+// health checks - so they are listed, never counted as attacks.
+const AUTO = "Automated client";
+const isAttack = (kinds) => (Array.isArray(kinds) ? kinds : Object.keys(kinds || {})).some((x) => x !== AUTO);
+const breakIns = (t) => ["SQL injection", "Code injection", "Path traversal", "Password guessing"].reduce((n, x) => n + ((t?.by_kind || {})[x] || 0), 0);
+const attackCount = (t) => (t ? Math.max(0, (t.total || 0) - ((t.by_kind || {})[AUTO] || 0)) : 0);
+
 export default function ServerTab({ live }) {
   const [sec, setSec] = useState("overview");
   const res = usePoll(() => saService.system(), [], { ms: 30000, live });
@@ -25,12 +33,12 @@ export default function ServerTab({ live }) {
       <div className="sa-seg" role="tablist" aria-label="Server sections">
         {SECTIONS.map(([k, l]) => (
           <button key={k} role="tab" aria-selected={sec === k} onClick={() => setSec(k)}>
-            {l}{k === "security" && h?.threats?.total ? <span className="cnt bad">{h.threats.total}</span> : null}
+            {l}{k === "security" && breakIns(h?.threats) ? <span className="cnt bad">{breakIns(h.threats)}</span> : null}
             {k === "logs" && h?.app_logs?.errors_last_hour ? <span className="cnt bad">{h.app_logs.errors_last_hour}</span> : null}
           </button>
         ))}
         <span className="sa-dim" style={{ marginLeft: "auto", fontSize: 12.5, alignSelf: "center" }}>
-          {h ? <>Server snapshot {ago(h.generated_at)}{h.as_root ? "" : " · limited view"}</> : "Server agent not reporting"}
+          {h ? <>Server figures updated {ago(h.generated_at)}{h.as_root ? "" : " · partial (agent not running as root)"}</> : "Server agent not reporting"}
         </span>
       </div>
       {!h && <div className="sa-alert info"><Icon name="alert" />The server agent is not reporting yet, so only database and app figures are shown.</div>}
@@ -67,7 +75,7 @@ function Overview({ d, h }) {
   const heavy = [...(h?.containers || [])].sort((a, b) => parseFloat(b.stats?.mem_pct || 0) - parseFloat(a.stats?.mem_pct || 0));
   return (
     <>
-      <div className="sa-kpis">
+      <div className="sa-kpis six">
         <Kpi icon="activity" hue={cpuPct >= 85 ? "bad" : cpuPct >= 60 ? "warn" : "live"} label="CPU load" value={cpuPct != null ? `${cpuPct}%` : "—"} sub={`${load.toFixed(2)} on ${m.cpus || "?"} cores`} />
         <Kpi icon="server" hue={memPct >= 90 ? "bad" : memPct >= 75 ? "warn" : "web"} label="Memory" value={memPct != null ? `${memPct}%` : "—"} sub={mem.MemTotal ? `${bytes(mem.MemTotal - mem.MemAvailable)} of ${bytes(mem.MemTotal)}` : ""} />
         <Kpi icon="archive" hue={diskPct >= 90 ? "bad" : diskPct >= 80 ? "warn" : "app"} label="Disk" value={diskPct != null ? `${diskPct}%` : "—"} sub={disk ? `${bytes(disk.free)} free` : ""} />
@@ -105,22 +113,33 @@ function Overview({ d, h }) {
 function Security({ h, counts, failedTop }) {
   const t = h?.threats;
   const k = t?.by_kind || {};
+  const attacks = attackCount(t);
+  const attackers = (t?.top_sources || []).filter((s) => isAttack(s.kinds));
+  const scripts = (t?.top_sources || []).filter((s) => !isAttack(s.kinds));
+  const recent = (t?.recent || []).filter((e) => isAttack(e.kinds));
+  const injections = (k["SQL injection"] || 0) + (k["Code injection"] || 0) + (k["Path traversal"] || 0);
   return (
     <>
-      <div className="sa-kpis">
-        <Kpi icon="shield" hue={t?.total ? "bad" : "live"} label="Suspicious requests · 24 h" value={t ? t.total : "—"} sub={t?.blocked_share != null ? `${t.blocked_share}% were refused` : "needs root agent"} />
-        <Kpi icon="db" hue={k["SQL injection"] ? "bad" : "ink"} label="SQL injection tries" value={t ? k["SQL injection"] || 0 : "—"} />
-        <Kpi icon="alert" hue={k["Scanner probe"] ? "warn" : "ink"} label="Scanner probes" value={t ? k["Scanner probe"] || 0 : "—"} sub=".env, wp-admin, .git…" />
-        <Kpi icon="box" hue={k["Automated client"] ? "app" : "ink"} label="Bots on the API" value={t ? k["Automated client"] || 0 : "—"} sub="scripts, scrapers, headless" />
-        <Kpi icon="key" hue={counts.LOGIN_FAILED ? "bad" : "ink"} label="Failed app sign-ins · 24 h" value={counts.LOGIN_FAILED || 0} sub={`${counts.LOGIN_BLOCKED || 0} blocked accounts`} />
-        <Kpi icon="lock" hue="teal" label="Banned IPs now" value={h?.fail2ban ? h.fail2ban.reduce((s, j) => s + Number(j.currently_banned || 0), 0) : "—"} sub="by fail2ban" />
+      <div className="sa-kpis six">
+        <Kpi icon="shield" hue={attacks ? "warn" : "live"} tone={injections ? "bad" : undefined} label="Attack attempts · 24 h" value={t ? attacks : "—"}
+          sub={t ? (attacks ? "scanners and break-in tries" : "nothing tried to break in") : "needs root agent"} />
+        <Kpi icon="db" hue={injections ? "bad" : "ink"} label="Break-in tricks" value={t ? injections : "—"} sub="SQL / code injection, path tricks" />
+        <Kpi icon="alert" hue={k["Scanner probe"] ? "warn" : "ink"} label="Scanner probes" value={t ? k["Scanner probe"] || 0 : "—"} sub="looking for .env, wp-admin, .git" />
+        <Kpi icon="key" hue={counts.LOGIN_FAILED ? "warn" : "ink"} label="Failed logins · 24 h" value={counts.LOGIN_FAILED || 0} sub={`${counts.LOGIN_BLOCKED || 0} blocked`} />
+        <Kpi icon="lock" hue="teal" label="Banned right now" value={h?.fail2ban ? h.fail2ban.reduce((s, j) => s + Number(j.currently_banned || 0), 0) : "—"} sub="IPs blocked by fail2ban" />
+        <Kpi icon="box" hue="ink" label="Scripts & tools" value={t ? k[AUTO] || 0 : "—"} sub="not attacks - mostly our own jobs" />
       </div>
+      {t && attacks > 0 && !injections && (
+        <div className="sa-alert info"><Icon name="alert" />
+          <div>Every public website gets these. They were refused or found nothing ({t.blocked_share ?? 0}% refused outright) - no action needed unless one IP keeps going.</div>
+        </div>
+      )}
 
-      <Card title="Who is attacking" icon="shield" hue="bad" pad={false} right={<small>last 24 hours · most active first</small>}>
-        {!t ? <Empty title="Needs the root agent">nginx logs are readable by root only.</Empty> : !t.top_sources.length ? <Empty title="No attacks seen in the last 24 hours" /> : (
+      <Card title="Attack attempts - who tried" icon="shield" hue={attacks ? "warn" : "live"} pad={false} right={<small>last 24 hours · most active first</small>}>
+        {!t ? <Empty title="Needs the root agent">nginx logs are readable by root only.</Empty> : !attackers.length ? <Empty title="No attack attempts in the last 24 hours" /> : (
           <div className="sa-tbl"><table>
             <thead><tr><th>Source IP</th><th>What they tried</th><th className="r">Requests</th><th>Last seen</th><th>Tool / browser</th></tr></thead>
-            <tbody>{t.top_sources.map((s) => (
+            <tbody>{attackers.map((s) => (
               <tr key={s.ip}>
                 <td className="mono">{s.ip}</td>
                 <td className="wrap"><div className="sa-row" style={{ gap: 6 }}>{Object.entries(s.kinds).map(([kk, n]) => <Pill key={kk} tone={KIND_TONE[kk] || "mute"}>{kk} · {n}</Pill>)}</div></td>
@@ -133,10 +152,27 @@ function Security({ h, counts, failedTop }) {
         )}
       </Card>
 
+      {scripts.length > 0 && (
+        <Card title="Scripts & tools calling the server" icon="box" hue="web" pad={false} right={<small>normal - listed so you can spot a stranger</small>}>
+          <div className="sa-tbl"><table>
+            <thead><tr><th>Source IP</th><th>Who it is</th><th className="r">Requests</th><th>Last seen</th><th>Tool</th></tr></thead>
+            <tbody>{scripts.map((s) => (
+              <tr key={s.ip}>
+                <td className="mono">{s.ip}</td>
+                <td>{s.ip === "127.0.0.1" || s.ip === "::1" ? <b>This server (gold-rate job)</b> : <span className="sa-muted">A script - yours if you ran curl or Python</span>}</td>
+                <td className="r">{s.count}</td>
+                <td className="sa-muted">{ago(s.last)}</td>
+                <td className="sa-dim" style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }} title={s.ua}>{s.ua || "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </Card>
+      )}
+
       <div className="sa-two">
-        <Card title="Latest suspicious requests" icon="alert" hue="warn" fill>
-          {!t?.recent?.length ? <Empty title="Nothing suspicious" /> : (
-            <div className="sa-feed">{t.recent.map((e, i) => (
+        <Card title="Latest attack attempts" icon="alert" hue="warn" fill>
+          {!recent.length ? <Empty title="Nothing in the last 24 hours" /> : (
+            <div className="sa-feed">{recent.map((e, i) => (
               <div key={i}>
                 <span className={`sa-ico t-${e.kinds.some((x) => KIND_TONE[x] === "bad") ? "bad" : "warn"}`}><Icon name="alert" size={14} /></span>
                 <div className="txt"><b className="mono" style={{ fontSize: 12.5, fontWeight: 500, wordBreak: "break-all" }}>{e.request}</b>
@@ -155,7 +191,7 @@ function Security({ h, counts, failedTop }) {
               </div>
             ))}
           </Card>
-          <Card title="Most failed app sign-ins by IP" icon="key" hue="bad">
+          <Card title="Failed logins by IP · 24 h" icon="key" hue="bad">
             {!failedTop.length ? <Empty title="None in 24 hours" /> : failedTop.slice(0, 6).map((r) => (
               <div key={r.ip} className="sa-row" style={{ justifyContent: "space-between", padding: "5px 0" }}>
                 <span className="mono" style={{ fontSize: 13 }}>{r.ip}</span><b className="mono">{r.count}</b>
