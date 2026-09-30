@@ -11,7 +11,6 @@ import {
 
 const TABS = [
   { key: "live", label: "Live now", icon: "pulse" },
-  { key: "shops", label: "Shops", icon: "shop" },
   { key: "people", label: "People", icon: "users" },
   { key: "sessions", label: "Sessions", icon: "clock" },
   { key: "signins", label: "Sign-ins & security", icon: "shield" },
@@ -43,7 +42,6 @@ export default function Monitoring({ tab, setTab, shopFilter, setShopFilter }) {
       {ov.error && <div className="sa-alert bad" style={{ marginBottom: 14 }}><Icon name="alert" />{ov.error}</div>}
 
       {tab === "live" && <LiveTab ov={ov} live={live} now={now} onPerson={setPerson} onShop={openShop} />}
-      {tab === "shops" && <ShopsTab tenants={tenants} loading={ov.loading && !ov.data} now={now} onShop={openShop} />}
       {tab === "people" && <PeopleTab tenants={tenants} shop={shopFilter} setShop={setShopFilter} live={live} onPerson={setPerson} />}
       {tab === "sessions" && <SessionsTab tenants={tenants} live={live} onPerson={setPerson} />}
       {tab === "signins" && <SignInsTab tenants={tenants} live={live} onPerson={setPerson} />}
@@ -141,12 +139,14 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
       </Card>
 
       <div className="sa-kpis">
-        <Kpi live hue="live" label="Online right now" value={d.live.total} sub={`active in the last ${d.active_window_minutes} minutes`} />
-        <Kpi icon="key" hue="app" label="Signed in" value={d.live.signed_in} sub="haven't signed out yet" />
-        <Kpi icon="users" hue="teal" label="Used DFX today" value={d.today.unique_users} sub="different people since midnight" />
-        <Kpi icon="check" hue="web" label="Sign-ins today" value={d.today.logins} sub={`${d.today.logouts} signed out`} />
-        <Kpi icon="alert" hue={d.today.failed_logins ? "bad" : "ink"} label="Failed sign-ins today" value={d.today.failed_logins} sub={`${d.today.blocked_logins} blocked · ${d.today.token_reuse} token alarms`} />
-        <Kpi icon="plus" hue="warn" label="New customers today" value={d.today.new_customers} sub={`${d.accounts.active_tenants} of ${d.accounts.tenants} shops active`} />
+        <Kpi live hue="live" label="Online now" value={d.live.total} sub={`using DFX in the last ${d.active_window_minutes} min`} />
+        <Kpi icon="users" hue="teal" label="People today" value={d.today.unique_users} sub="different people since midnight" />
+        <Kpi icon="shop" hue="app" label="Shops open today" value={(d.tenants || []).filter((t) => t.users_today > 0).length} sub={`of ${d.accounts.tenants} shops used DFX`} />
+        <Kpi icon={d.today.failed_logins || d.today.token_reuse ? "alert" : "check"} hue="web" tone={d.today.token_reuse ? "bad" : d.today.failed_logins ? "warn" : undefined}
+          label="Logins today" value={d.today.logins}
+          sub={d.today.token_reuse ? `${d.today.token_reuse} security alarm${d.today.token_reuse > 1 ? "s" : ""} - see Sign-ins`
+            : `${d.today.failed_logins} failed · ${d.today.blocked_logins} blocked`} />
+        <Kpi icon="plus" hue="warn" label="New customers today" value={d.today.new_customers} sub="joined any shop" />
       </div>
 
       <div className="sa-two">
@@ -186,12 +186,14 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
 }
 
 function ShopBoard({ tenants, now, onShop }) {
-  const active = [...tenants].filter((t) => t.signed_in || t.users_today || t.logins_today || t.sales_today)
+  // "Today" means someone used the shop today - a login left open from
+  // yesterday is not activity.
+  const active = [...tenants].filter((t) => t.live_now || t.users_today || t.logins_today || t.sales_today)
     .sort((a, b) => b.live_now - a.live_now || b.users_today - a.users_today);
   return (
     <Card title="Shops active today" icon="shop" hue="warn" pad={false}
       right={<small>{active.length} of {tenants.length} shops · click a shop to see its people</small>}>
-      {active.length ? <ShopTable rows={active} now={now} onShop={onShop} compact />
+      {active.length ? <ShopTable rows={active} now={now} onShop={onShop} />
         : <Empty title="No shop activity yet today">Shops appear here as soon as someone signs in or makes a sale.</Empty>}
     </Card>
   );
@@ -219,55 +221,27 @@ function EventFeed({ items, now, onPerson }) {
 }
 
 // ── Shops ──────────────────────────────────────────────────────────────
-function ShopsTab({ tenants, loading, now, onShop }) {
-  const [q, setQ] = useState("");
-  const rows = tenants.filter((t) => !q || t.name.toLowerCase().includes(q.toLowerCase()) || t.slug.includes(q.toLowerCase()));
-  const quiet = tenants.filter((t) => t.status === "Active" && (t.admin_idle_days == null || t.admin_idle_days >= 3));
-  return (
-    <div className="sa-grid">
-      {quiet.length > 0 && (
-        <div className="sa-alert warn"><Icon name="alert" />
-          <div><b>{quiet.length} active shop{quiet.length > 1 ? "s" : ""} with no admin sign-in for 3+ days:</b> {quiet.map((t) => t.name).join(", ")}</div>
-        </div>
-      )}
-      <Card pad={false}>
-        <div className="sa-filters">
-          <input className="sa-in" placeholder="Search shops" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search shops" />
-          <span className="sa-dim" style={{ fontSize: 13 }}>{rows.length} shops · today = IST day</span>
-        </div>
-        {loading ? <div className="sa-card-b"><Skel h={120} /></div> : <ShopTable rows={rows} now={now} onShop={onShop} />}
-      </Card>
-    </div>
-  );
-}
-
-function ShopTable({ rows, now, onShop, compact }) {
-  if (!rows?.length) return <Empty title="No shops">Create one in the Tenants module.</Empty>;
+function ShopTable({ rows, now, onShop }) {
+  if (!rows?.length) return <Empty title="No shop has used DFX yet today">Shops appear here as soon as someone logs in.</Empty>;
   return (
     <div className="sa-tbl">
       <table>
         <thead><tr>
-          <th>Shop</th><th>Status</th><th className="r">Online</th><th className="r">Signed in</th><th className="r">Used today</th>
-          <th className="r">Sign-ins</th><th className="r">Failed</th>
-          {!compact && <><th className="r">Admins</th><th className="r">Staff</th><th className="r">Customers</th></>}
-          <th className="r">Sales today</th><th>Admin last seen</th>{!compact && <th>Last activity</th>}
+          <th>Shop</th><th className="r">Online now</th><th className="r">People today</th><th className="r">Logins</th>
+          <th className="r">Failed logins</th><th className="r">Sales today</th><th>Owner last seen</th>
         </tr></thead>
         <tbody>
           {rows.map((t) => (
             <tr key={t.id} className="click" onClick={() => onShop(t.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onShop(t.id)}>
-              <td className="who"><b>{t.name}</b><span className="mono">{t.slug}</span></td>
-              <td><Pill dot tone={t.status === "Active" ? "live" : "bad"}>{t.status}</Pill></td>
+              <td className="who"><b>{t.name}</b>{t.status !== "Active" && <span style={{ color: "var(--bad)" }}>Switched off</span>}</td>
               <td className="r">{t.live_now > 0 ? <Pill tone="live" dot>{t.live_now}</Pill> : <span className="sa-dim">0</span>}</td>
-              <td className="r">{t.signed_in}</td>
               <td className="r">{t.users_today}</td>
               <td className="r">{t.logins_today}</td>
               <td className="r">{t.failed_today ? <Pill tone="bad">{t.failed_today}</Pill> : <span className="sa-dim">0</span>}</td>
-              {!compact && <><td className="r">{t.admins}</td><td className="r">{t.staff}</td><td className="r">{t.customers}</td></>}
-              <td className="r"><b>{t.sales_today}</b> <span className="sa-dim">· {inr(t.sales_today_amount)}</span></td>
+              <td className="r">{t.sales_today ? <><b>{inr(t.sales_today_amount)}</b> <span className="sa-dim">· {t.sales_today}</span></> : <span className="sa-dim">No sales</span>}</td>
               <td>{t.last_admin_seen_at
                 ? <span title={fmtDateTime(t.last_admin_seen_at)} style={{ color: t.admin_idle_days >= 3 ? "var(--warn)" : undefined }}>{ago(t.last_admin_seen_at, now)}</span>
-                : <span className="sa-dim">not since tracking began</span>}</td>
-              {!compact && <td className="sa-muted">{t.last_activity_at ? ago(t.last_activity_at, now) : "—"}</td>}
+                : <span className="sa-dim">Never</span>}</td>
             </tr>
           ))}
         </tbody>

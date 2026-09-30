@@ -55,56 +55,151 @@ function PasswordPair({ idPrefix, value, confirm, onChange, onConfirm, error }) 
 
 const slugify = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 
+// What a shop is on, in words anyone can read. The server decides it
+// (superadmin/service.py get_tenants): PAID = no end date, TRIAL = end date
+// ahead, EXPIRED = end date passed (locked at the next sign-in), OFF =
+// switched off by a Super Admin.
+const ACCESS = {
+  PAID: { label: "Paid", tone: "live" },
+  TRIAL: { label: "Trial", tone: "sky" },
+  EXPIRED: { label: "Expired", tone: "bad" },
+  OFF: { label: "Switched off", tone: "mute" },
+};
+const SOON_DAYS = 7;
+const isSoon = (t) => t.access === "TRIAL" && t.days_left != null && t.days_left <= SOON_DAYS;
+const FILTERS = [
+  { k: "", label: "All" },
+  { k: "PAID", label: "Paid" },
+  { k: "TRIAL", label: "On trial" },
+  { k: "SOON", label: `Ending in ${SOON_DAYS} days` },
+  { k: "EXPIRED", label: "Expired" },
+  { k: "OFF", label: "Switched off" },
+];
+const agoShort = (iso) => {
+  if (!iso) return null;
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (m < 2) return "just now";
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "yesterday" : `${d} days ago`;
+};
+
+function PlanCell({ t }) {
+  const a = ACCESS[t.access] || { label: "—", tone: "mute" };
+  const soon = isSoon(t);
+  return (
+    <div style={{ display: "grid", gap: 4, justifyItems: "start" }}>
+      <Pill dot tone={soon ? "warn" : a.tone}>{a.label}</Pill>
+      <span style={{ fontSize: 12.5, color: soon || t.access === "EXPIRED" ? "var(--bad)" : "var(--muted)", fontWeight: soon ? 700 : 500 }}>
+        {t.access === "PAID" ? `${t.plan || "—"} · no end date`
+          : t.access === "TRIAL" ? `${t.days_left === 1 ? "1 day" : `${t.days_left} days`} left · ends ${fmtDate(t.trial_ends_at)}`
+          : t.access === "EXPIRED" ? `Ended ${fmtDate(t.trial_ends_at)} · locked at next login`
+          : "Nobody at this shop can log in"}
+      </span>
+    </div>
+  );
+}
+
 export default function Tenants({ onWatch }) {
-  const [status, setStatus] = useState("");
+  const [filter, setFilter] = useState("");
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState(null);
-  const list = usePoll(() => saService.tenants(status || undefined), [status], { live: false });
-  const dash = usePoll(() => saService.dashboard(), [], { live: false });
-  const rows = (list.data || []).filter((t) => {
-    if (!q) return true;
-    const s = q.toLowerCase();
-    return [t.name, t.slug, t.admin_name, t.admin_email, t.admin_phone].some((v) => (v || "").toLowerCase().includes(s));
-  });
-  const d = dash.data;
-  const reload = () => { list.reload(); dash.reload(); };
+  const list = usePoll(() => saService.tenants(), [], { live: false });
+  // Today's numbers per shop come from the live board, refreshed every 30 s.
+  const ov = usePoll(() => saService.overview(), [], { ms: 30000 });
+  const today = Object.fromEntries((ov.data?.tenants || []).map((t) => [t.id, t]));
+  const all = list.data || [];
+  const count = (k) => all.filter((t) => (k === "SOON" ? isSoon(t) : !k || t.access === k)).length;
+  const rows = all
+    .filter((t) => (filter === "SOON" ? isSoon(t) : !filter || t.access === filter))
+    .filter((t) => {
+      if (!q) return true;
+      const s = q.toLowerCase();
+      return [t.name, t.slug, t.admin_name, t.admin_email, t.admin_phone].some((v) => (v || "").toLowerCase().includes(s));
+    })
+    // Most urgent first: expired, then trials by days left, then the rest by name.
+    .sort((x, y) => {
+      const rank = (t) => (t.access === "EXPIRED" ? 0 : t.access === "TRIAL" ? 1 : t.access === "PAID" ? 2 : 3);
+      return rank(x) - rank(y) || (x.days_left ?? 1e9) - (y.days_left ?? 1e9) || x.name.localeCompare(y.name);
+    });
+  const soon = all.filter(isSoon);
+  const expired = all.filter((t) => t.access === "EXPIRED");
+  const salesN = Object.values(today).reduce((n, t) => n + (t.sales_today || 0), 0);
+  const salesAmt = Object.values(today).reduce((n, t) => n + (t.sales_today_amount || 0), 0);
+  const customers = Object.values(today).reduce((n, t) => n + (t.customers || 0), 0);
+  const activeToday = Object.values(today).filter((t) => t.users_today > 0).length;
+  const reload = () => { list.reload(); ov.reload(); };
 
   return (
     <div className="sa-grid">
       <div className="sa-kpis">
-        <Kpi icon="shop" hue="web" label="Shops on the platform" value={d?.total_tenants ?? "—"} sub={d ? `${d.active_tenants} active` : ""} />
-        <Kpi icon="users" hue="live" label="Customers, all shops" value={d?.total_customers ?? "—"} />
-        <Kpi icon="list" hue="app" label="Scheme enrolments" value={d?.total_enrollments ?? "—"} sub={d ? `${d.total_schemes} schemes` : ""} />
-        <Kpi icon="check" hue="warn" label="Scheme payments" value={d ? inr(d.total_payment_amount) : "—"} sub={d ? `${d.total_payments} payments` : ""} />
+        <Kpi icon="shop" hue="web" label="Shops" value={list.data ? all.length : "—"}
+          sub={list.data ? `${count("PAID")} paid · ${count("TRIAL")} on trial · ${count("EXPIRED") + count("OFF")} closed` : ""} />
+        <Kpi icon="clock" hue="warn" tone={soon.length || expired.length ? "warn" : undefined} label={`Access ending in ${SOON_DAYS} days`}
+          value={list.data ? soon.length : "—"} sub={expired.length ? `${expired.length} already expired` : "shops that need a decision"} />
+        <Kpi icon="activity" hue="live" label="Shops that used DFX today" value={ov.data ? activeToday : "—"} sub={ov.data ? `of ${all.length} shops` : ""} />
+        <Kpi icon="check" hue="app" label="Sales today, all shops" value={ov.data ? inr(salesAmt) : "—"} sub={ov.data ? `${salesN} bill${salesN === 1 ? "" : "s"} · ${customers} customers in total` : ""} />
       </div>
+
+      {(soon.length > 0 || expired.length > 0) && (
+        <div className="sa-alert warn" role="status"><Icon name="alert" />
+          <div>
+            {soon.length > 0 && <div><b>{soon.length} shop{soon.length > 1 ? "s" : ""} will be locked out soon</b> - they can't log in after their trial ends: {soon.map((t) => `${t.name} (${fmtDate(t.trial_ends_at)})`).join(", ")}.</div>}
+            {expired.length > 0 && <div><b>Expired:</b> {expired.map((t) => t.name).join(", ")}.</div>}
+            <div className="sa-muted" style={{ fontSize: 12.5, marginTop: 4 }}>Open a shop and press <b>Make permanent</b> for a paying shop, or <b>Extend 30 days</b>.</div>
+          </div>
+        </div>
+      )}
 
       <Card pad={false}>
         <div className="sa-filters" style={{ justifyContent: "space-between" }}>
-          <div className="sa-row" style={{ flex: "1 1 auto" }}>
-            <input className="sa-in" placeholder="Search shop, admin, email or phone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search shops" />
-            <select className="sa-sel" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
-              <option value="">All statuses</option><option value="Active">Active</option><option value="Inactive">Inactive</option>
-            </select>
+          <div className="sa-seg" role="tablist" aria-label="Filter shops">
+            {FILTERS.map((f) => (
+              <button key={f.k || "all"} role="tab" aria-selected={filter === f.k} onClick={() => setFilter(f.k)}>
+                {f.label}<span className={`cnt${(f.k === "SOON" || f.k === "EXPIRED") && count(f.k) ? " bad" : ""}`}>{count(f.k)}</span>
+              </button>
+            ))}
           </div>
-          <button className="sa-btn" onClick={() => setCreating(true)}><Icon name="plus" size={16} />New shop</button>
+          <div className="sa-row">
+            <input className="sa-in" placeholder="Search shop, owner, email or phone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search shops" style={{ minWidth: 240 }} />
+            <button className="sa-btn" onClick={() => setCreating(true)}><Icon name="plus" size={16} />New shop</button>
+          </div>
         </div>
+        {list.error && <div className="sa-alert bad" style={{ margin: 14 }}><Icon name="alert" />{list.error}</div>}
         {list.loading && !list.data ? <div className="sa-card-b"><Skel h={160} /></div> : !rows.length ? (
-          <Empty title="No shops yet">Create the first shop with “New shop”.</Empty>
+          <Empty title={all.length ? "No shops match" : "No shops yet"}>{all.length ? "Try another filter or search." : "Create the first shop with “New shop”."}</Empty>
         ) : (
           <div className="sa-tbl"><table>
-            <thead><tr><th>Shop</th><th>Status</th><th>Admin</th><th>Admin account</th><th>Contact</th><th>Created</th><th /></tr></thead>
-            <tbody>{rows.map((t) => (
-              <tr key={t.id} className="click" onClick={() => setOpenId(t.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setOpenId(t.id)}>
-                <td className="who"><b>{t.name}</b><span className="mono">{t.slug}</span></td>
-                <td><Pill dot tone={t.status === "Active" ? "live" : "bad"}>{t.status}</Pill></td>
-                <td className="who"><b>{t.admin_name || "—"}</b><span>{t.admin_email || ""}</span></td>
-                <td>{t.admin_is_active == null ? <span className="sa-dim">No admin</span> : <Pill tone={t.admin_is_active ? "live" : "bad"}>{t.admin_is_active ? "Enabled" : "Disabled"}</Pill>}</td>
-                <td className="mono sa-muted" style={{ fontSize: 12.5 }}>{t.admin_phone || "—"}</td>
-                <td className="sa-muted">{fmtDate(t.created_at)}</td>
-                <td className="r"><span className="sa-row" style={{ justifyContent: "flex-end", color: "var(--acc)" }}>Open <Icon name="arrow" size={14} /></span></td>
-              </tr>
-            ))}</tbody>
+            <thead><tr>
+              <th>Shop</th><th>Plan &amp; access</th><th>Owner</th>
+              <th>People</th><th className="r">Sales today</th><th>Last used</th><th aria-label="Open" />
+            </tr></thead>
+            <tbody>{rows.map((t) => {
+              const d = today[t.id] || {};
+              return (
+                <tr key={t.id} className="click" onClick={() => setOpenId(t.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setOpenId(t.id)}>
+                  <td className="who"><b>{t.name}</b><span>Joined {fmtDate(t.created_at)}</span></td>
+                  <td><PlanCell t={t} /></td>
+                  <td className="who">
+                    <b>{t.admin_name || <span className="sa-dim">No owner account</span>}</b>
+                    <span className="mono" style={{ fontSize: 12 }}>{t.admin_phone || ""}</span>
+                    <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }} title={t.admin_email || ""}>{t.admin_email || (t.admin_phone ? "" : "—")}</span>
+                    {t.admin_is_active === false && <span style={{ color: "var(--bad)" }}>Owner login disabled</span>}
+                  </td>
+                  <td className="who"><b>{d.customers ?? "—"} customers</b><span>{d.staff ?? 0} staff</span></td>
+                  <td className="r">{d.sales_today ? <><b>{inr(d.sales_today_amount)}</b><div className="sa-dim" style={{ fontSize: 12 }}>{d.sales_today} bill{d.sales_today === 1 ? "" : "s"}</div></> : <span className="sa-dim" style={{ fontFamily: "inherit" }}>No sales</span>}</td>
+                  <td>
+                    {d.live_now > 0 ? <Pill dot tone="live">{d.live_now} online now</Pill>
+                      : d.last_activity_at ? <span title={fmtDateTime(d.last_activity_at)}>{agoShort(d.last_activity_at)}</span>
+                      : <span className="sa-dim">Never</span>}
+                  </td>
+                  <td className="r" style={{ color: "var(--acc)" }}><Icon name="arrow" size={16} /></td>
+                </tr>
+              );
+            })}</tbody>
           </table></div>
         )}
       </Card>
@@ -278,6 +373,8 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
   const [pw, setPw] = useState({ a: "", b: "", out: true, err: null });
   const tenant = t.data;
   const st = s.data;
+  // The plan buttons sit at the top; the Controls card asks at the bottom.
+  const confirmInControls = !!confirm && !confirm.top;
 
   useEffect(() => {
     if (tenant?.subscription) {
@@ -302,11 +399,40 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
         <>
           {msg && <div className={`sa-alert ${msg.tone}`} role="status"><Icon name={msg.tone === "ok" ? "check" : "alert"} />{msg.text}</div>}
           <div className="sa-kpis">
-            <Kpi icon="shop" hue={tenant.status === "Active" ? "live" : "bad"} label="Shop status" value={tenant.status} sub={tenant.status === "Active" ? "people can sign in" : "sign-in is blocked"} />
-            <Kpi icon="clock" hue={trialLeft != null && trialLeft < 7 ? "warn" : "web"} label="Access" value={trialLeft == null ? "No end date" : trialLeft >= 0 ? `${trialLeft} days left` : "Trial ended"}
+            <Kpi icon="shop" hue={tenant.status === "Active" && !(trialLeft != null && trialLeft < 0) ? "live" : "bad"} label="Shop status"
+              value={tenant.status !== "Active" ? "Switched off" : trialLeft != null && trialLeft < 0 ? "Locking" : "Open"}
+              sub={tenant.status !== "Active" ? "nobody can log in" : trialLeft != null && trialLeft < 0 ? "trial ended - locked at the next login" : "people can log in"} />
+            <Kpi icon="clock" hue={trialLeft != null && trialLeft < 7 ? "warn" : "web"} label="Access" value={trialLeft == null ? "Paid · no end date" : trialLeft >= 0 ? `${trialLeft} days left` : "Trial ended"}
               sub={tenant.subscription ? `${tenant.subscription.plan} · ${tenant.subscription.status}` : "no subscription"} />
             <Kpi icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st ? `${st.active_enrollments} active enrolments` : ""} />
           </div>
+
+          {tenant.subscription && (
+            <div className="sa-row" style={{ gap: 8 }}>
+              {tenant.subscription.trial_ends_at && (
+                <button className="sa-btn sm" disabled={busy} onClick={() => setConfirm({
+                  top: true, text: `Make ${tenant.name} permanent? Its access will have no end date.`,
+                  run: () => act(() => saService.setSubscription(id, { plan: tenant.subscription.plan, access_mode: "INDEFINITE" }), "Done - this shop no longer expires."),
+                })}><Icon name="check" size={14} />Make permanent</button>
+              )}
+              <button className="sa-btn ghost sm" disabled={busy} onClick={() => setConfirm({
+                top: true, text: `Give ${tenant.name} 30 more days from today?`,
+                run: () => act(() => saService.setSubscription(id, { plan: tenant.subscription.plan, access_mode: "TRIAL", trial_days: 30 }), "Trial extended by 30 days from today."),
+              })}><Icon name="clock" size={14} />Extend 30 days</button>
+            </div>
+          )}
+          {confirm && !confirmInControls && (
+            <div className={`sa-alert ${confirm.danger ? "bad" : "info"}`} role="alertdialog">
+              <Icon name="alert" />
+              <div style={{ display: "grid", gap: 10, flex: 1 }}>
+                <b>{confirm.text}</b>
+                <div className="sa-row">
+                  <button className={`sa-btn sm${confirm.danger ? " danger" : ""}`} disabled={busy} onClick={confirm.run}>{busy ? "Working…" : "Yes, do it"}</button>
+                  <button className="sa-btn ghost sm" onClick={() => setConfirm(null)}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <Card title="Shop and admin" icon="shop">
             <dl className="sa-kv">
@@ -416,7 +542,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
                     }, "Reset link sent."),
                   })} />
               )}
-              {confirm && (
+              {confirm && confirmInControls && (
                 <div className={`sa-alert ${confirm.danger ? "bad" : "info"}`} role="alertdialog">
                   <Icon name="alert" />
                   <div style={{ display: "grid", gap: 10, flex: 1 }}>

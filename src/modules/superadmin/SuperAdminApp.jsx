@@ -9,7 +9,6 @@ import { SA_CSS, Icon, initialsOf, useNow, usePoll } from "@/modules/superadmin/
 // Deep-linkable: #/control/<module>/<tab>
 export const MON_PAGES = [
   { key: "live", label: "Live now", icon: "pulse", title: "Live now", sub: "What is happening on DFX this minute" },
-  { key: "shops", label: "Shops", icon: "shop", title: "Shops", sub: "Activity and health of every shop today" },
   { key: "people", label: "People", icon: "users", title: "People", sub: "Every admin, staff member and customer, and when they were last seen" },
   { key: "sessions", label: "Sessions", icon: "clock", title: "Sessions", sub: "Each sign-in, from start to sign-out" },
   { key: "signins", label: "Sign-ins & security", icon: "shield", title: "Sign-ins & security", sub: "Successful, failed and blocked sign-ins" },
@@ -21,7 +20,9 @@ function readHash() {
   if (typeof window === "undefined") return { mod: "monitor", tab: "live" };
   const [, root, mod, tab] = window.location.hash.replace(/^#/, "").split("/");
   if (root !== "control") return { mod: "monitor", tab: "live" };
-  return { mod: mod === "tenants" ? "tenants" : "monitor", tab: MON_PAGES.some((p) => p.key === tab) ? tab : "live" };
+  // #/control/monitor/shops was the old second shops list - it is the Shops page now.
+  const isShops = mod === "tenants" || mod === "shops" || tab === "shops";
+  return { mod: isShops ? "tenants" : "monitor", tab: MON_PAGES.some((p) => p.key === tab) ? tab : "live" };
 }
 
 export default function SuperAdminApp() {
@@ -39,16 +40,16 @@ export default function SuperAdminApp() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   useEffect(() => {
-    const h = route.mod === "tenants" ? "#/control/tenants" : `#/control/monitor/${route.tab}`;
+    const h = route.mod === "tenants" ? "#/control/shops" : `#/control/monitor/${route.tab}`;
     if (window.location.hash !== h) window.history.replaceState(null, "", h);
     const pg = MON_PAGES.find((p) => p.key === route.tab);
-    document.title = `${route.mod === "tenants" ? "Tenants" : pg?.title} · DFX Control`;
+    document.title = `${route.mod === "tenants" ? "Shops" : pg?.title} · DFX Control`;
   }, [route]);
 
   const go = (mod, tab) => { setRoute((r) => ({ mod, tab: tab || (mod === r.mod ? r.tab : "live") })); setNavOpen(false); };
   const watchShop = (id) => { setShopFilter(id); go("monitor", "people"); };
   const page = route.mod === "tenants"
-    ? { title: "Tenants", sub: "Create shops, manage plans and access, and look after each shop's admin" }
+    ? { title: "Shops", sub: "Every shop on DFX - its plan, when access ends, its owner and today's business" }
     : MON_PAGES.find((p) => p.key === route.tab);
   const time = new Date(now).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
   const date = new Date(now).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", year: "numeric" });
@@ -65,6 +66,9 @@ export default function SuperAdminApp() {
           </div>
           <nav className="sa-side-nav">
             <div className="grp">Platform</div>
+            <button className="item" aria-current={route.mod === "tenants" ? "page" : undefined} onClick={() => go("tenants")}>
+              <Icon name="shop" size={18} /><span>Shops</span>
+            </button>
             <button className={`item${route.mod === "monitor" ? " on-parent" : ""}`} aria-expanded={monOpen} onClick={() => setMonOpen((v) => !v)}>
               <Icon name="activity" size={18} /><span>Monitoring</span>
               <em className="live"><i />{pulse.data?.total ?? "–"}</em>
@@ -80,10 +84,6 @@ export default function SuperAdminApp() {
                 ))}
               </div>
             )}
-            <button className="item" aria-current={route.mod === "tenants" ? "page" : undefined} onClick={() => go("tenants")}>
-              <Icon name="shop" size={18} /><span>Tenants</span>
-            </button>
-
           </nav>
           <div className="sa-side-foot">
             <span className="av">{initialsOf(user?.name || "Super Admin")}</span>
