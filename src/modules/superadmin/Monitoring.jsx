@@ -33,7 +33,7 @@ export default function Monitoring({ tab, setTab, shopFilter, setShopFilter }) {
 
   return (
     <>
-      <div className="sa-row" style={{ justifyContent: "flex-end", margin: "-34px 0 14px", fontSize: 12.5, color: "var(--faint)" }}>
+      <div className="sa-row sa-updbar" style={{ fontSize: 12.5, color: "var(--faint)" }}>
         <span>{ov.at ? <>Updated <span className="mono">{fmtTime(new Date(ov.at).toISOString())}</span>{live ? " · refreshes every 15 s" : " · paused"}</> : "Loading…"}</span>
         <button className="sa-link" onClick={() => setLive((v) => !v)} aria-pressed={live}>{live ? "Pause" : "Resume"}</button>
         <button className="sa-link" onClick={ov.reload}>Refresh now</button>

@@ -292,8 +292,9 @@ export function SystemMap({ nodes, flows }) {
   const reduce = false;
   return (
     <div>
+      <div className="sa-swipe">Swipe sideways to see the whole map →</div>
       <div style={{ overflowX: "auto" }}>
-        <svg className="sa-map" viewBox="0 0 1290 250" width="100%" style={{ minWidth: 820, maxHeight: 250, display: "block", margin: "0 auto" }} role="img"
+        <svg className="sa-map" viewBox="0 0 1290 250" width="100%" style={{ minWidth: 700, maxHeight: 250, display: "block", margin: "0 auto" }} role="img"
           aria-label="Live system map: people, gateway, server, database and backups">
           <defs>
             <filter id="saSh" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#10183F" floodOpacity=".07" /></filter>
