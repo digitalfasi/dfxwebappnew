@@ -318,8 +318,10 @@ export default function TrialSignup({ onBack }) {
 
       <form noValidate onKeyDown={onKey} onSubmit={(e) => { e.preventDefault(); next(); }}
         className="mt-4 rounded-2xl border border-line-soft bg-surface/60 p-4 sm:px-6 sm:py-5 [@media(max-height:820px)]:mt-3 [@media(max-height:820px)]:sm:py-4">
-        {/* Honeypot: invisible to people, filled by bots. */}
-        <input type="text" name="website" tabIndex={-1} autoComplete="off" value={honey} onChange={(e) => setHoney(e.target.value)}
+        {/* Honeypot: invisible to people, filled by bots. Not named like any
+            real field (it was "website", which phone browsers autofilled - and
+            real owners were turned away as bots). */}
+        <input type="text" name="dfx_hp_x7" id="dfx_hp_x7" tabIndex={-1} autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" data-form-type="other" value={honey} onChange={(e) => setHoney(e.target.value)}
           className="absolute -left-[9999px] h-0 w-0 opacity-0" aria-hidden="true" />
 
         <div key={step} className="dfx-slide">
@@ -374,21 +376,35 @@ export default function TrialSignup({ onBack }) {
                       placeholder="e.g. Sri Lakshmi Jewellers" className={inputCls(err.store_name)} />
                   </Field>
                 </div>
-                <Field id="city" label="City" required icon={I.pin} error={err.city}>
-                  <input id="city" value={f.city} onChange={set("city")} maxLength={60} placeholder="e.g. Chennai" className={inputCls(err.city)} />
-                </Field>
-                <Field id="state" label="State" icon={I.shield} hint="Taken from your GSTIN">
-                  <input id="state" value={gst?.state || ""} readOnly className={`${inputCls(false)} cursor-not-allowed bg-line-soft/40 text-muted`} />
-                </Field>
-                <div className="col-span-2 grid grid-cols-[1fr_7.5rem] gap-3 sm:grid-cols-[1fr_11rem]">
+                {/* Phones: City | PIN, the state as a line of text, then the full
+                    address - so no field is too narrow for its own text. From sm
+                    up: City | State, Address | PIN. */}
+                <div className="max-sm:order-1">
+                  <Field id="city" label="City" required icon={I.pin} error={err.city}>
+                    <input id="city" value={f.city} onChange={set("city")} maxLength={60} placeholder="e.g. Chennai" className={inputCls(err.city)} />
+                  </Field>
+                </div>
+                <div className="max-sm:hidden">
+                  <Field id="state" label="State" icon={I.shield} hint="Taken from your GSTIN">
+                    <input id="state" value={gst?.state || ""} readOnly className={`${inputCls(false)} cursor-not-allowed bg-line-soft/40 text-muted`} />
+                  </Field>
+                </div>
+                {gst?.state ? (
+                  <p className="col-span-2 -mt-1 text-xs text-muted sm:hidden max-sm:order-3">
+                    State: <span className="font-semibold text-ink">{gst.state}</span> · from your GSTIN
+                  </p>
+                ) : null}
+                <div className="max-sm:order-4 max-sm:col-span-2">
                   <Field id="address" label="Shop address" optional icon={I.store}>
                     <input id="address" value={f.address} onChange={set("address")} maxLength={300} placeholder="Door no., street, area" className={inputCls(false)} />
                   </Field>
-                <Field id="pincode" label="PIN code" optional icon={I.pin} error={err.pincode}>
-                  <input id="pincode" value={f.pincode} inputMode="numeric" maxLength={6}
-                    onChange={(e) => { e.target.value = e.target.value.replace(/\D/g, ""); set("pincode")(e); }}
-                    placeholder="600001" className={inputCls(err.pincode)} />
-                </Field>
+                </div>
+                <div className="max-sm:order-2">
+                  <Field id="pincode" label="PIN code" optional icon={I.pin} error={err.pincode}>
+                    <input id="pincode" value={f.pincode} inputMode="numeric" maxLength={6}
+                      onChange={(e) => { e.target.value = e.target.value.replace(/\D/g, ""); set("pincode")(e); }}
+                      placeholder="600001" className={inputCls(err.pincode)} />
+                  </Field>
                 </div>
               </div>
             </div>
