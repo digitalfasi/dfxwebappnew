@@ -502,8 +502,10 @@ function SaleDetail({ sale, onClose, onChanged }) {
 
   const paid = history ? history.amountPaid : sale.paid;
   const outstanding = history ? history.amountOutstanding : sale.outstanding;
-  const lossPct = sale.purchaseCost > 0 && sale.grossMargin != null
-    ? (sale.grossMargin / sale.purchaseCost) * 100
+  // Break-even = purchase cost + the shop's running cost (owner rule).
+  const breakEven = sale.breakEven ?? (sale.purchaseCost != null ? (sale.purchaseCost || 0) + (sale.runningCost || 0) : null);
+  const lossPct = breakEven > 0 && sale.grossMargin != null
+    ? (sale.grossMargin / breakEven) * 100
     : null;
   const reversed = sale.saleStatus === "RETURNED" || sale.saleStatus === "CANCELLED";
 
@@ -695,6 +697,10 @@ function SaleDetail({ sale, onClose, onChanged }) {
             <div className="rounded-xl border border-line bg-canvas/40 px-4 py-3 text-sm">
               <div className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-muted">Internal (admin only)</div>
               <BreakdownRow label="Purchase Cost" value={formatINR(sale.purchaseCost)} />
+              {sale.runningCost != null && (
+                <BreakdownRow label={`Running Cost${sale.runningCostPct != null ? ` ${sale.runningCostPct}%` : ""}`} value={formatINR(sale.runningCost)} />
+              )}
+              {sale.runningCost != null && <BreakdownRow label="Break-even" value={formatINR(breakEven)} />}
               <div className="flex items-center justify-between py-1">
                 <span className="text-muted">{sale.grossMargin < 0 ? "Loss" : "Profit"}</span>
                 <span className={`num font-bold ${sale.grossMargin < 0 ? "text-danger" : "text-emerald-600"}`}>

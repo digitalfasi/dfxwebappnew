@@ -1310,6 +1310,9 @@ function mapSaleRow(raw) {
     finalAmount: raw.final_amount ?? 0,
     // Admin-only internal figures (backend returns null for Staff).
     purchaseCost: raw.purchase_cost_snapshot ?? null,
+    runningCost: raw.running_cost_amount ?? null,
+    runningCostPct: raw.running_cost_percent ?? null,
+    breakEven: raw.break_even_amount ?? null,
     grossMargin: raw.estimated_gross_margin ?? null,
     profitLabel: raw.profit_or_loss_label ?? null,
     pricingMode: raw.pricing_mode ?? null,

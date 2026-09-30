@@ -1530,7 +1530,7 @@ export default function NewSale() {
                                   "11% break-even" welded, which on this piece is
                                   the PROFIT floor - break-even is 8% - so the
                                   strip named the wrong line, and welded it. */}
-                              {bands ? `${round2(impliedMakingPct)}% making · profit ${round2(profitFloorPct)}% · break-even ${round2(breakEvenPct)}%` : ""}
+                              {bands ? `${round2(impliedMakingPct)}% making · list ${round2(listPct)}% · break-even ${round2(breakEvenPct)}%` : ""}
                             </span>
                           </div>
                         )}
