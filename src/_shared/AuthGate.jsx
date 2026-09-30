@@ -75,7 +75,7 @@ export default function AuthGate({ children }) {
   if (signup) return <TrialSignup onBack={closeSignup} />;
 
   const fieldBase =
-    "w-full rounded-xl border border-line bg-white/70 py-3 pl-11 text-[0.9rem] text-ink outline-none transition-all duration-300 placeholder:text-faint/80 hover:border-accent/50 hover:bg-white/90 focus:-translate-y-px focus:border-accent focus:bg-white focus:shadow-md focus:shadow-accent/10 focus:ring-4 focus:ring-accent/15";
+    "w-full rounded-xl border border-line bg-white/70 py-2.5 pl-11 text-[0.9rem] text-ink outline-none transition-all duration-300 placeholder:text-faint/80 hover:border-accent/50 hover:bg-white/90 focus:-translate-y-px focus:border-accent focus:bg-white focus:shadow-md focus:shadow-accent/10 focus:ring-4 focus:ring-accent/15";
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-canvas">
@@ -147,32 +147,32 @@ export default function AuthGate({ children }) {
       <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_45%,transparent_35%,rgba(45,38,28,0.28)_100%)]" />
 
       {/* Centred card */}
-      <main className="relative z-10 flex min-h-screen items-center justify-center px-5 py-14">
+      <main className="relative z-10 flex min-h-dvh items-center justify-center px-4 py-6 sm:py-8 [@media(max-height:760px)]:py-4">
         <div className="w-full max-w-[26.5rem]">
-          <div className="dfx-rise rounded-[1.75rem] border border-white/45 bg-white/80 p-8 shadow-[0_24px_70px_-30px_rgba(30,41,59,0.45)] backdrop-blur-xl transition-shadow duration-500 hover:shadow-[0_30px_85px_-28px_rgba(30,41,59,0.55)] sm:p-10">
+          <div className="dfx-rise rounded-[1.75rem] border border-white/45 bg-white/80 p-6 shadow-[0_24px_70px_-30px_rgba(30,41,59,0.45)] backdrop-blur-xl transition-shadow duration-500 hover:shadow-[0_30px_85px_-28px_rgba(30,41,59,0.55)] sm:px-9 sm:py-8 [@media(max-height:760px)]:py-6">
             <div className="flex flex-col items-center text-center">
-              <span className="dfx-step mb-6 inline-flex items-center gap-1.5 rounded-full border border-accent-line bg-accent-soft px-3 py-1 text-[0.6rem] font-bold uppercase tracking-[0.18em] text-accent-strong [animation-delay:80ms]">
+              <span className="dfx-step mb-4 inline-flex [@media(max-height:640px)]:hidden items-center gap-1.5 rounded-full border border-accent-line bg-accent-soft px-3 py-1 text-[0.6rem] font-bold uppercase tracking-[0.18em] text-accent-strong [animation-delay:80ms]">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M12 3l7 3v5.5c0 4.3-2.9 7.9-7 9.5-4.1-1.6-7-5.2-7-9.5V6l7-3Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
                 </svg>
                 Trusted jewellery platform
               </span>
               <span className="dfx-step [animation-delay:120ms]">
-                <DfxLogo size={50} />
+                <DfxLogo size={44} />
               </span>
 
               <h1
-                className="dfx-step mt-8 text-[1.9rem] font-semibold leading-tight tracking-tight text-ink [animation-delay:200ms]"
+                className="dfx-step mt-5 text-[1.75rem] font-semibold leading-tight tracking-tight text-ink [animation-delay:200ms] [@media(max-height:760px)]:mt-3 [@media(max-height:760px)]:text-[1.55rem]"
                 style={{ fontFamily: "var(--font-display)" }}
               >
                 Welcome Back
               </h1>
-              <p className="dfx-step mt-2 text-sm text-muted [animation-delay:260ms]">
+              <p className="dfx-step mt-1.5 text-sm text-muted [animation-delay:260ms]">
                 Sign in to access your DFX account
               </p>
             </div>
 
-              <form noValidate onSubmit={onSubmit} className="mt-8 space-y-3.5">
+              <form noValidate onSubmit={onSubmit} className="mt-6 space-y-3 [@media(max-height:760px)]:mt-4">
                 {/* Identifier — email OR phone, decided by the server. */}
                 <div className="dfx-step [animation-delay:320ms]">
                   <label htmlFor="username" className="sr-only">
@@ -262,7 +262,7 @@ export default function AuthGate({ children }) {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="dfx-sheen dfx-step group relative mt-2 flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-ink-deep px-4 py-3.5 text-sm font-semibold tracking-wide text-white shadow-lg shadow-ink-deep/20 transition-all duration-300 [animation-delay:480ms] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-ink-deep/30 hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25 active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-85 disabled:hover:translate-y-0"
+                  className="dfx-sheen dfx-step group relative mt-1 flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-ink-deep px-4 py-3 text-sm font-semibold tracking-wide text-white shadow-lg shadow-ink-deep/20 transition-all duration-300 [animation-delay:480ms] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-ink-deep/30 hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25 active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-85 disabled:hover:translate-y-0"
                 >
                   {busy ? (
                     <>
@@ -290,7 +290,7 @@ export default function AuthGate({ children }) {
                 </button>
               </form>
 
-            <div className="dfx-step mt-5 rounded-xl border border-accent-line bg-accent-soft/60 px-4 py-3 text-center [animation-delay:540ms]">
+            <div className="dfx-step mt-4 rounded-xl border border-accent-line bg-accent-soft/60 px-4 py-2.5 text-center [animation-delay:540ms] [@media(max-height:760px)]:mt-3 [@media(max-height:760px)]:py-2">
               <p className="text-[0.8rem] text-ink/75">New jewellery store on DFX?</p>
               <button type="button" onClick={openSignup}
                 className="group mt-0.5 inline-flex items-center gap-1.5 text-sm font-semibold text-accent-strong hover:underline">
@@ -307,7 +307,7 @@ export default function AuthGate({ children }) {
                 a third time, after the rule above it and the sentence under
                 that. Those two are gone; these three points carry it, and the
                 card is a single object again. */}
-            <div className="mt-7 border-t border-line-soft pt-5">
+            <div className="mt-5 border-t border-line-soft pt-4 [@media(max-height:760px)]:hidden">
               <div className="grid grid-cols-3 gap-1">
                 {[
                   {

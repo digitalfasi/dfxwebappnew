@@ -76,7 +76,7 @@ const Spinner = () => (
 );
 
 const inputCls = (bad) =>
-  `w-full rounded-xl border bg-white py-3 pl-11 pr-4 text-[0.92rem] text-ink outline-none transition placeholder:text-faint/80 focus:ring-4 ${
+  `w-full rounded-xl border bg-white py-2.5 pl-11 pr-4 text-[0.92rem] text-ink outline-none transition placeholder:text-faint/80 focus:ring-4 ${
     bad ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500/15" : "border-line hover:border-accent/50 focus:border-accent focus:ring-accent/15"
   }`;
 
@@ -105,14 +105,19 @@ function Field({ id, label, required, optional, icon, error, hint, children }) {
 
 export default function TrialSignup({ onBack }) {
   const { signInWithTokens } = useAuth();
-  const [step, setStep] = useState(0);
-  const [f, setF] = useState(EMPTY);
+  // The draft for this tab, read once before the first render. Reading it in
+  // an effect let the save effect write the empty form over it first.
+  const [draft] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null"); } catch { return null; }
+  });
+  const [step, setStep] = useState(() => (draft?.f && draft.step ? Math.min(draft.step, 3) : 0));
+  const [f, setF] = useState(() => (draft?.f ? { ...EMPTY, ...draft.f } : EMPTY));
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [terms, setTerms] = useState(false);
   const [honey, setHoney] = useState("");
-  const [gst, setGst] = useState(null); // server result for f.gstin
+  const [gst, setGst] = useState(() => draft?.gst || null); // server result for f.gstin
   const [gstBusy, setGstBusy] = useState(false);
   const [err, setErr] = useState({});
   const [busy, setBusy] = useState(false);
@@ -120,13 +125,7 @@ export default function TrialSignup({ onBack }) {
   const [entering, setEntering] = useState(false);
   const firstRef = useRef(null);
 
-  // Restore / keep the draft for this tab (never the password).
-  useEffect(() => {
-    try {
-      const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null");
-      if (d?.f) { setF({ ...EMPTY, ...d.f }); if (d.gst) setGst(d.gst); if (d.step) setStep(Math.min(d.step, 3)); }
-    } catch { /* ignore */ }
-  }, []);
+  // Keep the draft for this tab (never the password).
   useEffect(() => {
     try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ f, gst, step })); } catch { /* ignore */ }
   }, [f, gst, step]);
@@ -286,25 +285,25 @@ export default function TrialSignup({ onBack }) {
   return (
     <Shell>
       <div className="flex flex-col items-center text-center">
-        <span className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.16em] text-emerald-700">
+        <span className="mb-3 max-sm:hidden inline-flex [@media(max-height:820px)]:hidden items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.16em] text-emerald-700">
           <Svg d={I.gift} className="h-3 w-3" sw={2} /> Free trial · No card needed
         </span>
-        <DfxLogo size={44} />
-        <h1 className="mt-6 text-[1.75rem] font-semibold leading-tight tracking-tight text-ink" style={{ fontFamily: "var(--font-display)" }}>
+        <span className="[@media(max-height:700px)]:hidden max-sm:scale-90 max-sm:[@media(max-height:780px)]:hidden"><DfxLogo size={38} /></span>
+        <h1 className="mt-3 max-sm:[@media(max-height:780px)]:mt-0 text-[1.6rem] font-semibold leading-tight tracking-tight text-ink [@media(max-height:700px)]:mt-0 [@media(max-height:700px)]:text-[1.35rem]" style={{ fontFamily: "var(--font-display)" }}>
           Create your store account
         </h1>
-        <p className="mt-1.5 text-sm text-muted">Set up in 2 minutes and start billing today</p>
+        <p className="mt-1 text-sm text-muted [@media(max-height:700px)]:hidden max-sm:[@media(max-height:780px)]:hidden">Set up in 2 minutes and start billing today</p>
       </div>
 
       {/* Stepper */}
-      <ol className="mt-8 grid grid-cols-4 gap-2">
+      <ol className="mt-5 grid grid-cols-4 gap-2 [@media(max-height:820px)]:mt-3">
         {STEPS.map((s, i) => {
           const state = i < step ? "done" : i === step ? "now" : "todo";
           return (
             <li key={s.key} className="relative">
               <button type="button" disabled={i > step} onClick={() => i < step && setStep(i)}
                 className="flex w-full flex-col items-center gap-2 text-center disabled:cursor-default sm:flex-row sm:text-left">
-                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-all duration-300 ${
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-all duration-300 [@media(max-height:700px)]:h-7 [@media(max-height:700px)]:w-7 [@media(max-height:700px)]:text-xs ${
                   state === "done" ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/25"
                     : state === "now" ? "bg-ink-deep text-white shadow-md shadow-ink-deep/25 ring-4 ring-ink-deep/10"
                     : "border border-line bg-white text-faint"}`}>
@@ -312,19 +311,19 @@ export default function TrialSignup({ onBack }) {
                 </span>
                 <span className="min-w-0">
                   <span className={`block text-[0.74rem] font-semibold leading-tight sm:text-[0.8rem] ${state === "todo" ? "text-faint" : "text-ink"}`}>{s.title}</span>
-                  <span className="hidden text-[0.68rem] text-faint sm:block">{s.sub}</span>
+                  <span className="hidden text-[0.68rem] text-faint sm:block [@media(max-height:700px)]:sm:hidden">{s.sub}</span>
                 </span>
               </button>
             </li>
           );
         })}
       </ol>
-      <div className="mt-4 h-1 overflow-hidden rounded-full bg-line-soft">
+      <div className="mt-3 h-1 overflow-hidden rounded-full bg-line-soft">
         <div className="h-full rounded-full bg-gradient-to-r from-ink-deep to-accent transition-all duration-500" style={{ width: `${((step + 1) / 4) * 100}%` }} />
       </div>
 
       <form noValidate onKeyDown={onKey} onSubmit={(e) => { e.preventDefault(); next(); }}
-        className="mt-6 rounded-2xl border border-line-soft bg-surface/60 p-5 sm:p-6">
+        className="mt-4 rounded-2xl border border-line-soft bg-surface/60 p-4 sm:px-6 sm:py-5 [@media(max-height:820px)]:mt-3 [@media(max-height:820px)]:sm:py-4">
         {/* Honeypot: invisible to people, filled by bots. */}
         <input type="text" name="website" tabIndex={-1} autoComplete="off" value={honey} onChange={(e) => setHoney(e.target.value)}
           className="absolute -left-[9999px] h-0 w-0 opacity-0" aria-hidden="true" />
@@ -333,7 +332,7 @@ export default function TrialSignup({ onBack }) {
           {step === 0 && (
             <div>
               <h2 className="text-base font-semibold text-ink">Company GST number</h2>
-              <p className="mt-1 text-[0.82rem] text-muted">Enter the 15-character GSTIN printed on your GST registration certificate.</p>
+              <p className="mt-1 text-[0.82rem] text-muted [@media(max-height:820px)]:hidden">Enter the 15-character GSTIN printed on your GST registration certificate.</p>
 
               <label htmlFor="gstin" className="mb-1.5 mt-5 flex items-center gap-1 text-[0.8rem] font-semibold text-ink">GSTIN <span className="text-rose-500">*</span></label>
               <div className="flex flex-col gap-2.5 sm:flex-row">
@@ -341,7 +340,7 @@ export default function TrialSignup({ onBack }) {
                   <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-11 items-center justify-center text-faint"><Svg d={I.shield} /></span>
                   <input id="gstin" ref={firstRef} value={g} onChange={onGstChange} placeholder="27AAPFU0939F1ZV"
                     autoComplete="off" spellCheck={false} inputMode="text" maxLength={15}
-                    className={`${inputCls(err.gstin || badAt !== -1)} !pr-14 font-mono text-[1rem] uppercase tracking-[0.14em] sm:tracking-[0.18em]`} />
+                    className={`${inputCls(err.gstin || badAt !== -1)} !pr-14 font-mono text-[1rem] uppercase tracking-[0.14em] sm:tracking-[0.18em] max-sm:text-[0.92rem] max-sm:tracking-[0.03em]`} />
                   <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center font-mono text-[0.7rem] text-faint">{g.length}/15</span>
                 </div>
                 <button type="button" onClick={() => verifyGst()} disabled={gstBusy || gstVerified}
@@ -391,9 +390,9 @@ export default function TrialSignup({ onBack }) {
           {step === 1 && (
             <div>
               <h2 className="text-base font-semibold text-ink">Store details</h2>
-              <p className="mt-1 text-[0.82rem] text-muted">This is the name your customers see on bills and in the app.</p>
-              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
+              <p className="mt-1 text-[0.82rem] text-muted [@media(max-height:820px)]:hidden">This is the name your customers see on bills and in the app.</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="col-span-2">
                   <Field id="store_name" label="Store / business name" required icon={I.store} error={err.store_name}>
                     <input id="store_name" ref={firstRef} value={f.store_name} onChange={set("store_name")} maxLength={100}
                       placeholder="e.g. Sri Lakshmi Jewellers" className={inputCls(err.store_name)} />
@@ -405,7 +404,7 @@ export default function TrialSignup({ onBack }) {
                 <Field id="state" label="State" icon={I.shield} hint="Taken from your GSTIN">
                   <input id="state" value={gst?.state || ""} readOnly className={`${inputCls(false)} cursor-not-allowed bg-line-soft/40 text-muted`} />
                 </Field>
-                <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-[1fr_11rem]">
+                <div className="col-span-2 grid grid-cols-[1fr_7.5rem] gap-3 sm:grid-cols-[1fr_11rem]">
                   <Field id="address" label="Shop address" optional icon={I.store}>
                     <input id="address" value={f.address} onChange={set("address")} maxLength={300} placeholder="Door no., street, area" className={inputCls(false)} />
                   </Field>
@@ -422,8 +421,8 @@ export default function TrialSignup({ onBack }) {
           {step === 2 && (
             <div>
               <h2 className="text-base font-semibold text-ink">Contact person</h2>
-              <p className="mt-1 text-[0.82rem] text-muted">The owner or manager. This person becomes the store&apos;s admin.</p>
-              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <p className="mt-1 text-[0.82rem] text-muted [@media(max-height:820px)]:hidden">The owner or manager. This person becomes the store&apos;s admin.</p>
+              <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <Field id="contact_name" label="Full name" required icon={I.user} error={err.contact_name}>
                     <input id="contact_name" ref={firstRef} value={f.contact_name} onChange={set("contact_name")} maxLength={100}
@@ -447,11 +446,11 @@ export default function TrialSignup({ onBack }) {
           {step === 3 && (
             <div>
               <h2 className="text-base font-semibold text-ink">Set your password</h2>
-              <p className="mt-1 text-[0.82rem] text-muted">You&apos;ll sign in with your email and this password.</p>
-              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <p className="mt-1 text-[0.82rem] text-muted [@media(max-height:820px)]:hidden">You&apos;ll sign in with your email and this password.</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
                 <Field id="pw" label="Password" required icon={I.lock} error={err.pw}>
                   <input id="pw" ref={firstRef} type={showPw ? "text" : "password"} value={pw} maxLength={72} autoComplete="new-password"
-                    onChange={(e) => { setPw(e.target.value); setErr({}); }} placeholder="At least 6 characters" className={`${inputCls(err.pw)} !pr-12`} />
+                    onChange={(e) => { setPw(e.target.value); setErr({}); }} placeholder="Min. 6 characters" className={`${inputCls(err.pw)} !pr-12`} />
                   <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}
                     className="absolute inset-y-0 right-0 z-10 flex w-12 items-center justify-center text-faint hover:text-ink">
                     <Svg d={showPw ? I.eyeOff : I.eye} className="h-[18px] w-[18px]" />
@@ -474,14 +473,14 @@ export default function TrialSignup({ onBack }) {
               ) : null}
 
               {/* Review before creating */}
-              <div className="mt-5 divide-y divide-line-soft rounded-xl border border-line-soft bg-white">
+              <div className="mt-4 divide-y divide-line-soft rounded-xl border border-line-soft bg-white [@media(max-height:820px)]:mt-3">
                 {[
                   { k: "GSTIN", v: f.gstin, s: 0, mono: true },
                   { k: "Store", v: `${f.store_name} · ${f.city}${gst?.state ? `, ${gst.state}` : ""}`, s: 1 },
                   { k: "Contact", v: `${f.contact_name} · +91 ${phoneDigits}`, s: 2 },
                   { k: "Login", v: f.email.trim().toLowerCase(), s: 2 },
                 ].map((r) => (
-                  <div key={r.k} className="flex items-center gap-3 px-4 py-2.5">
+                  <div key={r.k} className="flex items-center gap-3 px-4 py-2 max-sm:px-3 max-sm:py-1.5 [@media(max-height:700px)]:py-1.5">
                     <span className="w-16 shrink-0 text-[0.7rem] font-bold uppercase tracking-wider text-faint">{r.k}</span>
                     <span className={`min-w-0 flex-1 truncate text-[0.84rem] text-ink ${r.mono ? "font-mono tracking-wider" : ""}`}>{r.v}</span>
                     <button type="button" onClick={() => setStep(r.s)} className="inline-flex items-center gap-1 text-xs font-semibold text-accent-strong hover:underline">
@@ -491,7 +490,7 @@ export default function TrialSignup({ onBack }) {
                 ))}
               </div>
 
-              <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-[0.82rem] text-ink">
+              <label className="mt-3 flex cursor-pointer items-start gap-2.5 text-[0.82rem] text-ink">
                 <input type="checkbox" checked={terms} onChange={(e) => { setTerms(e.target.checked); setErr({}); }}
                   className="mt-0.5 h-4 w-4 rounded border-line accent-[var(--color-ink-deep)]" />
                 <span>I agree to the DFX Terms of Service and Privacy Policy, and confirm the GST details are my business&apos;s.</span>
@@ -507,7 +506,7 @@ export default function TrialSignup({ onBack }) {
           </div>
         ) : null}
 
-        <div className="mt-6 flex items-center justify-between gap-3">
+        <div className="mt-5 flex items-center justify-between gap-3 [@media(max-height:820px)]:mt-4">
           {step > 0 ? (
             <button type="button" onClick={() => { setErr({}); setStep(step - 1); }}
               className="inline-flex items-center gap-2 rounded-xl border border-line bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:border-ink/30">
@@ -522,7 +521,7 @@ export default function TrialSignup({ onBack }) {
         </div>
       </form>
 
-      <p className="mt-6 text-center text-sm text-muted">
+      <p className="mt-4 text-center text-sm text-muted [@media(max-height:820px)]:mt-3">
         Already have an account?{" "}
         <button type="button" onClick={onBack} className="font-semibold text-accent-strong hover:underline">Sign in</button>
       </p>
@@ -546,8 +545,8 @@ function Shell({ children }) {
       <img src="/login-bg.jpg" alt="" aria-hidden="true" className="absolute inset-0 h-full w-full scale-105 object-cover" />
       <div className="absolute inset-0 bg-gradient-to-br from-white/90 via-white/70 to-white/45" />
       <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_45%,transparent_40%,rgba(45,38,28,0.22)_100%)]" />
-      <main className="relative z-10 flex min-h-screen items-start justify-center px-4 py-10 sm:items-center">
-        <div className="dfx-rise2 w-full max-w-[46rem] rounded-[1.75rem] border border-white/50 bg-white/85 p-6 shadow-[0_24px_70px_-30px_rgba(30,41,59,0.45)] backdrop-blur-xl sm:p-10">
+      <main className="relative z-10 flex min-h-dvh items-start justify-center px-4 py-5 sm:items-center sm:py-6 [@media(max-height:820px)]:py-3 [@media(max-height:700px)]:py-2">
+        <div className="dfx-rise2 w-full max-w-[46rem] rounded-[1.75rem] border border-white/50 bg-white/85 p-5 shadow-[0_24px_70px_-30px_rgba(30,41,59,0.45)] backdrop-blur-xl sm:px-8 sm:py-7 [@media(max-height:820px)]:sm:py-5">
           {children}
         </div>
       </main>
