@@ -86,7 +86,9 @@ export function Pill({ tone = "mute", children, dot, box }) {
 }
 
 export const STATUS_TONE = { active: "live", online: "live", idle: "warn", ended: "mute", expired: "mute", offline: "mute", never: "mute" };
-export const STATUS_LABEL = { active: "Online", online: "Online", idle: "Idle", ended: "Signed out", expired: "Expired", offline: "Offline", never: "Not seen yet" };
+// Plain words. "Away" = still logged in on that device but not used in the
+// last 5 minutes (tab closed, phone locked); they come back without a login.
+export const STATUS_LABEL = { active: "Online", online: "Online", idle: "Away", ended: "Logged out", expired: "Timed out", offline: "Logged out", never: "Never logged in" };
 export const ROLE_TONE = { SuperAdmin: "pri", Admin: "sky", Staff: "app", Customer: "mute" };
 
 export function ClientTag({ client, device }) {

@@ -251,8 +251,21 @@ function ShopTable({ rows, now, onShop }) {
 }
 
 // ── People ─────────────────────────────────────────────────────────────
+const PEOPLE_GROUPS = [
+  { k: "Team", label: "Shop team", hint: "owners, staff and super admins" },
+  { k: "Customer", label: "Customers", hint: "mobile app customers" },
+  { k: "", label: "Everyone", hint: "" },
+];
+const PRESENCE = [
+  { k: "", label: "All", n: "all" },
+  { k: "online", label: "Online", n: "online" },
+  { k: "idle", label: "Away", n: "idle" },
+  { k: "offline", label: "Logged out", n: "offline" },
+  { k: "never", label: "Never logged in", n: "never" },
+];
+
 function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState("Team");
   const [presence, setPresence] = useState("");
   const [q, setQ] = useState("");
   const [qd, setQd] = useState("");
@@ -263,44 +276,58 @@ function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
     [shop, role, presence, qd, page], { ms: 30000, live });
   const now = useNow(30000);
   const d = res.data;
+  const n = d?.counts || {};
   return (
-    <Card pad={false}>
-      <div className="sa-filters">
-        <input className="sa-in" placeholder="Search name, email or phone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search people" />
-        <ShopSelect tenants={tenants} value={shop} onChange={setShop} />
-        <select className="sa-sel" value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role">
-          <option value="">All roles</option>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <select className="sa-sel" value={presence} onChange={(e) => setPresence(e.target.value)} aria-label="Presence">
-          <option value="">Anyone</option><option value="online">Online now</option><option value="idle">Signed in, idle</option>
-          <option value="offline">Signed out</option><option value="never">Not seen since tracking began</option>
-        </select>
+    <div className="sa-grid">
+      <div className="sa-seg" role="tablist" aria-label="Who">
+        {PEOPLE_GROUPS.map((g) => (
+          <button key={g.k || "all"} role="tab" aria-selected={role === g.k} onClick={() => setRole(g.k)} title={g.hint}>{g.label}</button>
+        ))}
       </div>
-      {res.loading && !d ? <div className="sa-card-b"><Skel h={160} /></div> : !d?.items?.length ? <Empty title="No people match">Try a different shop, role or search.</Empty> : (
-        <div className="sa-tbl">
-          <table>
-            <thead><tr><th>Person</th><th>Shop</th><th>Role</th><th>Status</th><th>Last seen</th><th>Last sign-in</th>
-              <th className="r">Time today</th><th className="r">Sign-ins today</th><th className="r">Sessions 7d</th></tr></thead>
-            <tbody>
-              {d.items.map((u) => (
-                <tr key={u.id} className="click" onClick={() => onPerson(u.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onPerson(u.id)}>
-                  <td><Who name={u.name} role={u.role} sub={`${[u.email, u.phone].filter(Boolean).join(" · ") || "no contact on file"}${u.is_active ? "" : " · account disabled"}`} /></td>
-                  <td>{u.tenant_name || <span className="sa-dim">Platform</span>}</td>
-                  <td><Pill tone={ROLE_TONE[u.role]}>{u.role}</Pill></td>
-                  <td><Pill dot tone={STATUS_TONE[u.presence]}>{STATUS_LABEL[u.presence]}</Pill></td>
-                  <td title={fmtDateTime(u.last_seen_at)}>{u.last_seen_at ? ago(u.last_seen_at, now) : <span className="sa-dim">—</span>}</td>
-                  <td className="sa-muted">{fmtDateTime(u.last_login_at)}</td>
-                  <td className="r">{u.today_seconds ? dur(u.today_seconds) : <span className="sa-dim">—</span>}</td>
-                  <td className="r">{u.sessions_today}</td>
-                  <td className="r">{u.sessions_7d}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <Card pad={false}>
+        <div className="sa-filters" style={{ justifyContent: "space-between" }}>
+          <div className="sa-seg" role="tablist" aria-label="Status">
+            {PRESENCE.map((p) => (
+              <button key={p.k || "all"} role="tab" aria-selected={presence === p.k} onClick={() => setPresence(p.k)}>
+                {p.label}<span className="cnt">{n[p.n] ?? "–"}</span>
+              </button>
+            ))}
+          </div>
+          <div className="sa-row">
+            <input className="sa-in" placeholder="Search name, email or phone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search people" />
+            <ShopSelect tenants={tenants} value={shop} onChange={setShop} />
+          </div>
         </div>
-      )}
-      {d && <Pager page={d.page} limit={d.limit} total={d.total} onPage={setPage} />}
-    </Card>
+        <div className="sa-dim" style={{ fontSize: 12.5, padding: "0 16px 10px" }}>
+          <b>Online</b> = used DFX in the last 5 minutes · <b>Away</b> = still logged in, not using it right now · click a person to see their full history.
+        </div>
+        {res.loading && !d ? <div className="sa-card-b"><Skel h={160} /></div> : !d?.items?.length ? <Empty title="Nobody here">Try another group, status, shop or search.</Empty> : (
+          <div className="sa-tbl">
+            <table>
+              <thead><tr><th>Person</th><th>Shop</th><th>Role</th><th>Status</th><th>Last used DFX</th><th className="r">Today</th></tr></thead>
+              <tbody>
+                {d.items.map((u) => (
+                  <tr key={u.id} className="click" onClick={() => onPerson(u.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onPerson(u.id)}>
+                    <td><Who name={u.name} role={u.role} sub={[u.phone, u.email].filter(Boolean).join(" · ") || "no contact on file"} />
+                      {!u.is_active && <div style={{ color: "var(--bad)", fontSize: 12, marginLeft: 42 }}>Account disabled</div>}</td>
+                    <td>{u.tenant_name || <span className="sa-dim">DFX platform</span>}</td>
+                    <td><Pill tone={ROLE_TONE[u.role]}>{u.role === "Admin" ? "Owner" : u.role === "SuperAdmin" ? "Super admin" : u.role}</Pill></td>
+                    <td><Pill dot tone={STATUS_TONE[u.presence]}>{STATUS_LABEL[u.presence]}</Pill></td>
+                    <td>{u.last_seen_at
+                      ? <><span title={fmtDateTime(u.last_seen_at)}>{ago(u.last_seen_at, now)}</span><div className="sa-dim" style={{ fontSize: 12 }}>last login {fmtDateTime(u.last_login_at)}</div></>
+                      : <span className="sa-dim">—</span>}</td>
+                    <td className="r">{u.today_seconds || u.sessions_today
+                      ? <><b>{dur(u.today_seconds)}</b><div className="sa-dim" style={{ fontSize: 12, fontFamily: "inherit" }}>{u.sessions_today} login{u.sessions_today === 1 ? "" : "s"}</div></>
+                      : <span className="sa-dim">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {d && <Pager page={d.page} limit={d.limit} total={d.total} onPage={setPage} />}
+      </Card>
+    </div>
   );
 }
 
@@ -314,8 +341,16 @@ function ShopSelect({ tenants, value, onChange }) {
 }
 
 // ── Sessions ───────────────────────────────────────────────────────────
+const SESSION_STATUS = [
+  { k: "active", label: "Online now" },
+  { k: "idle", label: "Away" },
+  { k: "ended", label: "Logged out" },
+  { k: "expired", label: "Timed out" },
+  { k: "all", label: "All" },
+];
+
 function SessionsTab({ tenants, live, onPerson }) {
-  const [f, setF] = useState({ status: "open", tenant_id: "", role: "", client: "", date_from: "", date_to: "", q: "" });
+  const [f, setF] = useState({ status: "active", tenant_id: "", role: "", client: "", date_from: "", date_to: "", q: "" });
   const [qd, setQd] = useState("");
   const [page, setPage] = useState(1);
   useEffect(() => { const t = setTimeout(() => setQd(f.q), 350); return () => clearTimeout(t); }, [f.q]);
@@ -324,30 +359,41 @@ function SessionsTab({ tenants, live, onPerson }) {
     [f.status, f.tenant_id, f.role, f.client, f.date_from, f.date_to, qd, page], { ms: 20000, live });
   const now = useNow(20000);
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+  const n = res.data?.counts || {};
   return (
     <Card pad={false}>
-      <div className="sa-filters">
-        <input className="sa-in" placeholder="Search person or IP" value={f.q} onChange={set("q")} aria-label="Search sessions" />
-        <select className="sa-sel" value={f.status} onChange={set("status")} aria-label="Status">
-          <option value="open">Signed in now</option><option value="active">Online (last 5 min)</option><option value="idle">Idle</option>
-          <option value="ended">Signed out</option><option value="expired">Expired</option><option value="all">All sessions</option>
-        </select>
-        <ShopSelect tenants={tenants} value={f.tenant_id} onChange={(v) => setF((s) => ({ ...s, tenant_id: v }))} />
-        <select className="sa-sel" value={f.role} onChange={set("role")} aria-label="Role">
-          <option value="">All roles</option>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <select className="sa-sel" value={f.client} onChange={set("client")} aria-label="Device">
-          <option value="">Web + app</option><option value="web">Web only</option><option value="app">Mobile app only</option>
-        </select>
-        <input className="sa-sel" type="date" value={f.date_from} onChange={set("date_from")} aria-label="From date" />
-        <input className="sa-sel" type="date" value={f.date_to} onChange={set("date_to")} aria-label="To date" />
+      <div className="sa-filters" style={{ justifyContent: "space-between" }}>
+        <div className="sa-seg" role="tablist" aria-label="Status">
+          {SESSION_STATUS.map((o) => (
+            <button key={o.k} role="tab" aria-selected={f.status === o.k} onClick={() => setF((s) => ({ ...s, status: o.k }))}>
+              {o.label}<span className="cnt">{n[o.k] ?? "–"}</span>
+            </button>
+          ))}
+        </div>
+        <div className="sa-row">
+          <input className="sa-in" placeholder="Search person or IP" value={f.q} onChange={set("q")} aria-label="Search sessions" />
+          <ShopSelect tenants={tenants} value={f.tenant_id} onChange={(v) => setF((s) => ({ ...s, tenant_id: v }))} />
+          <select className="sa-sel" value={f.role} onChange={set("role")} aria-label="Who">
+            <option value="">Everyone</option><option value="Team">Shop team</option><option value="Customer">Customers</option>
+          </select>
+          <select className="sa-sel" value={f.client} onChange={set("client")} aria-label="Device">
+            <option value="">Website + app</option><option value="web">Website only</option><option value="app">Mobile app only</option>
+          </select>
+          <input className="sa-sel" type="date" value={f.date_from} onChange={set("date_from")} aria-label="From date" title="From" />
+          <input className="sa-sel" type="date" value={f.date_to} onChange={set("date_to")} aria-label="To date" title="To" />
+        </div>
+      </div>
+      <div className="sa-dim" style={{ fontSize: 12.5, padding: "0 16px 10px" }}>
+        A session is one login on one device, from login to logout. <b>Away</b> sessions can come back without a password for up to 2 days, then they <b>time out</b>.
       </div>
       <SessionTable rows={res.data?.items} loading={res.loading && !res.data} onPerson={onPerson} now={now}
-        empty="No sessions match these filters." />
+        empty={f.status === "active" ? "Nobody is using DFX right now." : "No sessions match these filters."} />
       {res.data && <Pager page={res.data.page} limit={res.data.limit} total={res.data.total} onPage={setPage} />}
     </Card>
   );
 }
+
+const lengthOf = (sec) => (!sec || sec < 60 ? "under 1 min" : dur(sec));
 
 function SessionTable({ rows, loading, onPerson, compact, now, empty, hidePerson }) {
   if (loading) return <div className="sa-card-b"><Skel h={140} /></div>;
@@ -356,22 +402,20 @@ function SessionTable({ rows, loading, onPerson, compact, now, empty, hidePerson
     <div className="sa-tbl">
       <table>
         <thead><tr>
-          {!hidePerson && <th>Person</th>}{!compact && !hidePerson && <th>Shop</th>}<th>Status</th><th>Device</th>
-          {!compact && <th>Signed in</th>}<th>Last seen</th>{!compact && <th>Ended</th>}<th className="r">Duration</th>
-          {!compact && <th>IP · browser</th>}
+          {!hidePerson && <th>Person</th>}<th>Status</th><th>Device</th>
+          {!compact && <th>Logged in</th>}<th>Last active</th><th className="r">Length</th>
         </tr></thead>
         <tbody>
           {rows.map((s) => (
             <tr key={s.id} className={hidePerson ? "" : "click"} onClick={() => !hidePerson && onPerson?.(s.user_id)}>
-              {!hidePerson && <td><Who name={s.user_name} role={s.role} sub={compact ? `${s.tenant_name || "Platform"} · ${s.role}` : [s.user_email, s.user_phone].filter(Boolean).join(" · ") || s.role} /></td>}
-              {!compact && !hidePerson && <td>{s.tenant_name || <span className="sa-dim">Platform</span>}</td>}
-              <td><Pill dot tone={STATUS_TONE[s.status]}>{STATUS_LABEL[s.status]}</Pill></td>
-              <td><ClientTag client={s.client} device={s.device} /></td>
-              {!compact && <td title={fmtDateTime(s.started_at)}>{fmtDateTime(s.started_at)}{s.login_method === "google" ? <span className="sa-dim"> · Google</span> : s.login_method === "resumed" ? <span className="sa-dim"> · resumed</span> : null}</td>}
+              {!hidePerson && <td><Who name={s.user_name} role={s.role} sub={`${s.tenant_name || "DFX platform"} · ${s.role === "Admin" ? "Owner" : s.role}`} /></td>}
+              <td><Pill dot tone={STATUS_TONE[s.status]}>{STATUS_LABEL[s.status]}</Pill>
+                {s.ended_at && <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{END_LABEL[s.end_reason] || s.end_reason} {fmtTime(s.ended_at)}</div>}</td>
+              <td><ClientTag client={s.client} device={s.device} />
+                {!compact && <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{[s.browser, s.ip].filter(Boolean).join(" · ")}</div>}</td>
+              {!compact && <td>{fmtDateTime(s.started_at)}{s.login_method === "google" ? <span className="sa-dim"> · Google</span> : null}</td>}
               <td title={fmtDateTime(s.last_seen_at)}>{ago(s.last_seen_at, now)}</td>
-              {!compact && <td className="sa-muted">{s.ended_at ? `${fmtTime(s.ended_at)} · ${END_LABEL[s.end_reason] || s.end_reason}` : s.status === "expired" ? "2-day limit" : "—"}</td>}
-              <td className="r">{dur(s.duration_seconds)}{s.sessions > 1 && <div className="sa-dim" style={{ fontSize: 11.5, fontFamily: "inherit" }}>{s.sessions} devices</div>}</td>
-              {!compact && <td><span className="mono" style={{ fontSize: 12.5 }}>{s.ip || "—"}</span><div className="sa-dim" style={{ fontSize: 12 }}>{s.browser}</div></td>}
+              <td className="r">{lengthOf(s.duration_seconds)}</td>
             </tr>
           ))}
         </tbody>

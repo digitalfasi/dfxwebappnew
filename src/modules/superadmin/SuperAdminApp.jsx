@@ -10,7 +10,7 @@ import { SA_CSS, Icon, initialsOf, useNow, usePoll } from "@/modules/superadmin/
 export const MON_PAGES = [
   { key: "live", label: "Live now", icon: "pulse", title: "Live now", sub: "What is happening on DFX this minute" },
   { key: "people", label: "People", icon: "users", title: "People", sub: "Every admin, staff member and customer, and when they were last seen" },
-  { key: "sessions", label: "Sessions", icon: "clock", title: "Sessions", sub: "Each sign-in, from start to sign-out" },
+  { key: "sessions", label: "Sessions", icon: "clock", title: "Sessions", sub: "Every login, from the moment someone logs in until they log out" },
   { key: "signins", label: "Sign-ins & security", icon: "shield", title: "Sign-ins & security", sub: "Successful, failed and blocked sign-ins" },
   { key: "activity", label: "Activity log", icon: "list", title: "Activity log", sub: "What people changed, in every shop" },
   { key: "system", label: "Server & database", icon: "server", title: "Server & database", sub: "The machine, containers, backups, traffic and logs" },

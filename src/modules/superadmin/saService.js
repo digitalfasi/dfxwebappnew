@@ -102,4 +102,4 @@ export const EVENT_LABEL = {
   TOKEN_REUSE: "Stolen-token alarm",
 };
 
-export const END_LABEL = { logout: "Signed out", logout_all: "Signed out everywhere", revoked: "Revoked (security)" };
+export const END_LABEL = { logout: "Logged out", logout_all: "Logged out everywhere", revoked: "Cut off for security" };
