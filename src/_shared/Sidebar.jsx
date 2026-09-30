@@ -139,14 +139,13 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             genuinely needed. */}
         {/* Our brand, always: the DFX GOLD mark (owner rule 2026-09-30).
             The shop's own name is not repeated here. */}
-        {/* Brand band: the gold logo on black, centred - the logo's own
-            colours only read right on a dark ground. */}
+        {/* Brand band: the DFX GOLD logo centred on the sidebar's own cream. */}
         {collapsed ? (
-          <div className="flex h-[72px] shrink-0 items-center justify-center bg-[#0b0b0d] px-2" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
+          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-2" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
             <img src="/dfx-gold-mark.png" alt="DFX GOLD" width={44} height={44} className="h-11 w-11 object-contain" />
           </div>
         ) : (
-          <div className="flex h-[72px] shrink-0 items-center justify-center bg-[#0b0b0d] px-4" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
+          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-4" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
             <img src="/dfx-gold-logo.png" alt="DFX GOLD" width={124} height={58} className="h-[54px] w-auto object-contain" />
           </div>
         )}
