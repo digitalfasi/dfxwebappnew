@@ -28,11 +28,11 @@ const EMPTY = { gstin: "", store_name: "", city: "", address: "", pincode: "", c
 // Per-position GSTIN rule: 2 digits, 5 letters, 4 digits, letter, 1-9/A-Z, 'Z', check.
 const POS = [/\d/, /\d/, /[A-Z]/, /[A-Z]/, /[A-Z]/, /[A-Z]/, /[A-Z]/, /\d/, /\d/, /\d/, /\d/, /[A-Z]/, /[1-9A-Z]/, /Z/, /[0-9A-Z]/];
 const PARTS = [
-  { label: "State", from: 0, to: 2 },
-  { label: "PAN", from: 2, to: 12 },
-  { label: "Entity", from: 12, to: 13 },
-  { label: "Z", from: 13, to: 14 },
-  { label: "Check", from: 14, to: 15 },
+  { label: "State", short: "State", from: 0, to: 2 },
+  { label: "PAN", short: "PAN", from: 2, to: 12 },
+  { label: "Entity", short: "No.", from: 12, to: 13 },
+  { label: "Z", short: "Z", from: 13, to: 14 },
+  { label: "Check", short: "Chk", from: 14, to: 15 },
 ];
 const gstBadAt = (g) => g.split("").findIndex((ch, i) => !POS[i]?.test(ch));
 
@@ -310,7 +310,7 @@ export default function TrialSignup({ onBack }) {
                     : "border border-line bg-white text-faint"}`}>
                   {state === "done" ? <Svg d={I.check} className="h-4 w-4" sw={2.6} /> : i + 1}
                 </span>
-                <span className="min-w-0">
+                <span className="min-w-0 max-sm:[@media(max-height:700px)]:hidden">
                   <span className={`block text-[0.74rem] font-semibold leading-tight sm:text-[0.8rem] ${state === "todo" ? "text-faint" : "text-ink"}`}>{s.title}</span>
                   <span className="hidden text-[0.68rem] text-faint sm:block [@media(max-height:700px)]:sm:hidden">{s.sub}</span>
                 </span>
@@ -333,7 +333,7 @@ export default function TrialSignup({ onBack }) {
           {step === 0 && (
             <div>
               <h2 className="text-base font-semibold text-ink">Company GST number</h2>
-              <p className="mt-1 text-[0.82rem] text-muted [@media(max-height:820px)]:hidden">Enter the 15-character GSTIN printed on your GST registration certificate.</p>
+              <p className="mt-1 text-[0.82rem] text-muted max-sm:hidden [@media(max-height:820px)]:hidden">Enter the 15-character GSTIN printed on your GST registration certificate.</p>
 
               <label htmlFor="gstin" className="mb-1.5 mt-5 flex items-center gap-1 text-[0.8rem] font-semibold text-ink">GSTIN <span className="text-rose-500">*</span></label>
               <div className="flex flex-col gap-2.5 sm:flex-row">
@@ -363,7 +363,7 @@ export default function TrialSignup({ onBack }) {
                       <div className={`truncate font-mono text-[0.7rem] font-semibold sm:text-[0.82rem] sm:tracking-wider ${bad ? "text-rose-600" : "text-ink"}`}>
                         {chunk.padEnd(p.to - p.from, "·")}
                       </div>
-                      <div className="truncate text-[0.52rem] font-semibold uppercase tracking-wide text-faint sm:text-[0.6rem] sm:tracking-wider">{p.label}</div>
+                      <div className="truncate text-[0.52rem] font-semibold uppercase tracking-wide text-faint sm:text-[0.6rem] sm:tracking-wider"><span className="sm:hidden">{p.short}</span><span className="max-sm:hidden">{p.label}</span></div>
                     </div>
                   );
                 })}
@@ -391,7 +391,7 @@ export default function TrialSignup({ onBack }) {
           {step === 1 && (
             <div>
               <h2 className="text-base font-semibold text-ink">Store details</h2>
-              <p className="mt-1 text-[0.82rem] text-muted [@media(max-height:820px)]:hidden">This is the name your customers see on bills and in the app.</p>
+              <p className="mt-1 text-[0.82rem] text-muted max-sm:hidden [@media(max-height:820px)]:hidden">This is the name your customers see on bills and in the app.</p>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <Field id="store_name" label="Store / business name" required icon={I.store} error={err.store_name}>
@@ -422,7 +422,7 @@ export default function TrialSignup({ onBack }) {
           {step === 2 && (
             <div>
               <h2 className="text-base font-semibold text-ink">Contact person</h2>
-              <p className="mt-1 text-[0.82rem] text-muted [@media(max-height:820px)]:hidden">The owner or manager. This person becomes the store&apos;s admin.</p>
+              <p className="mt-1 text-[0.82rem] text-muted max-sm:hidden [@media(max-height:820px)]:hidden">The owner or manager. This person becomes the store&apos;s admin.</p>
               <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <Field id="contact_name" label="Full name" required icon={I.user} error={err.contact_name}>
@@ -447,8 +447,8 @@ export default function TrialSignup({ onBack }) {
           {step === 3 && (
             <div>
               <h2 className="text-base font-semibold text-ink">Set your password</h2>
-              <p className="mt-1 text-[0.82rem] text-muted [@media(max-height:820px)]:hidden">You&apos;ll sign in with your email and this password.</p>
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <p className="mt-1 text-[0.82rem] text-muted max-sm:hidden [@media(max-height:820px)]:hidden">You&apos;ll sign in with your email and this password.</p>
+              <div className="mt-4 grid grid-cols-1 gap-2.5 min-[480px]:grid-cols-2 max-sm:mt-3">
                 <Field id="pw" label="Password" required icon={I.lock} error={err.pw}>
                   <input id="pw" ref={firstRef} type={showPw ? "text" : "password"} value={pw} maxLength={72} autoComplete="new-password"
                     onChange={(e) => { setPw(e.target.value); setErr({}); }} placeholder="Min. 6 characters" className={`${inputCls(err.pw)} !pr-12`} />
@@ -482,10 +482,10 @@ export default function TrialSignup({ onBack }) {
                   { k: "Login", v: f.email.trim().toLowerCase(), s: 2 },
                 ].map((r) => (
                   <div key={r.k} className="flex items-center gap-3 px-4 py-2 max-sm:px-3 max-sm:py-1.5 [@media(max-height:700px)]:py-1.5">
-                    <span className="w-16 shrink-0 text-[0.7rem] font-bold uppercase tracking-wider text-faint">{r.k}</span>
-                    <span className={`min-w-0 flex-1 truncate text-[0.84rem] text-ink ${r.mono ? "font-mono tracking-wider" : ""}`}>{r.v}</span>
+                    <span className="w-16 shrink-0 text-[0.7rem] font-bold uppercase tracking-wider text-faint max-sm:w-[3.4rem] max-sm:text-[0.6rem] max-sm:tracking-wide">{r.k}</span>
+                    <span className={`min-w-0 flex-1 truncate text-[0.84rem] text-ink max-sm:text-[0.78rem] ${r.mono ? "font-mono tracking-wider max-sm:tracking-normal" : ""}`} title={r.v}>{r.v}</span>
                     <button type="button" onClick={() => setStep(r.s)} className="inline-flex items-center gap-1 text-xs font-semibold text-accent-strong hover:underline">
-                      <Svg d={I.edit} className="h-3.5 w-3.5" /> Edit
+                      <Svg d={I.edit} className="h-3.5 w-3.5" /><span className="max-sm:sr-only">Edit</span>
                     </button>
                   </div>
                 ))}
@@ -494,7 +494,7 @@ export default function TrialSignup({ onBack }) {
               <label className="mt-3 flex cursor-pointer items-start gap-2.5 text-[0.82rem] text-ink">
                 <input type="checkbox" checked={terms} onChange={(e) => { setTerms(e.target.checked); setErr({}); }}
                   className="mt-0.5 h-4 w-4 rounded border-line accent-[var(--color-ink-deep)]" />
-                <span>I agree to the DFX Terms of Service and Privacy Policy, and confirm the GST details are my business&apos;s.</span>
+                <span>I agree to the DFX Terms of Service and Privacy Policy<span className="max-sm:hidden">, and confirm the GST details are my business&apos;s</span>.</span>
               </label>
               {err.terms ? <p className="mt-1.5 text-xs font-semibold text-rose-600">{err.terms}</p> : null}
             </div>
@@ -516,7 +516,7 @@ export default function TrialSignup({ onBack }) {
           ) : <span />}
           <button type="submit" disabled={busy || gstBusy}
             className="group inline-flex min-w-[9rem] items-center justify-center gap-2 rounded-xl bg-ink-deep px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-ink-deep/20 transition hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:opacity-80">
-            {busy ? <><Spinner /> Creating your store…</> : step === 3 ? <>Start your free trial <Svg d={I.arrowR} className="h-4 w-4 transition-transform group-hover:translate-x-1" /></>
+            {busy ? <><Spinner /> Creating your store…</> : step === 3 ? <><span className="whitespace-nowrap"><span className="max-sm:hidden">Start your free trial</span><span className="sm:hidden">Start free trial</span></span> <Svg d={I.arrowR} className="h-4 w-4 transition-transform group-hover:translate-x-1" /></>
               : <>Continue <Svg d={I.arrowR} className="h-4 w-4 transition-transform group-hover:translate-x-1" /></>}
           </button>
         </div>

@@ -278,9 +278,9 @@ export default function AuthGate({ children }) {
             <div className="dfx-step mt-4 rounded-xl border border-accent-line bg-accent-soft/60 px-4 py-2.5 text-center [animation-delay:540ms] [@media(max-height:760px)]:mt-3 [@media(max-height:760px)]:py-2">
               <p className="text-[0.8rem] text-ink/75">New jewellery store on DFX?</p>
               <button type="button" onClick={openSignup}
-                className="group mt-0.5 inline-flex items-center gap-1.5 text-sm font-semibold text-accent-strong hover:underline">
-                Create account · Start your free trial
-                <svg className="transition-transform group-hover:translate-x-0.5" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                className="group mt-0.5 text-sm font-semibold leading-snug text-accent-strong hover:underline">
+                <span className="max-[380px]:hidden">Create account · </span>Start your free trial
+                <svg className="ml-1 inline-block align-[-2px] transition-transform group-hover:translate-x-0.5" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M4 12h15m0 0-5.5-5.5M19 12l-5.5 5.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
