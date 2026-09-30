@@ -392,37 +392,10 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
             <Kpi go={() => scrollToId("td-controls")} icon="shop" hue={tenant.status === "Active" && !(trialLeft != null && trialLeft < 0) ? "live" : "bad"} label="Shop status"
               value={tenant.status !== "Active" ? "Switched off" : trialLeft != null && trialLeft < 0 ? "Locking" : "Open"}
               sub={tenant.status !== "Active" ? "nobody can log in" : trialLeft != null && trialLeft < 0 ? "trial ended - locked at the next login" : "people can log in"} />
-            <Kpi go={() => scrollToId("td-plan")} icon="clock" hue={trialLeft != null && trialLeft < 7 ? "warn" : "web"} label="Access" value={trialLeft == null ? "Paid · no end date" : trialLeft >= 0 ? `${trialLeft} days left` : "Trial ended"}
+            <Kpi go={() => scrollToId("td-plan-card")} icon="clock" hue={trialLeft != null && trialLeft < 7 ? "warn" : "web"} label="Access" value={trialLeft == null ? "Paid · no end date" : trialLeft >= 0 ? `${trialLeft} days left` : "Trial ended"}
               sub={tenant.subscription ? `${tenant.subscription.plan} · ${tenant.subscription.status}` : "no subscription"} />
             <Kpi go={() => { onWatch(id); onClose(); }} icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st ? `${st.active_enrollments} active enrolments` : ""} />
           </div>
-
-          {tenant.subscription && (
-            <div className="sa-row" style={{ gap: 8 }}>
-              {tenant.subscription.trial_ends_at && (
-                <button className="sa-btn sm" disabled={busy} onClick={() => setConfirm({
-                  top: true, text: `Make ${tenant.name} permanent? Its access will have no end date.`,
-                  run: () => act(() => saService.setSubscription(id, { plan: tenant.subscription.plan, access_mode: "INDEFINITE" }), "Done - this shop no longer expires."),
-                })}><Icon name="check" size={14} />Make permanent</button>
-              )}
-              <button className="sa-btn ghost sm" disabled={busy} onClick={() => setConfirm({
-                top: true, text: `Give ${tenant.name} 30 more days from today?`,
-                run: () => act(() => saService.setSubscription(id, { plan: tenant.subscription.plan, access_mode: "TRIAL", trial_days: 30 }), "Trial extended by 30 days from today."),
-              })}><Icon name="clock" size={14} />Extend 30 days</button>
-            </div>
-          )}
-          {confirm && !confirmInControls && (
-            <div className={`sa-alert ${confirm.danger ? "bad" : "info"}`} role="alertdialog">
-              <Icon name="alert" />
-              <div style={{ display: "grid", gap: 10, flex: 1 }}>
-                <b>{confirm.text}</b>
-                <div className="sa-row">
-                  <button className={`sa-btn sm${confirm.danger ? " danger" : ""}`} disabled={busy} onClick={confirm.run}>{busy ? "Working…" : "Yes, do it"}</button>
-                  <button className="sa-btn ghost sm" onClick={() => setConfirm(null)}>Cancel</button>
-                </div>
-              </div>
-            </div>
-          )}
 
           <Card title="Shop and admin" icon="shop">
             <dl className="sa-kv">
@@ -430,7 +403,6 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
               <dt>Admin email</dt><dd>{tenant.admin_email || "—"}</dd>
               <dt>Admin mobile</dt><dd className="mono">{tenant.admin_phone || "—"}</dd>
               <dt>Admin account</dt><dd>{tenant.admin_is_active == null ? "No admin" : <Pill tone={tenant.admin_is_active ? "live" : "bad"}>{tenant.admin_is_active ? "Enabled" : "Disabled"}</Pill>}</dd>
-              <dt>Brand colour</dt><dd>{tenant.brand_color ? <span className="sa-row" style={{ justifyContent: "flex-end" }}><i style={{ width: 14, height: 14, borderRadius: 4, background: tenant.brand_color, display: "inline-block" }} /><span className="mono">{tenant.brand_color}</span></span> : "—"}</dd>
               <dt>Last updated</dt><dd>{fmtDateTime(tenant.updated_at)}</dd>
             </dl>
           </Card>
@@ -448,8 +420,38 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
           )}
 
           {sub && (
-            <Card id="td-plan" title="Plan and access" icon="clock">
-              <div className="sa-form">
+            <Card id="td-plan-card" title="Plan and access" icon="clock">
+              <div className="sa-row" style={{ justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+                <div style={{ flex: "1 1 260px" }}>
+                  <b style={{ display: "block" }}>{tenant.subscription?.trial_ends_at ? `Trial - ends ${fmtDate(tenant.subscription.trial_ends_at)}` : "Paid - no end date"}</b>
+                  <span className="sa-muted" style={{ fontSize: 13 }}>{tenant.subscription?.plan} plan. Quick actions, or set it exactly below.</span>
+                </div>
+                <div className="sa-row" style={{ gap: 8 }}>
+                  {tenant.subscription?.trial_ends_at && (
+                    <button className="sa-btn sm" disabled={busy} onClick={() => setConfirm({
+                      top: true, text: `Make ${tenant.name} permanent? Its access will have no end date.`,
+                      run: () => act(() => saService.setSubscription(id, { plan: tenant.subscription.plan, access_mode: "INDEFINITE" }), "Done - this shop no longer expires."),
+                    })}><Icon name="check" size={14} />Make permanent</button>
+                  )}
+                  <button className="sa-btn ghost sm" disabled={busy} onClick={() => setConfirm({
+                    top: true, text: `Give ${tenant.name} 30 more days from today?`,
+                    run: () => act(() => saService.setSubscription(id, { plan: tenant.subscription.plan, access_mode: "TRIAL", trial_days: 30 }), "Trial extended by 30 days from today."),
+                  })}><Icon name="clock" size={14} />Extend 30 days</button>
+                </div>
+              </div>
+              {confirm?.top && (
+                <div className="sa-alert info" role="alertdialog" style={{ marginBottom: 14 }}>
+                  <Icon name="alert" />
+                  <div style={{ display: "grid", gap: 10, flex: 1 }}>
+                    <b>{confirm.text}</b>
+                    <div className="sa-row">
+                      <button className="sa-btn sm" disabled={busy} onClick={confirm.run}>{busy ? "Working…" : "Yes, do it"}</button>
+                      <button className="sa-btn ghost sm" onClick={() => setConfirm(null)}>Cancel</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="sa-form" style={{ borderTop: "1px solid var(--rule2)", paddingTop: 14 }}>
                 <div className="sa-field"><label htmlFor="td-plan">Plan</label>
                   <select id="td-plan" className="sa-sel" value={sub.plan} onChange={(e) => setSub((x) => ({ ...x, plan: e.target.value }))}>
                     {[...new Set([sub.plan, ...PLANS])].map((p) => <option key={p}>{p}</option>)}</select></div>
@@ -466,7 +468,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
               <div className="sa-row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
                 <button className="sa-btn" disabled={busy} onClick={() => act(() => saService.setSubscription(id, {
                   plan: sub.plan, access_mode: sub.access_mode, ...(sub.access_mode === "TRIAL" ? { trial_days: Number(sub.trial_days) } : {}),
-                }), "Plan and access saved.")}>Save plan</button>
+                }), "Plan and access saved.")}>Save exact plan</button>
               </div>
             </Card>
           )}
@@ -496,9 +498,22 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
               {tenant.admin_is_active != null && (
                 <div style={{ border: "1px solid var(--rule2)", borderRadius: 12, padding: "12px 14px", display: "grid", gap: 12 }}>
                   <div className="sa-row" style={{ justifyContent: "space-between" }}>
-                    <div style={{ flex: "1 1 240px" }}><b style={{ display: "block" }}>Set a new password</b>
-                      <span className="sa-muted" style={{ fontSize: 13 }}>You choose {tenant.admin_name}'s password. Tell them yourself; it is never emailed.</span></div>
-                    {!pwOpen && <button className="sa-btn sm" onClick={() => { setPwOpen(true); setPw({ a: "", b: "", out: true, err: null }); }}>Set password</button>}
+                    <div style={{ flex: "1 1 240px" }}><b style={{ display: "block" }}>Admin password</b>
+                      <span className="sa-muted" style={{ fontSize: 13 }}>Set it yourself and tell {tenant.admin_name}, or email them a link{tenant.admin_email ? ` (${tenant.admin_email})` : ""} to choose their own.</span></div>
+                    {!pwOpen && (
+                      <div className="sa-row" style={{ gap: 8 }}>
+                        <button className="sa-btn sm" onClick={() => { setPwOpen(true); setPw({ a: "", b: "", out: true, err: null }); }}>Set password</button>
+                        {tenant.admin_email && (
+                          <button className="sa-btn ghost sm" disabled={busy} onClick={() => setConfirm({
+                            text: `Send a password reset link to ${tenant.admin_email}?`,
+                            run: () => act(async () => {
+                              const r = await saService.resetAdminPassword(id);
+                              if (!r.reset_email_sent) throw new Error("The reset was created but the email could not be sent.");
+                            }, "Reset link sent."),
+                          })}>Email reset link</button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {pwOpen && (
                     <form className="sa-form" noValidate onSubmit={(e) => {
@@ -521,16 +536,6 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
                     </form>
                   )}
                 </div>
-              )}
-              {tenant.admin_email && (
-                <Control title="Email a reset link" text={`The admin picks their own password from a link sent to ${tenant.admin_email}.`} btn="Send link" disabled={busy}
-                  onClick={() => setConfirm({
-                    text: `Send a password reset link to ${tenant.admin_email}?`,
-                    run: () => act(async () => {
-                      const r = await saService.resetAdminPassword(id);
-                      if (!r.reset_email_sent) throw new Error("The reset was created but the email could not be sent (email is not set up on this server).");
-                    }, "Reset link sent."),
-                  })} />
               )}
               {confirm && confirmInControls && (
                 <div className={`sa-alert ${confirm.danger ? "bad" : "info"}`} role="alertdialog">

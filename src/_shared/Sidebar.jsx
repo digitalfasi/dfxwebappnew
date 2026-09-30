@@ -137,37 +137,18 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
             band here reads as a different material laid over the rail rather
             than part of it. One cream, and a hairline where structure is
             genuinely needed. */}
+        {/* Our brand, always: the DFX GOLD mark (owner rule 2026-09-30).
+            The shop's own name is not repeated here. */}
         {collapsed ? (
           <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-2">
-            {showLogo ? (
-              <img src={tenantLogo} alt={storeName || "Store logo"} title={[storeName, roleText(user) || "Admin"].filter(Boolean).join(" · ")} onError={() => setLogoBroken(true)} className="h-10 w-10 rounded-xl border border-accent-line/60 bg-white object-contain p-0.5 shadow-sm" />
-            ) : (
-              <div
-                className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm"
-                title={[storeName, roleText(user) || "Admin"].filter(Boolean).join(" · ")}
-              >
-                {storeName[0]?.toUpperCase() ?? "D"}
-              </div>
-            )}
+            <img src="/dfx-gold-mark.png" alt="DFX GOLD" title={`DFX GOLD · ${roleText(user) || "Admin"}`} width={44} height={44} className="h-11 w-11 object-contain" />
           </div>
         ) : (
           <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-accent-line/45 px-4">
-            {showLogo ? (
-              <img src={tenantLogo} alt={storeName || "Store logo"} onError={() => setLogoBroken(true)} className="h-10 w-10 shrink-0 rounded-xl border border-accent-line/60 bg-white object-contain p-0.5 shadow-sm" />
-            ) : (
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#e7c96b] via-accent to-[#b8963f] text-sm font-extrabold text-[#1b2030] shadow-sm">
-              {storeName[0]?.toUpperCase() ?? "D"}
-            </div>
-            )}
-            <div className="min-w-0 flex-1 leading-tight">
-              {/* Wraps rather than truncates. "Test Jewellery Store 02…" in the
-                  most prominent position on the screen reads as unfinished, and
-                  a shop cannot confirm it is looking at its own books. */}
-              <div className="text-sm font-extrabold leading-tight tracking-tight text-ink [overflow-wrap:anywhere]" title={storeName}>{storeName}</div>
-              <span className="mt-1 inline-flex items-center rounded-full border border-accent-line/60 bg-accent-soft/70 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-accent-strong">
-                {roleText(user) || "Admin"}
-              </span>
-            </div>
+            <img src="/dfx-gold-logo.png" alt="DFX GOLD" width={107} height={50} className="h-[50px] w-auto shrink-0 object-contain" />
+            <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-accent-line/60 bg-accent-soft/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-strong">
+              {roleText(user) || "Admin"}
+            </span>
           </div>
         )}
 

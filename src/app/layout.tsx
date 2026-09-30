@@ -3,7 +3,7 @@ import "./globals.css";
 import NumberWheelGuard from "@/_shared/NumberWheelGuard";
 
 export const metadata: Metadata = {
-  title: "DFX Solution — Admin",
+  title: "DFX GOLD",
   description: "DFX Solution Admin",
 };
 
