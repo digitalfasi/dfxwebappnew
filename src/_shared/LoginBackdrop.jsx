@@ -11,6 +11,12 @@ import { useEffect, useRef, useState } from "react";
  * quality loss - and fills the viewport with object-cover, so there is never
  * a gap at any aspect ratio. Data Saver users get the still alone.
  *
+ * Framing: the file is 1920x1080 but its picture is 1620x1080 - the
+ * generator padded a 3:2 shot with 150 px black bars each side. The element is
+ * sized so that inner 3:2 picture covers the viewport (exactly like the 3:2
+ * still beneath it) and the bars fall outside, clipped. Same pixels, no
+ * re-encode, and the still and the film line up frame-for-frame.
+ *
  * Seamless loop: the film's camera drifts, so its last frame is not its
  * first and a plain `loop` jumps every 8 s. Two copies take turns instead:
  * FADE seconds before one ends, the other starts from the top and dissolves
@@ -18,6 +24,16 @@ import { useEffect, useRef, useState } from "react";
  */
 const SRC = "/login-bg.mp4";
 const FADE = 1.2; // seconds of cross-fade at the seam
+// The picture inside the frame: 1620 of 1920 px wide, full height.
+const FRAME_W = 1920, FRAME_H = 1080, PIC_W = 1620;
+const FILM_STYLE = {
+  // Cover the box with the 3:2 picture, then add the bars back outside it.
+  width: `max(100cqw * ${FRAME_W / PIC_W}, 100cqh * ${FRAME_W / FRAME_H})`,
+  aspectRatio: `${FRAME_W} / ${FRAME_H}`,
+  left: "50%",
+  top: "50%",
+  transform: "translate(-50%, -50%)",
+};
 
 export default function LoginBackdrop({ veil = "from-white/60 via-white/30 to-white/5" }) {
   const a = useRef(null);
@@ -91,7 +107,6 @@ export default function LoginBackdrop({ veil = "from-white/60 via-white/30 to-wh
     <video
       ref={ref}
       src={id === "a" ? SRC : undefined}
-      poster="/login-bg.jpg"
       muted
       playsInline
       preload="auto"
@@ -99,8 +114,8 @@ export default function LoginBackdrop({ veil = "from-white/60 via-white/30 to-wh
       disableRemotePlayback
       aria-hidden="true"
       tabIndex={-1}
-      style={{ transitionDuration: `${FADE}s` }}
-      className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity ease-in-out ${
+      style={{ ...FILM_STYLE, transitionDuration: `${FADE}s` }}
+      className={`pointer-events-none absolute max-w-none object-fill transition-opacity ease-in-out ${
         front === id ? "z-[1] opacity-100" : back === id ? "z-0 opacity-100" : "z-0 opacity-0"}`}
     />
   );
@@ -110,7 +125,7 @@ export default function LoginBackdrop({ veil = "from-white/60 via-white/30 to-wh
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/login-bg.jpg" alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" />
       {!still && (
-        <div className="pointer-events-none absolute inset-0">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden [container-type:size]">
           {film(a, "a")}
           {film(b, "b")}
         </div>
