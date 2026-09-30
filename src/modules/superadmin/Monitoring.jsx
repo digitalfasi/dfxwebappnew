@@ -408,7 +408,7 @@ function SessionTable({ rows, loading, onPerson, compact, now, empty, hidePerson
         <tbody>
           {rows.map((s) => (
             <tr key={s.id} className={hidePerson ? "" : "click"} onClick={() => !hidePerson && onPerson?.(s.user_id)}>
-              {!hidePerson && <td><Who name={s.user_name} role={s.role} sub={`${s.tenant_name || "DFX platform"} · ${s.role === "Admin" ? "Owner" : s.role}`} /></td>}
+              {!hidePerson && <td><Who name={s.user_name} role={s.role} sub={`${s.tenant_name || "DFX platform"} · ${ROLE_WORD[s.role] || s.role}`} /></td>}
               <td><Pill dot tone={STATUS_TONE[s.status]}>{STATUS_LABEL[s.status]}</Pill>
                 {s.ended_at && <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{END_LABEL[s.end_reason] || s.end_reason} {fmtTime(s.ended_at)}</div>}</td>
               <td><ClientTag client={s.client} device={s.device} />
@@ -439,32 +439,34 @@ function SignInsTab({ tenants, live, onPerson }) {
   return (
     <div className="sa-grid">
       <div className="sa-kpis">
-        <Kpi icon="key" hue="live" label="Sign-ins · 24 h" value={c.LOGIN_SUCCESS || 0} sub="successful" />
-        <Kpi icon="alert" hue={c.LOGIN_FAILED ? "bad" : "ink"} label="Failed · 24 h" value={c.LOGIN_FAILED || 0} sub="wrong password or unknown account" />
-        <Kpi icon="lock" hue="warn" label="Blocked · 24 h" value={c.LOGIN_BLOCKED || 0} sub="disabled account or suspended shop" />
-        <Kpi icon="shield" hue={c.TOKEN_REUSE ? "bad" : "app"} label="Stolen-token alarms · 24 h" value={c.TOKEN_REUSE || 0} sub="all that person's sessions were cut" />
+        <Kpi icon="key" hue="live" label="Logins · last 24 h" value={c.LOGIN_SUCCESS || 0} sub="successful" />
+        <Kpi icon="alert" hue={c.LOGIN_FAILED ? "bad" : "ink"} label="Failed logins · 24 h" value={c.LOGIN_FAILED || 0} sub="wrong password or unknown login" />
+        <Kpi icon="lock" hue="warn" label="Blocked logins · 24 h" value={c.LOGIN_BLOCKED || 0} sub="account disabled or shop switched off" />
+        <Kpi icon="shield" hue={c.TOKEN_REUSE ? "bad" : "app"} label="Security alarms · 24 h" value={c.TOKEN_REUSE || 0}
+          sub={c.TOKEN_REUSE ? "a copied login was used - that person was logged out everywhere" : "no copied logins detected"} />
       </div>
       <div className="sa-split">
-        <Card title="Most failed attempts by IP · 24 h" icon="alert">
+        <Card title="Failed logins by internet address · 24 h" icon="alert">
           <RankList rows={d?.summary_24h?.top_failed_ips} k="ip" mono />
         </Card>
-        <Card title="Most failed attempts by login · 24 h" icon="users">
+        <Card title="Failed logins by email / phone · 24 h" icon="users">
           <RankList rows={d?.summary_24h?.top_failed_identifiers} k="identifier" />
         </Card>
       </div>
       <Card pad={false}>
-        <div className="sa-filters">
-          <input className="sa-in" placeholder="Search login, IP, name or reason" value={f.q} onChange={set("q")} aria-label="Search events" />
-          <select className="sa-sel" value={f.event} onChange={set("event")} aria-label="Event">
-            <option value="">All events</option>
-            <option value="LOGIN_SUCCESS">Signed in</option>
-            <option value="LOGIN_FAILED,LOGIN_BLOCKED,TOKEN_REUSE">Problems only</option>
-            <option value="LOGIN_FAILED">Failed sign-in</option><option value="LOGIN_BLOCKED">Blocked sign-in</option>
-            <option value="LOGOUT,LOGOUT_ALL">Signed out</option><option value="TOKEN_REUSE">Stolen-token alarm</option>
-          </select>
-          <ShopSelect tenants={tenants} value={f.tenant_id} onChange={(v) => setF((s) => ({ ...s, tenant_id: v }))} />
-          <input className="sa-sel" type="date" value={f.date_from} onChange={set("date_from")} aria-label="From date" />
-          <input className="sa-sel" type="date" value={f.date_to} onChange={set("date_to")} aria-label="To date" />
+        <div className="sa-filters" style={{ justifyContent: "space-between" }}>
+          <div className="sa-seg" role="tablist" aria-label="Show">
+            {[["", "Everything"], ["LOGIN_FAILED,LOGIN_BLOCKED,TOKEN_REUSE", "Problems only"], ["LOGIN_SUCCESS", "Logins"],
+              ["LOGIN_FAILED", "Failed"], ["LOGIN_BLOCKED", "Blocked"], ["LOGOUT,LOGOUT_ALL", "Logouts"], ["TOKEN_REUSE", "Security alarms"]].map(([k, label]) => (
+              <button key={k || "all"} role="tab" aria-selected={f.event === k} onClick={() => setF((s) => ({ ...s, event: k }))}>{label}</button>
+            ))}
+          </div>
+          <div className="sa-row">
+            <input className="sa-in" placeholder="Search email, phone, name or IP" value={f.q} onChange={set("q")} aria-label="Search events" />
+            <ShopSelect tenants={tenants} value={f.tenant_id} onChange={(v) => setF((s) => ({ ...s, tenant_id: v }))} />
+            <input className="sa-sel" type="date" value={f.date_from} onChange={set("date_from")} aria-label="From date" title="From" />
+            <input className="sa-sel" type="date" value={f.date_to} onChange={set("date_to")} aria-label="To date" title="To" />
+          </div>
         </div>
         <EventTable rows={d?.items} loading={res.loading && !d} onPerson={onPerson} />
         {d && <Pager page={d.page} limit={d.limit} total={d.total} onPage={setPage} />}
@@ -474,7 +476,7 @@ function SignInsTab({ tenants, live, onPerson }) {
 }
 
 function RankList({ rows, k, mono, noTime }) {
-  if (!rows?.length) return <Empty title="Nothing in the last 24 hours">No failed sign-ins.</Empty>;
+  if (!rows?.length) return <Empty title="Nothing in the last 24 hours">No failed logins.</Empty>;
   const max = Math.max(...rows.map((r) => r.count));
   return (
     <div style={{ display: "grid", gap: 10 }}>
@@ -497,17 +499,17 @@ function EventTable({ rows, loading, onPerson, hidePerson }) {
   return (
     <div className="sa-tbl">
       <table>
-        <thead><tr><th>When (IST)</th><th>Event</th>{!hidePerson && <th>Account</th>}{!hidePerson && <th>Shop</th>}<th>Device</th><th>IP · browser</th><th>Detail</th></tr></thead>
+        <thead><tr><th>When</th><th>What happened</th>{!hidePerson && <th>Who</th>}<th>Device</th><th>Reason</th></tr></thead>
         <tbody>
           {rows.map((e) => (
             <tr key={e.id} className={e.user_id && !hidePerson ? "click" : ""} onClick={() => e.user_id && !hidePerson && onPerson?.(e.user_id)}>
               <td style={{ whiteSpace: "nowrap" }}>{fmtDateTime(e.at)}</td>
               <td><Pill tone={EVENT_TONE[e.event]}>{EVENT_LABEL[e.event] || e.event}</Pill></td>
-              {!hidePerson && <td><Who name={e.user_name || e.identifier || "Unknown account"} role={e.role} sub={e.user_name ? (e.identifier || e.role) : "no matching account"} /></td>}
-              {!hidePerson && <td>{e.tenant_name || <span className="sa-dim">{e.role === "SuperAdmin" ? "Platform" : "—"}</span>}</td>}
-              <td>{e.client ? <ClientTag client={e.client} device={e.device} /> : "—"}</td>
-              <td><span className="mono" style={{ fontSize: 12.5 }}>{e.ip || "—"}</span><div className="sa-dim" style={{ fontSize: 12 }}>{e.browser}</div></td>
-              <td className="sa-muted wrap" style={{ maxWidth: 280 }}>{e.reason || "—"}</td>
+              {!hidePerson && <td><Who name={e.user_name || e.identifier || "Unknown login"} role={e.role}
+                sub={e.user_name ? `${e.tenant_name || (e.role === "SuperAdmin" ? "DFX platform" : "—")} · ${ROLE_WORD[e.role] || e.role}` : "no account uses this login"} /></td>}
+              <td>{e.client ? <ClientTag client={e.client} device={e.device} /> : "—"}
+                <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{[e.browser, e.ip].filter(Boolean).join(" · ")}</div></td>
+              <td className="sa-muted wrap" style={{ maxWidth: 260 }}>{e.reason || "—"}</td>
             </tr>
           ))}
         </tbody>
@@ -517,36 +519,64 @@ function EventTable({ rows, loading, onPerson, hidePerson }) {
 }
 
 // ── Activity ───────────────────────────────────────────────────────────
+// Every action the audit log records, in words a shop owner would use.
+const ACTION_LABEL = {
+  GOLDRATE_UPDATE: "Changed today's gold rate", GOLDRATE_CREATE: "Set today's gold rate", GOLDRATE_BACK_TO_LIVE: "Put the gold rate back on live",
+  CUSTOMER_CREATE: "Added a customer", CUSTOMER_UPDATE: "Edited a customer",
+  ENROLLMENT_CREATE: "Enrolled a customer in a scheme", ENROLLMENT_REMARKS_UPDATE: "Edited scheme remarks", SCHEME_ENROLLMENT_CLOSE: "Closed a scheme enrolment",
+  PAYMENT_CREATE_MANUAL: "Recorded a scheme payment", PAYMENT_UPDATE: "Changed a scheme payment",
+  SCHEME_CREATE: "Created a scheme", SCHEME_UPDATE: "Edited a scheme", SCHEME_DEACTIVATE: "Switched off a scheme",
+  SALE_CREATE: "Made a sale", RAW_GOLD_SALE_CREATE: "Sold raw gold", INVENTORY_BULK_PURCHASE: "Bought stock (bulk)", RAW_GOLD_BULK_PURCHASE: "Bought raw gold",
+  INVENTORY_ITEM_CREATE: "Added a stock item", INVENTORY_ITEM_IMAGE_UPLOAD: "Added a stock photo",
+  INVENTORY_CATEGORY_CREATE: "Added a stock category", INVENTORY_CATEGORY_DELETE: "Deleted a stock category", INVENTORY_SUBCATEGORY_CREATE: "Added a stock sub-category",
+  PRODUCT_CREATE: "Added a catalogue product", PRODUCT_UPDATE: "Edited a catalogue product", PRODUCT_DEACTIVATE: "Hid a catalogue product",
+  PRODUCT_IMAGE_UPLOAD: "Added a product photo", PRODUCT_IMAGE_SET_PRIMARY: "Changed a product's main photo", PRODUCT_PUBLISH_FROM_INVENTORY: "Published stock to the catalogue",
+  PROMOTION_CREATE: "Created a promotion", PROMOTION_UPDATE: "Edited a promotion", PROMOTION_DELETE: "Deleted a promotion",
+  PROMOTION_IMAGE_UPLOAD: "Added a promotion image", PROMOTION_VIDEO_UPLOAD: "Added a promotion video",
+  STAFF_CREATE: "Added a staff member", STAFF_DELETE: "Removed a staff member", BRANCH_CREATE: "Added a branch",
+  TENANT_CREATE: "Created a shop", TENANT_ADMIN_CREATE: "Created the shop owner's login", TENANT_DISABLE: "Switched off a shop", TENANT_PROFILE_UPDATE: "Edited the shop profile",
+  SUBSCRIPTION_CREATE: "Started the shop's plan", SUBSCRIPTION_AUTO_EXPIRE: "Trial ended - shop locked",
+  PASSWORD_RESET_REQUESTED: "Asked for a password reset", EMAIL_VERIFICATION_REQUESTED: "Asked for an email check", OTP_REQUEST: "Asked for a login code",
+  WISHLIST_ADD: "Added to wishlist", WISHLIST_REMOVE: "Removed from wishlist", UAT_TEST_CUSTOMER_DELETE: "Deleted a test customer",
+};
+const prettyAction = (a) => ACTION_LABEL[a] || (a || "").replace(/_/g, " ").toLowerCase().replace(/^\w/, (ch) => ch.toUpperCase());
+const ROLE_WORD = { Admin: "Owner", SuperAdmin: "Super admin", System: "Automatic", "Self sign-up": "Free-trial sign-up" };
+
 function ActivityTab({ tenants }) {
-  const [f, setF] = useState({ tenant_id: "", action: "", date_from: "", date_to: "", q: "" });
+  const [f, setF] = useState({ tenant_id: "", action: "", date_from: "", date_to: "", q: "", people_only: true });
   const [qd, setQd] = useState("");
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(null);
   useEffect(() => { const t = setTimeout(() => setQd(f.q), 350); return () => clearTimeout(t); }, [f.q]);
-  useEffect(() => setPage(1), [f.tenant_id, f.action, f.date_from, f.date_to, qd]);
-  const res = usePoll(() => saService.activity({ ...f, q: qd, page, limit: 50 }),
-    [f.tenant_id, f.action, f.date_from, f.date_to, qd, page], { ms: 30000, live: false });
+  useEffect(() => setPage(1), [f.tenant_id, f.action, f.date_from, f.date_to, qd, f.people_only]);
+  const res = usePoll(() => saService.activity({ ...f, people_only: f.people_only ? "true" : undefined, q: qd, page, limit: 50 }),
+    [f.tenant_id, f.action, f.date_from, f.date_to, qd, page, f.people_only], { ms: 30000, live: false });
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
   const d = res.data;
+  const actions = [...(d?.actions || [])].sort((x, y) => prettyAction(x).localeCompare(prettyAction(y)));
   return (
     <Card pad={false}>
-      <div className="sa-filters">
-        <input className="sa-in" placeholder="Search action, person or record" value={f.q} onChange={set("q")} aria-label="Search activity" />
-        <ShopSelect tenants={tenants} value={f.tenant_id} onChange={(v) => setF((s) => ({ ...s, tenant_id: v }))} />
-        <select className="sa-sel" value={f.action} onChange={set("action")} aria-label="Action">
-          <option value="">All actions</option>{(d?.actions || []).map((a) => <option key={a} value={a}>{prettyAction(a)}</option>)}
-        </select>
-        <input className="sa-sel" type="date" value={f.date_from} onChange={set("date_from")} aria-label="From date" />
-        <input className="sa-sel" type="date" value={f.date_to} onChange={set("date_to")} aria-label="To date" />
-        <button className="sa-btn ghost sm" onClick={res.reload}><Icon name="refresh" size={14} />Refresh</button>
+      <div className="sa-filters" style={{ justifyContent: "space-between" }}>
+        <div className="sa-seg" role="tablist" aria-label="Whose changes">
+          <button role="tab" aria-selected={f.people_only} onClick={() => setF((s) => ({ ...s, people_only: true }))}>Changes by people</button>
+          <button role="tab" aria-selected={!f.people_only} onClick={() => setF((s) => ({ ...s, people_only: false }))}>Include automatic gold-rate updates</button>
+        </div>
+        <div className="sa-row">
+          <input className="sa-in" placeholder="Search person or action" value={f.q} onChange={set("q")} aria-label="Search activity" />
+          <ShopSelect tenants={tenants} value={f.tenant_id} onChange={(v) => setF((s) => ({ ...s, tenant_id: v }))} />
+          <select className="sa-sel" value={f.action} onChange={set("action")} aria-label="Action">
+            <option value="">Every kind of change</option>{actions.map((x) => <option key={x} value={x}>{prettyAction(x)}</option>)}
+          </select>
+          <input className="sa-sel" type="date" value={f.date_from} onChange={set("date_from")} aria-label="From date" title="From" />
+          <input className="sa-sel" type="date" value={f.date_to} onChange={set("date_to")} aria-label="To date" title="To" />
+        </div>
       </div>
+      <div className="sa-dim" style={{ fontSize: 12.5, padding: "0 16px 10px" }}>Everything people changed in any shop, newest first. Click a row to see exactly what changed.</div>
       <ActivityTable rows={d?.items} loading={res.loading && !d} open={open} setOpen={setOpen} />
       {d && <Pager page={d.page} limit={d.limit} total={d.total} onPage={setPage} />}
     </Card>
   );
 }
-
-const prettyAction = (a) => (a || "").replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 
 function ActivityTable({ rows, loading, open, setOpen, hideActor }) {
   if (loading) return <div className="sa-card-b"><Skel h={140} /></div>;
@@ -554,7 +584,7 @@ function ActivityTable({ rows, loading, open, setOpen, hideActor }) {
   return (
     <div className="sa-tbl">
       <table>
-        <thead><tr><th>When (IST)</th>{!hideActor && <th>Who</th>}<th>Shop</th><th>Action</th><th>Record</th></tr></thead>
+        <thead><tr><th>When</th>{!hideActor && <th>Who</th>}<th>What they did</th><th>Shop</th><th /></tr></thead>
         <tbody>
           {rows.map((a) => (
             <FragmentRow key={a.id} a={a} open={open === a.id} toggle={() => setOpen(open === a.id ? null : a.id)} hideActor={hideActor} />
@@ -571,25 +601,48 @@ function FragmentRow({ a, open, toggle, hideActor }) {
     <>
       <tr className={has ? "click" : ""} onClick={has ? toggle : undefined}>
         <td style={{ whiteSpace: "nowrap" }}>{fmtDateTime(a.at)}</td>
-        {!hideActor && <td><Who name={a.actor_name} role={a.actor_role} sub={a.actor_role} /></td>}
-        <td>{a.tenant_name || <span className="sa-dim">Platform</span>}</td>
+        {!hideActor && <td><Who name={a.actor_name} role={a.actor_role} sub={ROLE_WORD[a.actor_role] || a.actor_role} /></td>}
         <td><b style={{ fontWeight: 600 }}>{prettyAction(a.action)}</b></td>
-        <td className="sa-muted"><span>{a.target_entity}</span> <span className="mono" style={{ fontSize: 12 }}>{a.target_id || ""}</span>{has && <span className="sa-dim"> · {open ? "hide" : "details"}</span>}</td>
+        <td>{a.tenant_name || <span className="sa-dim">DFX platform</span>}</td>
+        <td style={{ color: "var(--acc)", whiteSpace: "nowrap", textAlign: "right", fontWeight: 600, fontSize: 13 }}>{has ? (open ? "Hide" : "What changed") : ""}</td>
       </tr>
       {open && (
         <tr><td colSpan={hideActor ? 4 : 5} style={{ background: "var(--tint)" }}>
-          <div className="sa-split">
-            {a.before && <div><b style={{ fontSize: 12 }}>Before</b><pre className="sa-json">{pretty(a.before)}</pre></div>}
-            {a.after && <div><b style={{ fontSize: 12 }}>After</b><pre className="sa-json">{pretty(a.after)}</pre></div>}
-          </div>
+          <ChangeList before={parse(a.before)} after={parse(a.after)} />
+          <div className="sa-dim" style={{ fontSize: 11.5, marginTop: 8 }}>Record <span className="mono">{a.target_id || "—"}</span></div>
         </td></tr>
       )}
     </>
   );
 }
 
-function pretty(s) {
-  try { return JSON.stringify(typeof s === "string" ? JSON.parse(s) : s, null, 2); } catch { return String(s); }
+function parse(s) {
+  if (!s) return null;
+  try { return typeof s === "string" ? JSON.parse(s) : s; } catch { return { value: String(s) }; }
+}
+const fieldName = (k) => k.replace(/_/g, " ").replace(/^\w/, (ch) => ch.toUpperCase());
+const show = (v) => (v == null || v === "" ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v));
+
+// Before -> after as plain lines, changed fields first, instead of raw JSON.
+function ChangeList({ before, after }) {
+  const keys = [...new Set([...Object.keys(before || {}), ...Object.keys(after || {})])];
+  if (!keys.length) return <span className="sa-dim">No details were recorded.</span>;
+  const changed = (k) => before && after && show(before[k]) !== show(after[k]);
+  keys.sort((x, y) => Number(changed(y)) - Number(changed(x)));
+  return (
+    <dl className="sa-kv" style={{ margin: 0 }}>
+      {keys.map((k) => (
+        <div key={k} style={{ display: "contents" }}>
+          <dt>{fieldName(k)}</dt>
+          <dd style={{ textAlign: "left" }}>
+            {before && after && changed(k)
+              ? <><span className="sa-dim" style={{ textDecoration: "line-through" }}>{show(before[k])}</span> → <b>{show(after[k])}</b></>
+              : show((after || before)[k])}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 // ── One person's timeline ──────────────────────────────────────────────

@@ -94,12 +94,12 @@ export function bytes(n) {
 export const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
 export const EVENT_LABEL = {
-  LOGIN_SUCCESS: "Signed in",
-  LOGIN_FAILED: "Failed sign-in",
-  LOGIN_BLOCKED: "Blocked sign-in",
-  LOGOUT: "Signed out",
-  LOGOUT_ALL: "Signed out everywhere",
-  TOKEN_REUSE: "Stolen-token alarm",
+  LOGIN_SUCCESS: "Logged in",
+  LOGIN_FAILED: "Failed login",
+  LOGIN_BLOCKED: "Blocked login",
+  LOGOUT: "Logged out",
+  LOGOUT_ALL: "Logged out everywhere",
+  TOKEN_REUSE: "Security alarm",
 };
 
 export const END_LABEL = { logout: "Logged out", logout_all: "Logged out everywhere", revoked: "Cut off for security" };

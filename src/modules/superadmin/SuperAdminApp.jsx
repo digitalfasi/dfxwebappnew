@@ -11,8 +11,8 @@ export const MON_PAGES = [
   { key: "live", label: "Live now", icon: "pulse", title: "Live now", sub: "What is happening on DFX this minute" },
   { key: "people", label: "People", icon: "users", title: "People", sub: "Every admin, staff member and customer, and when they were last seen" },
   { key: "sessions", label: "Sessions", icon: "clock", title: "Sessions", sub: "Every login, from the moment someone logs in until they log out" },
-  { key: "signins", label: "Sign-ins & security", icon: "shield", title: "Sign-ins & security", sub: "Successful, failed and blocked sign-ins" },
-  { key: "activity", label: "Activity log", icon: "list", title: "Activity log", sub: "What people changed, in every shop" },
+  { key: "signins", label: "Sign-ins & security", icon: "shield", title: "Sign-ins & security", sub: "Every login attempt - successful, failed and blocked - and security alarms" },
+  { key: "activity", label: "Activity log", icon: "list", title: "Activity log", sub: "Who changed what, in every shop" },
   { key: "system", label: "Server & database", icon: "server", title: "Server & database", sub: "The machine, containers, backups, traffic and logs" },
 ];
 
