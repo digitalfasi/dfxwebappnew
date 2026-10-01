@@ -149,33 +149,16 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
         <Kpi go={"#/control/monitor/people?role=Customer"} icon="plus" hue="warn" label="New customers today" value={d.today.new_customers} sub="joined any shop" />
       </div>
 
-      <div className="sa-two">
-        <Card title="Sign-ins through the day" icon="activity" hue="web" right={<small>India time · today</small>}>
-          <HourChart a={d.today.hourly_logins} b={d.today.hourly_failed} aLabel="Sign-ins" bLabel="Failed" height={250} />
-        </Card>
-        <Card title="Who is online" icon="users" hue="app">
-          <div style={{ display: "grid", gap: 16 }}>
-            <Donut label="people" size={128} parts={[
-              { label: "Shop admins", value: r.Admin || 0, color: "#0FA3B1" },
-              { label: "Staff", value: r.Staff || 0, color: "#6E52C9" },
-              { label: "Customers", value: r.Customer || 0, color: "#10A36A" },
-              { label: "Super admin", value: r.SuperAdmin || 0, color: "#2F5BD3" },
-            ]} />
-            <Donut label="devices" size={128} parts={[
-              { label: "Website", value: c.web || 0, color: "#2F5BD3" },
-              { label: "Mobile app", value: c.app || 0, color: "#6E52C9" },
-              ...(c.other ? [{ label: "Other", value: c.other, color: "#B7C0D6" }] : []),
-            ]} />
-          </div>
-        </Card>
-      </div>
+      <Card title="Who is using DFX right now" icon="pulse" hue="live" pad={false} right={<small>{byPerson.length} people · click a row for their history</small>}>
+        <SessionTable rows={byPerson} loading={online.loading && !online.data} onPerson={onPerson} compact now={now}
+          empty="Nobody has used DFX in the last few minutes." />
+      </Card>
 
       <div className="sa-two">
-        <Card title="Live right now" icon="pulse" hue="live" pad={false} right={<small>{byPerson.length} people · click a row for their history</small>}>
-          <SessionTable rows={byPerson} loading={online.loading && !online.data} onPerson={onPerson} compact now={now}
-            empty="Nobody has used DFX in the last few minutes." />
+        <Card title="Logins through the day" icon="activity" hue="web" right={<small>India time · today</small>}>
+          <HourChart a={d.today.hourly_logins} b={d.today.hourly_failed} aLabel="Logins" bLabel="Failed" height={250} />
         </Card>
-        <Card title="Latest sign-ins" icon="shield" hue="teal" fill>
+        <Card title="Latest logins and logouts" icon="shield" hue="teal" fill>
           <EventFeed items={d.recent_events} now={now} onPerson={onPerson} />
         </Card>
       </div>
@@ -211,7 +194,7 @@ function EventFeed({ items, now, onPerson }) {
               {e.user_name || e.identifier || "Unknown account"}
             </b>{" "}
             <span style={{ display: "inline", color: "var(--muted)" }}>{(EVENT_LABEL[e.event] || e.event).toLowerCase()}</span>
-            <span>{[e.tenant_name || (e.role === "SuperAdmin" ? "Platform" : null), e.role, e.client === "app" ? "Mobile app" : e.client === "web" ? "Website" : null].filter(Boolean).join(" · ")}{e.reason ? ` · ${e.reason}` : ""}</span>
+            <span>{[e.tenant_name || (e.role === "SuperAdmin" ? "DFX platform" : null), ROLE_WORD[e.role] || e.role, e.client === "app" ? "Mobile app" : e.client === "web" ? "Website" : null].filter(Boolean).join(" · ")}{e.reason ? ` · ${e.reason}` : ""}</span>
           </div>
           <time title={fmtDateTime(e.at)}>{seenAt(e.at)}</time>
         </div>
@@ -304,7 +287,7 @@ function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
         {res.loading && !d ? <div className="sa-card-b"><Skel h={160} /></div> : !d?.items?.length ? <Empty title="Nobody here">Try another group, status, shop or search.</Empty> : (
           <div className="sa-tbl">
             <table>
-              <thead><tr><th>Person</th><th>Shop</th><th>Role</th><th>Status</th><th>Last used DFX</th><th className="r">Today</th></tr></thead>
+              <thead><tr><th>Person</th><th>Shop</th><th>Role</th><th>Status</th><th>Last used DFX</th><th className="r">Time on DFX today</th></tr></thead>
               <tbody>
                 {d.items.map((u) => (
                   <tr key={u.id} className="click" onClick={() => onPerson(u.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onPerson(u.id)}>
@@ -314,7 +297,7 @@ function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
                     <td><Pill tone={ROLE_TONE[u.role]}>{u.role === "Admin" ? "Owner" : u.role === "SuperAdmin" ? "Super admin" : u.role}</Pill></td>
                     <td><Pill dot tone={STATUS_TONE[u.presence]}>{STATUS_LABEL[u.presence]}</Pill></td>
                     <td>{u.last_seen_at
-                      ? <><span title={fmtDateTime(u.last_seen_at)}>{u.presence === "online" ? <b style={{ color: "var(--live, #0B7A4F)" }}>Using now</b> : seenAt(u.last_seen_at)}</span><div className="sa-dim" style={{ fontSize: 12 }}>last login {fmtDateTime(u.last_login_at)}</div></>
+                      ? <><span title={fmtDateTime(u.last_seen_at)}>{u.presence === "online" ? "Right now" : seenAt(u.last_seen_at)}</span><div className="sa-dim" style={{ fontSize: 12 }}>last login {fmtDateTime(u.last_login_at)}</div></>
                       : <span className="sa-dim">—</span>}</td>
                     <td className="r">{u.today_seconds || u.sessions_today
                       ? <><b>{dur(u.today_seconds)}</b><div className="sa-dim" style={{ fontSize: 12, fontFamily: "inherit" }}>{u.sessions_today} login{u.sessions_today === 1 ? "" : "s"}</div></>
