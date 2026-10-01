@@ -287,7 +287,7 @@ function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
         {res.loading && !d ? <div className="sa-card-b"><Skel h={160} /></div> : !d?.items?.length ? <Empty title="Nobody here">Try another group, status, shop or search.</Empty> : (
           <div className="sa-tbl">
             <table>
-              <thead><tr><th>Person</th><th>Shop</th><th>Role</th><th>Status</th><th>Last used DFX</th><th className="r">Time on DFX today</th></tr></thead>
+              <thead><tr><th>Person</th><th>Shop</th><th>Role</th><th>Status</th><th>Last used DFX</th><th className="r" title="How long DFX was open on their screen today - a window left open counts too">DFX open today</th></tr></thead>
               <tbody>
                 {d.items.map((u) => (
                   <tr key={u.id} className="click" onClick={() => onPerson(u.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onPerson(u.id)}>
