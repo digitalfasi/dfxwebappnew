@@ -52,6 +52,8 @@ background:var(--page)}
 .sa-grid{display:grid;gap:16px}
 /* KPI tiles */
 .sa-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0;background:var(--paper);border:1px solid var(--rule);border-radius:var(--r);overflow:hidden}
+.sa-kpis:not(.six){display:flex;flex-wrap:wrap}
+.sa-kpis:not(.six)>.sa-kpi{flex:1 1 190px}
 .sa-kpis>.sa-kpi{border:0;border-radius:0;box-shadow:1px 0 0 var(--rule),0 1px 0 var(--rule);padding:16px 18px 18px}
 .sa-kpis>.sa-kpi.go:hover{transform:none;box-shadow:1px 0 0 var(--rule),0 1px 0 var(--rule);background:var(--tint)}
 .sa-kpi.go{cursor:pointer;transition:border-color .2s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease)}
@@ -281,6 +283,7 @@ background:var(--page)}
   .sa-updbar{justify-content:flex-start;margin:0 0 12px;row-gap:4px}
   .sa-kpis,.sa-kpis.six{grid-template-columns:repeat(2,minmax(0,1fr));gap:0}
   .sa-kpi{padding:12px;grid-template-columns:1fr;gap:2px}
+  .sa-kpis:not(.six)>.sa-kpi{flex-basis:40%}
   .sa-kpi .chip{display:none}
   .sa-kpi .lbl{white-space:normal;font-size:12px;line-height:1.3}
   .sa-kpi .val{font-size:20px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}
