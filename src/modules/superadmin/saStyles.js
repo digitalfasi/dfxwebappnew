@@ -63,7 +63,7 @@ background:var(--page)}
 @media (max-width:760px){.sa-kpis.six{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sa-kpi{position:relative;overflow:hidden;background:var(--paper);border:1px solid var(--rule);border-radius:12px;box-shadow:0 1px 2px rgba(14,22,48,.04);padding:14px 16px;display:grid;grid-template-columns:1fr;gap:4px;align-content:start}
 
-.sa-kpi .chip{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--cb,var(--acc-soft));color:var(--c,var(--acc));position:relative;z-index:1}
+.sa-kpi .chip{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--cb,var(--acc-soft));color:var(--c,var(--acc));z-index:1}
 .sa-kpi .lbl{font-size:13px;color:var(--muted);font-weight:500;padding-right:36px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .sa-kpi .val{font-family:"Fira Code",monospace;font-size:28px;font-weight:600;letter-spacing:-.04em;line-height:1.15;color:var(--ink);position:relative;z-index:1;white-space:nowrap}
 .sa-kpi .sub{grid-column:1/-1;font-size:12.5px;color:var(--faint);position:relative;z-index:1;margin-top:2px}
@@ -103,7 +103,7 @@ background:var(--page)}
 .sa-ini{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:11.5px;font-weight:700;flex:none;background:var(--cb,var(--acc-soft));color:var(--c,var(--acc))}
 .sa-tbl .r{text-align:right}
 .sa-tbl td.r{font-size:13px}
-.sa-tbl td.r .sa-dim{font-family:"Instrument Sans","Segoe UI",system-ui,sans-serif;letter-spacing:0}
+.sa-tbl td.r .sa-dim{font-family:"Instrument Sans","Segoe UI",system-ui,sans-serif!important;letter-spacing:0}
 .sa-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 14px;border-bottom:1px solid var(--rule)}
 .sa-in,.sa-sel{height:38px;border:1px solid var(--rule);border-radius:10px;background:var(--paper);padding:0 12px;font:inherit;font-size:13.5px;color:var(--ink);min-width:0}
 .sa-in{min-width:220px;flex:1 1 220px;max-width:340px}
