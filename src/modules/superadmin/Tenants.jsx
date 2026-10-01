@@ -400,8 +400,8 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
     ? Math.ceil((new Date(tenant.subscription.trial_ends_at).getTime() - Date.now()) / 86400000) : null;
 
   return (
-    <Drawer title={tenant?.name || "Loading…"} sub={tenant ? `${tenant.slug} · created ${fmtDate(tenant.created_at)}` : ""} onClose={onClose}
-      actions={tenant && <button className="sa-btn ghost sm" onClick={() => { onWatch(id); onClose(); }}><Icon name="pulse" size={14} />Watch activity</button>}>
+    <Drawer title={tenant?.name || "Loading…"} sub={tenant ? `Joined DFX on ${fmtDate(tenant.created_at)}` : ""} onClose={onClose}
+      actions={tenant && <button className="sa-btn ghost sm" onClick={() => { onWatch(id); onClose(); }}><Icon name="pulse" size={14} />See what this shop did</button>}>
       {!tenant ? <Skel h={220} /> : (
         <>
           {msg && <div className={`sa-alert ${msg.tone}`} role="status"><Icon name={msg.tone === "ok" ? "check" : "alert"} />{msg.text}</div>}
@@ -411,30 +411,30 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
               sub={tenant.status !== "Active" ? "nobody can log in" : trialLeft != null && trialLeft < 0 ? "trial ended - locked at the next login" : "people can log in"} />
             <Kpi go={() => scrollToId("td-plan-card")} icon="clock" hue={trialLeft != null && trialLeft < 7 ? "warn" : "web"} label="Access" value={trialLeft == null ? "Paid · no end date" : trialLeft >= 0 ? `${trialLeft} days left` : "Trial ended"}
               sub={tenant.subscription ? `${tenant.subscription.plan} · ${tenant.subscription.status}` : "no subscription"} />
-            <Kpi go={() => { onWatch(id); onClose(); }} icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st ? `${st.active_enrollments} active enrolments` : ""} />
+            <Kpi go={() => { onWatch(id); onClose(); }} icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st ? `${st.active_enrollments} paying into a scheme` : ""} />
           </div>
 
-          <Card title="Shop and admin" icon="shop">
+          <Card title="Shop and owner" icon="shop">
             <dl className="sa-kv">
-              <dt>Admin</dt><dd>{tenant.admin_name || "—"}</dd>
-              <dt>Admin email</dt><dd>{tenant.admin_email || "—"}</dd>
-              <dt>Admin mobile</dt><dd className="mono">{tenant.admin_phone || "—"}</dd>
-              <dt>Last login</dt><dd>{tenant.admin_last_login_at ? fmtDateTime(tenant.admin_last_login_at) : "Never"}</dd>
-              <dt>Last logout</dt><dd>{loggedOut(tenant) ? fmtDateTime(tenant.admin_last_logout_at)
+              <dt>Owner</dt><dd>{tenant.admin_name || "—"}</dd>
+              <dt>Owner's email (login)</dt><dd>{tenant.admin_email || "—"}</dd>
+              <dt>Owner's mobile</dt><dd className="mono">{tenant.admin_phone || "—"}</dd>
+              <dt>Owner last logged in</dt><dd>{tenant.admin_last_login_at ? fmtDateTime(tenant.admin_last_login_at) : "Never"}</dd>
+              <dt>Owner last logged out</dt><dd>{loggedOut(tenant) ? fmtDateTime(tenant.admin_last_logout_at)
                 : tenant.admin_last_login_at ? <span className="sa-dim">No logout · last seen {fmtDateTime(tenant.admin_last_seen_at)}</span> : "—"}</dd>
-              <dt>Admin account</dt><dd>{tenant.admin_is_active == null ? "No admin" : <Pill tone={tenant.admin_is_active ? "live" : "bad"}>{tenant.admin_is_active ? "Enabled" : "Disabled"}</Pill>}</dd>
-              <dt>Last updated</dt><dd>{fmtDateTime(tenant.updated_at)}</dd>
+              <dt>Owner can log in?</dt><dd>{tenant.admin_is_active == null ? "No owner account" : <Pill tone={tenant.admin_is_active ? "live" : "bad"}>{tenant.admin_is_active ? "Yes" : "No - blocked"}</Pill>}</dd>
+              <dt>Shop details last changed</dt><dd>{fmtDateTime(tenant.updated_at)}</dd>
             </dl>
           </Card>
 
           {st && (
             <Card title="Business so far" icon="activity">
               <dl className="sa-kv">
-                <dt>Scheme revenue</dt><dd>{inr(st.total_revenue)}</dd>
-                <dt>Outstanding dues</dt><dd>{inr(st.outstanding_dues)}</dd>
-                <dt>Gold collected</dt><dd>{Number(st.total_gold_accumulated_grams || 0).toFixed(3)} g</dd>
-                <dt>Active schemes</dt><dd>{st.active_schemes}</dd>
-                <dt>Enrolments</dt><dd>{st.active_enrollments} active · {st.completed_enrollments} completed · {st.cancelled_enrollments} cancelled</dd>
+                <dt>Money collected in schemes</dt><dd>{inr(st.total_revenue)}</dd>
+                <dt>Still to be paid by customers</dt><dd>{inr(st.outstanding_dues)}</dd>
+                <dt>Gold saved by customers</dt><dd>{Number(st.total_gold_accumulated_grams || 0).toFixed(3)} g</dd>
+                <dt>Schemes the shop runs</dt><dd>{st.active_schemes}</dd>
+                <dt>Customers in schemes</dt><dd>{st.active_enrollments} paying · {st.completed_enrollments} finished · {st.cancelled_enrollments} stopped</dd>
               </dl>
             </Card>
           )}
@@ -444,7 +444,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
               <div className="sa-row" style={{ justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
                 <div style={{ flex: "1 1 260px" }}>
                   <b style={{ display: "block" }}>{tenant.subscription?.trial_ends_at ? `Trial - ends ${fmtDate(tenant.subscription.trial_ends_at)}` : "Paid - no end date"}</b>
-                  <span className="sa-muted" style={{ fontSize: 13 }}>{tenant.subscription?.plan} plan. Quick actions, or set it exactly below.</span>
+                  <span className="sa-muted" style={{ fontSize: 13 }}>{tenant.subscription?.plan} plan. Use a quick button, or choose the exact plan and days below.</span>
                 </div>
                 <div className="sa-row" style={{ gap: 8 }}>
                   {tenant.subscription?.trial_ends_at && (
@@ -493,7 +493,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
             </Card>
           )}
 
-          <Card id="td-controls" title="Controls" icon="shield">
+          <Card id="td-controls" title="Switch off or block" icon="shield">
             <div style={{ display: "grid", gap: 12 }}>
               <Control title={tenant.status === "Active" ? "Suspend this shop" : "Re-activate this shop"}
                 text={tenant.status === "Active" ? "Everyone at this shop is blocked at their next sign-in or refresh (within 30 minutes)." : "People at this shop can sign in again."}
@@ -505,20 +505,20 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
                     tenant.status === "Active" ? "Shop suspended." : "Shop re-activated."),
                 })} />
               {tenant.admin_is_active != null && (
-                <Control title={tenant.admin_is_active ? "Disable the admin account" : "Enable the admin account"}
-                  text={tenant.admin_is_active ? "Blocks this admin at once, including sessions already open." : "The admin can sign in again."}
-                  btn={tenant.admin_is_active ? "Disable admin" : "Enable admin"} danger={tenant.admin_is_active} disabled={busy}
+                <Control title={tenant.admin_is_active ? "Block the owner's login" : "Allow the owner to log in again"}
+                  text={tenant.admin_is_active ? "The owner is logged out at once on every device and cannot log in. The shop's staff are not affected." : "The owner can log in again with their password."}
+                  btn={tenant.admin_is_active ? "Block owner" : "Allow owner"} danger={tenant.admin_is_active} disabled={busy}
                   onClick={() => setConfirm({
-                    text: tenant.admin_is_active ? `Disable ${tenant.admin_name}'s account?` : `Enable ${tenant.admin_name}'s account?`,
+                    text: tenant.admin_is_active ? `Block ${tenant.admin_name} from logging in?` : `Let ${tenant.admin_name} log in again?`,
                     danger: tenant.admin_is_active,
                     run: () => act(() => saService.setAdminStatus(id, !tenant.admin_is_active),
-                      tenant.admin_is_active ? "Admin account disabled." : "Admin account enabled."),
+                      tenant.admin_is_active ? "Owner blocked - they can no longer log in." : "Owner can log in again."),
                   })} />
               )}
               {tenant.admin_is_active != null && (
                 <div style={{ border: "1px solid var(--rule2)", borderRadius: 12, padding: "12px 14px", display: "grid", gap: 12 }}>
                   <div className="sa-row" style={{ justifyContent: "space-between" }}>
-                    <div style={{ flex: "1 1 240px" }}><b style={{ display: "block" }}>Admin password</b>
+                    <div style={{ flex: "1 1 240px" }}><b style={{ display: "block" }}>Owner's password</b>
                       <span className="sa-muted" style={{ fontSize: 13 }}>Set it yourself and tell {tenant.admin_name}, or email them a link{tenant.admin_email ? ` (${tenant.admin_email})` : ""} to choose their own.</span></div>
                     {!pwOpen && (
                       <div className="sa-row" style={{ gap: 8 }}>

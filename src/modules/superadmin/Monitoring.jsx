@@ -646,19 +646,19 @@ function PersonDrawer({ id, onClose }) {
 
   return (
     <Drawer title={u?.name || "Loading…"} onClose={onClose}
-      sub={u ? [u.role, u.tenant_name || "Platform", u.email || u.phone].filter(Boolean).join(" · ") : ""}
+      sub={u ? [ROLE_WORD[u.role] || u.role, u.tenant_name || "DFX platform", u.email || u.phone].filter(Boolean).join(" · ") : ""}
       actions={<select className="sa-sel" value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Period">
         <option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option></select>}>
       {!d ? <Skel h={200} /> : (
         <>
           <div className="sa-kpis">
             <Kpi go={() => scrollToId("person-sessions")} hue={current ? "live" : "ink"} live={current?.status === "active"} icon={current ? undefined : "clock"} label="Right now"
-              value={current ? STATUS_LABEL[current.status] : "Signed out"}
-              sub={current ? `${current.client === "app" ? "App" : "Web"} · since ${fmtTime(current.started_at)}` : `last seen ${seenAt(d.sessions[0]?.last_seen_at)}`} />
-            <Kpi go={() => scrollToId("person-sessions")} icon="clock" hue="web" label="Time on platform · 14 days" value={dur(total14)} sub={`${d.sessions.length} sessions in ${days} days`} />
-            <Kpi go={() => scrollToId("person-sessions")} icon="users" hue={u.is_active ? "teal" : "bad"} label="Account" value={u.is_active ? "Active" : "Disabled"} sub={`created ${fmtDate(u.created_at)}`} />
+              value={current ? STATUS_LABEL[current.status] : "Logged out"}
+              sub={current ? `${current.client === "app" ? "Mobile app" : "Website"} · logged in at ${fmtTime(current.started_at)}` : `last used DFX ${seenAt(d.sessions[0]?.last_seen_at)}`} />
+            <Kpi go={() => scrollToId("person-sessions")} icon="clock" hue="web" label="DFX open · last 14 days" value={dur(total14)} sub={`${d.sessions.length} logins in ${days} days`} />
+            <Kpi go={() => scrollToId("person-sessions")} icon="users" hue={u.is_active ? "teal" : "bad"} label="Can log in?" value={u.is_active ? "Yes" : "No - blocked"} sub={`account made ${fmtDate(u.created_at)}`} />
           </div>
-          <Card title="Daily time (IST)" icon="activity">
+          <Card title="DFX open per day (India time)" icon="activity">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(14,1fr)", gap: 6, alignItems: "end", height: 120 }}>
               {d.daily.map((x) => (
                 <div key={x.date} title={`${fmtDate(x.date)} — ${dur(x.seconds)}, ${x.sessions} sign-ins`} style={{ display: "grid", gap: 4, justifyItems: "center", height: "100%", alignContent: "end" }}>
@@ -670,12 +670,12 @@ function PersonDrawer({ id, onClose }) {
             </div>
           </Card>
           <div id="person-sessions" className="sa-tabs" role="tablist" style={{ marginBottom: 0, scrollMarginTop: 20 }}>
-            {[["sessions", `Sessions (${d.sessions.length})`], ["events", `Sign-in log (${d.events.length})`], ["activity", `Actions (${d.activity.length})`]].map(([k, l]) => (
+            {[["sessions", `Logins (${d.sessions.length})`], ["events", `Login attempts (${d.events.length})`], ["activity", `Changes made (${d.activity.length})`]].map(([k, l]) => (
               <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
             ))}
           </div>
           <Card pad={false}>
-            {tab === "sessions" && <SessionTable rows={d.sessions} hidePerson now={now} empty="No sessions in this period." />}
+            {tab === "sessions" && <SessionTable rows={d.sessions} hidePerson now={now} empty="No logins in this period." />}
             {tab === "events" && <EventTable rows={d.events} hidePerson />}
             {tab === "activity" && <ActivityTable rows={d.activity} open={open} setOpen={setOpen} hideActor />}
           </Card>
