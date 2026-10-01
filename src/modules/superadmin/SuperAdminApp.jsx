@@ -62,8 +62,7 @@ export default function SuperAdminApp() {
         {navOpen && <div className="sa-scrim" onClick={() => setNavOpen(false)} />}
         <aside className={`sa-side${navOpen ? " open" : ""}`} aria-label="Navigation">
           <div className="sa-side-brand">
-            <img className="sa-brand-logo" src="/dfx-gold-logo.png" alt="DFX GOLD" width={73} height={34} />
-            <div><b>Control</b><span>Super admin</span></div>
+            <img className="sa-brand-logo" src="/dfx-gold-logo.png" alt="DFX GOLD - Super admin" width={110} height={51} />
           </div>
           <nav className="sa-side-nav">
             <div className="grp">Platform</div>

@@ -238,7 +238,8 @@ background:var(--page)}
 /* app shell: navy sidebar (as in the original DFX super admin), light work area */
 .sa-app{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100dvh}
 .sa-side{background:#0A1D3A;color:#CBD5E1;display:flex;flex-direction:column;position:sticky;top:0;height:100dvh;z-index:40}
-.sa-side-brand{display:flex;align-items:center;gap:12px;padding:20px 20px 18px;border-bottom:1px solid rgba(255,255,255,.07)}
+.sa-side-brand{display:flex;align-items:center;justify-content:center;padding:22px 20px;border-bottom:1px solid rgba(201,162,39,.18);background:radial-gradient(120px 60px at 50% 50%,rgba(201,162,39,.16),transparent 70%),#071530}
+.sa-side-brand .sa-brand-logo{height:51px;filter:drop-shadow(0 2px 10px rgba(201,162,39,.25))}
 .sa-side-brand .mark{width:36px;height:36px;border-radius:10px;background:rgba(201,162,39,.14);border:1px solid rgba(201,162,39,.35);display:grid;place-items:center;color:var(--gold)}
 .sa-side-brand b{display:block;color:#fff;font-size:15px;letter-spacing:-.01em}
 .sa-side-brand span{display:block;font-size:12px;color:#8193AD;font-weight:500;margin-top:1px}
