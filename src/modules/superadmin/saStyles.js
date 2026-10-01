@@ -108,7 +108,8 @@ background:var(--page)}
 .sa-tbl td.r .sa-dim{font-family:"Instrument Sans","Segoe UI",system-ui,sans-serif!important;letter-spacing:0}
 .sa-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 14px;border-bottom:1px solid var(--rule)}
 .sa-in,.sa-sel{height:38px;border:1px solid var(--rule);border-radius:10px;background:var(--paper);padding:0 12px;font:inherit;font-size:13.5px;color:var(--ink);min-width:0}
-.sa-in{min-width:220px;flex:1 1 220px;max-width:340px}
+.sa-in{min-width:180px;flex:1 1 200px;max-width:340px}
+.sa-filters .sa-sel[type="date"]{flex:0 0 148px;width:148px}
 .sa-in:hover,.sa-sel:hover{border-color:#CDD5E6}
 .sa-in:focus,.sa-sel:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px var(--acc-soft)}
 .sa-btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:38px;padding:0 16px;border-radius:9px;font-weight:600;font-size:13.5px;background:var(--acc);color:#fff;box-shadow:0 1px 2px rgba(14,22,48,.12);transition:background .2s var(--ease),transform .1s}
@@ -298,6 +299,8 @@ background:var(--page)}
   .sa-tbl td:empty{display:none}
   .sa-tbl td.r{font-size:13px}
   .sa-tbl td[colspan]{flex:1 1 100%}
+  .sa-filters>*{flex:1 1 calc(50% - 4px)!important;min-width:0!important;max-width:none!important;width:auto!important}
+  .sa-filters>.sa-in{flex-basis:100%!important}
   .sa-swipe{display:block;font-size:11.5px;color:var(--faint);text-align:center;margin-top:6px}
   .sa-drawer-h{flex-wrap:wrap;padding:14px 16px}
   .sa-drawer-h>div:first-child{flex:1 1 200px;min-width:0}
