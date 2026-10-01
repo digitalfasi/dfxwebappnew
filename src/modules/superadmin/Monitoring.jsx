@@ -289,7 +289,7 @@ function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
           <div className="sa-seg" role="tablist" aria-label="Status">
             {PRESENCE.map((p) => (
               <button key={p.k || "all"} role="tab" aria-selected={presence === p.k} onClick={() => setPresence(p.k)}>
-                {p.label}<span className="cnt">{n[p.n] ?? "–"}</span>
+                {p.label}<span className={`cnt${!n[p.n] ? " zero" : ""}`}>{n[p.n] ?? "–"}</span>
               </button>
             ))}
           </div>
@@ -366,7 +366,7 @@ function SessionsTab({ tenants, live, onPerson }) {
         <div className="sa-seg" role="tablist" aria-label="Status">
           {SESSION_STATUS.map((o) => (
             <button key={o.k} role="tab" aria-selected={f.status === o.k} onClick={() => setF((s) => ({ ...s, status: o.k }))}>
-              {o.label}<span className="cnt">{n[o.k] ?? "–"}</span>
+              {o.label}<span className={`cnt${!n[o.k] ? " zero" : ""}`}>{n[o.k] ?? "–"}</span>
             </button>
           ))}
         </div>

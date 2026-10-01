@@ -82,7 +82,7 @@ function PlanCell({ t }) {
   return (
     <div style={{ display: "grid", gap: 4, justifyItems: "start" }}>
       <Pill dot tone={soon ? "warn" : a.tone}>{a.label}</Pill>
-      <span style={{ fontSize: 12.5, color: soon || t.access === "EXPIRED" ? "var(--bad)" : "var(--muted)", fontWeight: soon ? 700 : 500 }}>
+      <span style={{ fontSize: 12.5, color: t.access === "EXPIRED" || (soon && t.days_left <= 2) ? "var(--bad)" : soon ? "#9A5A04" : "var(--muted)", fontWeight: soon ? 600 : 500 }}>
         {t.access === "PAID" ? `${t.plan || "—"} · no end date`
           : t.access === "TRIAL" ? `${t.days_left === 1 ? "1 day" : `${t.days_left} days`} left · ends ${fmtDate(t.trial_ends_at)}`
           : t.access === "EXPIRED" ? `Ended ${fmtDate(t.trial_ends_at)} · locked at next login`
@@ -153,7 +153,7 @@ export default function Tenants({ onWatch }) {
       {(soon.length > 0 || expired.length > 0) && (
         <div className="sa-alert warn" role="status"><Icon name="alert" />
           <div>
-            {soon.length > 0 && <div><b>{soon.length} shop{soon.length > 1 ? "s" : ""} will be locked out soon</b> - they can't log in after their trial ends: {soon.map((t) => `${t.name} (${fmtDate(t.trial_ends_at)})`).join(", ")}.</div>}
+            {soon.length > 0 && <div><b>{soon.length} shop{soon.length > 1 ? "s" : ""} will be locked out soon</b> - nobody there can log in after the trial ends.<div className="sa-chips">{soon.map((t) => <span key={t.id}>{t.name}<em>{fmtDate(t.trial_ends_at)}</em></span>)}</div></div>}
             {expired.length > 0 && <div><b>Expired:</b> {expired.map((t) => t.name).join(", ")}.</div>}
             <div className="sa-muted" style={{ fontSize: 12.5, marginTop: 4 }}>Open a shop and press <b>Make permanent</b> for a paying shop, or <b>Extend 30 days</b>.</div>
           </div>
@@ -165,7 +165,7 @@ export default function Tenants({ onWatch }) {
           <div className="sa-seg" role="tablist" aria-label="Filter shops">
             {FILTERS.map((f) => (
               <button key={f.k || "all"} role="tab" aria-selected={filter === f.k} onClick={() => setFilter(f.k)}>
-                {f.label}<span className={`cnt${(f.k === "SOON" || f.k === "EXPIRED") && count(f.k) ? " bad" : ""}`}>{count(f.k)}</span>
+                {f.label}<span className={`cnt${!count(f.k) ? " zero" : (f.k === "SOON" || f.k === "EXPIRED") ? " bad" : ""}`}>{count(f.k)}</span>
               </button>
             ))}
           </div>

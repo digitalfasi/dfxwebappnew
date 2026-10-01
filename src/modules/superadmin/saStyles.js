@@ -45,12 +45,15 @@ background:var(--page)}
 .sa-tabs button:hover{color:var(--ink);border-color:#CDD5E6}
 .sa-tabs button[aria-selected="true"]{background:#0A1D3A;color:#fff;border-color:#0A1D3A}
 .sa-tabs .cnt{font-family:"Fira Code",monospace;font-size:11.5px;background:var(--live-bg);color:#0B7A4F;border-radius:999px;padding:0 7px;font-weight:600}
+.sa-tabs .cnt.zero,.sa-seg .cnt.zero{background:var(--rule2);color:var(--faint)}
 .sa-tabs button[aria-selected="true"] .cnt{background:rgba(255,255,255,.25);color:#fff}
 .sa-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px;font-size:12.5px;color:var(--faint)}
 .sa button:focus-visible,.sa input:focus-visible,.sa select:focus-visible,.sa [tabindex]:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .sa-grid{display:grid;gap:16px}
 /* KPI tiles */
-.sa-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.sa-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0;background:var(--paper);border:1px solid var(--rule);border-radius:var(--r);overflow:hidden}
+.sa-kpis>.sa-kpi{border:0;border-radius:0;box-shadow:1px 0 0 var(--rule),0 1px 0 var(--rule);padding:16px 18px 18px}
+.sa-kpis>.sa-kpi.go:hover{transform:none;box-shadow:1px 0 0 var(--rule),0 1px 0 var(--rule);background:var(--tint)}
 .sa-kpi.go{cursor:pointer;transition:border-color .2s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease)}
 .sa-kpi.go:hover{border-color:#C3CEE6;box-shadow:var(--sh);transform:translateY(-2px)}
 .sa-kpi.go:active{transform:translateY(0)}
@@ -58,12 +61,12 @@ background:var(--page)}
 /* Six cards read as two even rows of three, never 5 + 1. */
 .sa-kpis.six{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:760px){.sa-kpis.six{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.sa-kpi{position:relative;overflow:hidden;background:var(--paper);border:1px solid var(--rule);border-radius:12px;box-shadow:0 1px 2px rgba(16,24,64,.04);padding:14px 16px;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;align-items:center}
+.sa-kpi{position:relative;overflow:hidden;background:var(--paper);border:1px solid var(--rule);border-radius:12px;box-shadow:0 1px 2px rgba(14,22,48,.04);padding:14px 16px;display:grid;grid-template-columns:1fr;gap:4px;align-content:start}
 
-.sa-kpi .chip{grid-row:1/3;width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:var(--cb,var(--acc-soft));color:var(--c,var(--acc));position:relative;z-index:1}
-.sa-kpi .lbl{font-size:12.5px;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.sa-kpi .val{font-family:"Fira Code",monospace;font-size:25px;font-weight:600;letter-spacing:-.04em;line-height:1.15;color:var(--ink);position:relative;z-index:1;white-space:nowrap}
-.sa-kpi .sub{grid-column:1/-1;font-size:12px;color:var(--faint);position:relative;z-index:1;margin-top:6px}
+.sa-kpi .chip{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--cb,var(--acc-soft));color:var(--c,var(--acc));position:relative;z-index:1}
+.sa-kpi .lbl{font-size:13px;color:var(--muted);font-weight:500;padding-right:36px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sa-kpi .val{font-family:"Fira Code",monospace;font-size:28px;font-weight:600;letter-spacing:-.04em;line-height:1.15;color:var(--ink);position:relative;z-index:1;white-space:nowrap}
+.sa-kpi .sub{grid-column:1/-1;font-size:12.5px;color:var(--faint);position:relative;z-index:1;margin-top:2px}
 .sa-kpi.h-bad .val{color:var(--bad)}
 .sa-pulse{width:8px;height:8px;border-radius:50%;background:var(--live);flex:none;animation:saPulse 2s infinite}
 @keyframes saPulse{0%{box-shadow:0 0 0 0 rgba(16,163,106,.5)}70%{box-shadow:0 0 0 8px rgba(16,163,106,0)}100%{box-shadow:0 0 0 0 rgba(16,163,106,0)}}
@@ -88,7 +91,7 @@ background:var(--page)}
 .sa-tbl{overflow-x:auto}
 .sa-tbl table{width:100%;border-collapse:collapse;font-size:13.5px}
 .sa-tbl th{text-align:left;font-size:12.5px;letter-spacing:0;color:var(--muted);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--rule);white-space:nowrap;background:rgba(247,249,253,.7)}
-.sa-tbl td{padding:10px 14px;border-bottom:1px solid var(--rule2);vertical-align:middle;white-space:nowrap}
+.sa-tbl td{padding:12px 14px;border-bottom:1px solid var(--rule2);vertical-align:middle;white-space:nowrap}
 .sa-tbl td.wrap{white-space:normal}
 .sa-tbl tr:last-child td{border-bottom:0}
 .sa-tbl tbody tr.click{cursor:pointer;transition:background .2s var(--ease)}
@@ -100,6 +103,7 @@ background:var(--page)}
 .sa-ini{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:11.5px;font-weight:700;flex:none;background:var(--cb,var(--acc-soft));color:var(--c,var(--acc))}
 .sa-tbl .r{text-align:right}
 .sa-tbl td.r{font-size:13px}
+.sa-tbl td.r .sa-dim{font-family:"Instrument Sans","Segoe UI",system-ui,sans-serif;letter-spacing:0}
 .sa-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 14px;border-bottom:1px solid var(--rule)}
 .sa-in,.sa-sel{height:38px;border:1px solid var(--rule);border-radius:10px;background:var(--paper);padding:0 12px;font:inherit;font-size:13.5px;color:var(--ink);min-width:0}
 .sa-in{min-width:220px;flex:1 1 220px;max-width:340px}
@@ -180,6 +184,9 @@ background:var(--page)}
 .sa-brand-logo{height:34px;width:auto;display:block}
 .sa-alert{border-radius:12px;padding:10px 14px;font-size:13.5px;display:flex;gap:10px;align-items:flex-start;border:1px solid}
 .sa-alert svg{flex:none;margin-top:1px}
+.sa-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+.sa-chips span{background:rgba(255,255,255,.75);border:1px solid #EFD9AE;border-radius:7px;padding:2px 9px;font-size:12.5px;color:var(--ink2);font-weight:600}
+.sa-chips em{font-style:normal;font-weight:500;color:var(--muted);margin-left:5px}
 .sa-alert.bad{background:var(--bad-bg);color:#8E1F24;border-color:#F4C2C2}.sa-alert.ok{background:var(--live-bg);color:#0A5E3C;border-color:#BFE8D4}
 .sa-alert.warn{background:var(--warn-bg);color:#7A4503;border-color:#F4D9A8}.sa-alert.info{background:var(--acc-soft);color:var(--acc-ink);border-color:#CBD8FB}
 .sa-secret{font-family:"Fira Code",monospace;background:var(--tint);border:1px dashed #B9C3DA;border-radius:10px;padding:9px 12px;display:flex;justify-content:space-between;gap:10px;align-items:center;overflow-wrap:anywhere;font-size:13px}
@@ -230,9 +237,9 @@ background:var(--page)}
 .sa-side-brand{display:flex;align-items:center;gap:12px;padding:20px 20px 18px;border-bottom:1px solid rgba(255,255,255,.07)}
 .sa-side-brand .mark{width:36px;height:36px;border-radius:10px;background:rgba(201,162,39,.14);border:1px solid rgba(201,162,39,.35);display:grid;place-items:center;color:var(--gold)}
 .sa-side-brand b{display:block;color:#fff;font-size:15px;letter-spacing:-.01em}
-.sa-side-brand span{display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#64748B;font-weight:600;margin-top:1px}
+.sa-side-brand span{display:block;font-size:12px;color:#8193AD;font-weight:500;margin-top:1px}
 .sa-side-nav{flex:1;overflow-y:auto;padding:14px 12px;display:grid;align-content:start;gap:2px}
-.sa-side-nav .grp{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#64748B;font-weight:700;padding:4px 12px 8px}
+.sa-side-nav .grp{font-size:12px;color:#6B7D98;font-weight:600;padding:4px 12px 8px}
 .sa-side-nav .item,.sa-side-nav .subitem{all:unset;cursor:pointer;display:flex;align-items:center;gap:12px;border-radius:9px;color:#CBD5E1;font-weight:500;transition:background .15s,color .15s;border-left:3px solid transparent}
 .sa-side-nav .item{padding:10px 12px;font-size:13.5px}
 .sa-side-nav .item:hover,.sa-side-nav .subitem:hover{background:rgba(255,255,255,.05);color:#fff}
@@ -271,7 +278,7 @@ background:var(--page)}
 .sa-swipe{display:none}
 @media (max-width:760px){
   .sa-updbar{justify-content:flex-start;margin:0 0 12px;row-gap:4px}
-  .sa-kpis,.sa-kpis.six{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .sa-kpis,.sa-kpis.six{grid-template-columns:repeat(2,minmax(0,1fr));gap:0}
   .sa-kpi{padding:12px;grid-template-columns:1fr;gap:2px}
   .sa-kpi .chip{display:none}
   .sa-kpi .lbl{white-space:normal;font-size:12px;line-height:1.3}
