@@ -235,7 +235,7 @@ function Traffic({ t, setSec }) {
       </div>
       <Card id="trf-chart" title="Requests per minute" icon="activity" hue="web" right={<small>last 60 minutes</small>}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(60,1fr)", gap: 2, alignItems: "end", height: 110 }}>
-          {t.per_minute.map((x) => <div key={x.t} title={`${x.t} UTC · ${x.n}`} style={{ height: `${Math.max(3, (x.n / max) * 106)}px`, background: "linear-gradient(180deg,#5B7CFF,#3563F0)", borderRadius: 2, opacity: x.n ? 1 : 0.2 }} />)}
+          {t.per_minute.map((x) => <div key={x.t} title={`${x.t} UTC · ${x.n}`} style={{ height: `${Math.max(3, (x.n / max) * 106)}px`, background: "var(--acc)", borderRadius: 2, opacity: x.n ? 1 : 0.2 }} />)}
         </div>
       </Card>
       <div className="sa-split">

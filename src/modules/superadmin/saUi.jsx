@@ -182,7 +182,7 @@ export function HourChart({ a = [], b = [], aLabel, bLabel, height = 150 }) {
             return (
               <g key={h}>
                 {h === nowH && <rect x={x} y={top} width={bw} height={H - padB - top} fill="#EAF0FF" rx="6" />}
-                <rect x={x + bw * 0.16} y={y(va)} width={bw * 0.34} height={Math.max(0, H - padB - y(va))} rx="3" fill="#3563F0">
+                <rect x={x + bw * 0.16} y={y(va)} width={bw * 0.34} height={Math.max(0, H - padB - y(va))} rx="3" fill="#2F5BD3">
                   <title>{`${String(h).padStart(2, "0")}:00 — ${va} ${aLabel.toLowerCase()}`}</title>
                 </rect>
                 <rect x={x + bw * 0.52} y={y(vb)} width={bw * 0.34} height={Math.max(0, H - padB - y(vb))} rx="3" fill="#F2A93B">
@@ -269,10 +269,10 @@ export function HealthBanner({ level, title, points, side }) {
 // The live system, drawn: people -> gateway -> server -> database -> backups.
 // Moving dots mean traffic is flowing on that link right now.
 const MAP_NODES = {
-  web: { x: 10, y: 22, w: 250, h: 84, hue: "#3563F0", bg: "#EAF0FF", icon: "web" },
-  app: { x: 10, y: 150, w: 250, h: 84, hue: "#7B4DEB", bg: "#F1EBFF", icon: "phone" },
+  web: { x: 10, y: 22, w: 250, h: 84, hue: "#2F5BD3", bg: "#EAF0FF", icon: "web" },
+  app: { x: 10, y: 150, w: 250, h: 84, hue: "#6E52C9", bg: "#F1EBFF", icon: "phone" },
   gw: { x: 350, y: 86, w: 250, h: 84, hue: "#0FA3B1", bg: "#E2F6F8", icon: "shield" },
-  api: { x: 690, y: 86, w: 250, h: 84, hue: "#3563F0", bg: "#EAF0FF", icon: "server" },
+  api: { x: 690, y: 86, w: 250, h: 84, hue: "#2F5BD3", bg: "#EAF0FF", icon: "server" },
   db: { x: 1030, y: 22, w: 250, h: 84, hue: "#10A36A", bg: "#E5F7EF", icon: "db" },
   bk: { x: 1030, y: 150, w: 250, h: 84, hue: "#D9820B", bg: "#FFF4E0", icon: "archive" },
 };
@@ -354,7 +354,7 @@ export function SystemMap({ nodes, flows }) {
         </svg>
       </div>
       <div className="sa-legend" style={{ justifyContent: "center", marginTop: 6 }}>
-        <span><i style={{ background: "#3563F0", borderRadius: 99 }} />Fast blinking trains: people using DFX right now (thin ones are answers coming back)</span>
+        <span><i style={{ background: "#2F5BD3", borderRadius: 99 }} />Fast blinking trains: people using DFX right now (thin ones are answers coming back)</span>
         <span><i style={{ background: "#9FB3F5", borderRadius: 99 }} />One slow train: the server's own heartbeat</span>
         <span><i style={{ background: "#C7CEDD", borderRadius: 99 }} />Dotted: nobody on this route</span>
         <span><i style={{ background: "#E5484D", borderRadius: 99 }} />Red box: needs attention</span>

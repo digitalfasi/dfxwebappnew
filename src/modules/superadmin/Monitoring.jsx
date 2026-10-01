@@ -157,13 +157,13 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
           <div style={{ display: "grid", gap: 16 }}>
             <Donut label="people" size={128} parts={[
               { label: "Shop admins", value: r.Admin || 0, color: "#0FA3B1" },
-              { label: "Staff", value: r.Staff || 0, color: "#7B4DEB" },
+              { label: "Staff", value: r.Staff || 0, color: "#6E52C9" },
               { label: "Customers", value: r.Customer || 0, color: "#10A36A" },
-              { label: "Super admin", value: r.SuperAdmin || 0, color: "#3563F0" },
+              { label: "Super admin", value: r.SuperAdmin || 0, color: "#2F5BD3" },
             ]} />
             <Donut label="devices" size={128} parts={[
-              { label: "Website", value: c.web || 0, color: "#3563F0" },
-              { label: "Mobile app", value: c.app || 0, color: "#7B4DEB" },
+              { label: "Website", value: c.web || 0, color: "#2F5BD3" },
+              { label: "Mobile app", value: c.app || 0, color: "#6E52C9" },
               ...(c.other ? [{ label: "Other", value: c.other, color: "#B7C0D6" }] : []),
             ]} />
           </div>
@@ -677,7 +677,7 @@ function PersonDrawer({ id, onClose }) {
               {d.daily.map((x) => (
                 <div key={x.date} title={`${fmtDate(x.date)} — ${dur(x.seconds)}, ${x.sessions} sign-ins`} style={{ display: "grid", gap: 4, justifyItems: "center", height: "100%", alignContent: "end" }}>
                   <div style={{ width: "100%", height: `${Math.max(3, (x.seconds / maxDay) * 92)}px`, borderRadius: 5,
-                    background: x.seconds ? "linear-gradient(180deg,#4F6BF0,#2F4BD8)" : "var(--rule2)" }} />
+                    background: x.seconds ? "var(--acc)" : "var(--rule2)" }} />
                   <span className="sa-dim" style={{ fontSize: 10 }}>{new Date(x.date).getDate()}</span>
                 </div>
               ))}
