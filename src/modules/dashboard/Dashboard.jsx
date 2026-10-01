@@ -60,6 +60,28 @@ const QUICK_ACTIONS = [
   { title: "Generate Report", hint: "Download a summary", report: true, icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8" },
 ];
 
+// Phone-only Quick Actions: two modules, each opening its own two-column set.
+// Every leaf is an existing page (or an existing dialog, via intent) - nothing
+// here is new navigation.
+const P_BAG = "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0";
+const P_GRID = "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z";
+const P_PLUS = "M12 5v14M5 12h14";
+const MOBILE_MODULES = [
+  { id: "jewellery", title: "Jewellery Management System", icon: "M6 3h12l4 6-10 12L2 9zM2 9h20M12 21 8 9l4-6 4 6z", actions: [
+    { title: "Billing", page: "new-sale", icon: P_BAG },
+    { title: "Supplier Directory", page: "supplier-directory", icon: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" },
+    { title: "Master Inventory", page: "master-inventory", icon: P_GRID },
+    { title: "Inventory", page: "inventory", icon: "M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8" },
+    { title: "Bulk Purchase", page: "inventory", intent: "bulk-purchase", icon: P_PLUS },
+    { title: "Add Purchase", page: "inventory", intent: "add-purchase", icon: P_PLUS },
+    { title: "Catalogue Studio", page: "catalogue", icon: P_GRID, wide: true },
+  ] },
+  { id: "scheme", title: "Scheme", icon: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z", actions: [
+    { title: "New Enrollment", page: "customers", intent: "add-customer", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6" },
+    { title: "Scheme Plans", page: "schemes", icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
+  ] },
+];
+
 const PERIOD_TABS = [
   { value: "today", label: "Today" },
   { value: "this_week", label: "This Week" },
@@ -445,6 +467,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
 
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);    // Generate Report popup
+  const [mobileModule, setMobileModule] = useState(null);  // phone Quick Actions: open module id
   const [exporting, setExporting] = useState(false);
   const [outstanding, setOutstanding] = useState(CACHE.core?.outstanding ?? null);
   const [pendingDues, setPendingDues] = useState(CACHE.core?.pendingDues ?? null);
@@ -727,8 +750,54 @@ export default function Dashboard({ onNavigate, search = "" }) {
 
   return (
     <div ref={scope} className="mx-auto w-full max-w-[1440px]">
+      {/* PHONE: page title + Quick Actions (the live rate sits above, in the
+          shared shell). Desktop keeps the card below. */}
+      <div className="lg:hidden">
+        <h2 className="mb-3 text-2xl font-extrabold tracking-tight">Dashboard</h2>
+
+        <Card data-motion="reveal" className="mb-4 p-4">
+          <CardTitle className="mb-3 text-sm font-extrabold">Quick Actions</CardTitle>
+          {(() => {
+            const mod = MOBILE_MODULES.find((m) => m.id === mobileModule);
+            const tile = "flex rounded-xl border border-line bg-white text-left transition-colors duration-150 active:bg-accent-soft/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
+            const ico = (d) => <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
+            if (!mod) return (
+              <div className="grid grid-cols-1 gap-2.5">
+                {MOBILE_MODULES.map((m) => (
+                  <button key={m.id} type="button" onClick={() => setMobileModule(m.id)} className={`${tile} min-h-[60px] items-center gap-3 px-3.5 py-2.5`}>
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line">{ico(m.icon)}</span>
+                    <span className="min-w-0 flex-1 text-[14px] font-bold leading-tight text-ink">{m.title}</span>
+                    <span className="text-lg text-accent-strong/70" aria-hidden="true">›</span>
+                  </button>
+                ))}
+              </div>
+            );
+            return (
+              <div>
+                <div className="mb-3 flex items-center gap-2.5">
+                  <button type="button" onClick={() => setMobileModule(null)} aria-label="Back"
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-line bg-white text-ink active:bg-accent-soft/60">
+                    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+                  </button>
+                  <span className="min-w-0 text-[15px] font-extrabold leading-tight text-ink">{mod.title}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {mod.actions.map((a) => (
+                    <button key={a.title} type="button" onClick={() => nav(a.page, a.intent)}
+                      className={`${tile} ${a.wide ? "col-span-2 min-h-[60px] items-center gap-3 px-3 py-2.5" : "min-h-[84px] flex-col items-start justify-between p-3"}`}>
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line">{ico(a.icon)}</span>
+                      <span className="text-[13px] font-bold leading-tight text-ink">{a.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </Card>
+      </div>
+
       {/* QUICK ACTIONS */}
-      <Card data-motion="reveal" className="mb-4 p-4">
+      <Card data-motion="reveal" className="mb-4 hidden p-4 lg:block">
         {/* The senior reached for a Refresh here, found none, used the browser
             and concluded the product was stuck. Enrollment Management already
             has one; this page did not. */}

@@ -170,9 +170,9 @@ export default function CatalogueStudio() {
   if (view === "create") {
     return (
       <div ref={scope} className="mx-auto max-w-[1200px]">
-        <div className="sticky top-0 z-20 -mx-2 mb-6 flex items-center justify-between border-b border-line bg-canvas/95 px-2 py-3 backdrop-blur">
-          <button onClick={() => { setEditId(null); setView("catalogue"); }} className="flex items-center gap-2 text-sm font-bold hover:text-accent"><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>Back</button>
-          <div className="flex gap-2"><span className="text-lg font-extrabold">{editId ? "Edit Product" : "Create Product"}</span></div>
+        <div data-own-back className="-mx-2 mb-4 grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b border-line bg-canvas/95 px-2 py-3 backdrop-blur lg:sticky lg:top-0 lg:z-20 lg:mb-6 lg:flex lg:justify-between">
+          <button onClick={() => { setEditId(null); setView("catalogue"); }} className="flex items-center gap-2 text-sm font-bold hover:text-accent"><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg><span className="max-lg:sr-only">Back</span></button>
+          <div className="flex justify-center gap-2 lg:justify-start"><span className="text-base font-extrabold lg:text-lg">{editId ? "Edit Product" : "Create Product"}</span></div>
           <Button size="sm" disabled={saving} onClick={handleSave}>{saving ? "Saving…" : editId ? "Save Changes" : "Save Product"}</Button>
         </div>
 

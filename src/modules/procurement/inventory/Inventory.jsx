@@ -412,7 +412,7 @@ const nowLocalInput = () => {
 // "2026-09-22T18:15" -> "2026-09-22", the DATE the backend keeps indexed.
 const dateOnly = (v) => (v ? String(v).slice(0, 10) : "");
 
-export default function Inventory({ onNavigate }) {
+export default function Inventory({ onNavigate, intent, clearIntent }) {
   const scope = useRef(null);
   // Store pricing defaults are Admin-only server-side; mirror that here so the
   // button is not offered to someone the API will refuse.
@@ -1645,6 +1645,21 @@ export default function Inventory({ onNavigate }) {
     setBulkHeader(h => ({ ...h, vendor: v.name, deliveredBy: v.staff?.[0]?.name || "", deliveredByPhone: v.staff?.[0]?.phone || "", deliveredNew: !(v.staff || []).length }));
   };
 
+  // The Bulk / Add Purchase buttons below, and the Dashboard quick actions that
+  // land here asking for the same dialogs, all open them through these.
+  const openBulkPurchase = () => { setBulkHeaders(p => Object.fromEntries(Object.entries(p).map(([k, h]) => [k, { ...h, date: h.dateEdited && h.date ? h.date : nowLocalInput() }]))); setNextCodes({}); setShowBulk(true); };
+  const openAddPurchase = () => { setAddForm(f => ({ ...f, purchaseDate: f.purchaseDateEdited && f.purchaseDate ? f.purchaseDate : nowLocalInput() })); setNextCodes({}); setShowAdd(true); };
+  // Consumed once and cleared, like Customers does for add-customer. Staff have
+  // no Add/Bulk buttons here, so they land on their own draft dialog instead.
+  useEffect(() => {
+    if (intent !== "bulk-purchase" && intent !== "add-purchase") return;
+    if (!isAdmin) startStaffDraft();
+    else if (intent === "bulk-purchase") openBulkPurchase();
+    else openAddPurchase();
+    clearIntent?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent]);
+
   return (
     <div ref={scope} className="mx-auto max-w-[1400px]">
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -1659,8 +1674,8 @@ export default function Inventory({ onNavigate }) {
               practice, so the field is defaulted, never locked. An already
               half-filled form keeps whatever the operator typed. */}
           {isAdmin ? (<>
-            <Button variant="outline" size="sm" onClick={() => { setBulkHeaders(p => Object.fromEntries(Object.entries(p).map(([k, h]) => [k, { ...h, date: h.dateEdited && h.date ? h.date : nowLocalInput() }]))); setNextCodes({}); setShowBulk(true); }}>Bulk Purchase</Button>
-            <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => { setAddForm(f => ({ ...f, purchaseDate: f.purchaseDateEdited && f.purchaseDate ? f.purchaseDate : nowLocalInput() })); setNextCodes({}); setShowAdd(true); }}>Add Purchase</Button>
+            <Button variant="outline" size="sm" onClick={openBulkPurchase}>Bulk Purchase</Button>
+            <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={openAddPurchase}>Add Purchase</Button>
           </>) : (
             <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={startStaffDraft}>New Purchase Draft</Button>
           )}

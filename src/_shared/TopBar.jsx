@@ -30,7 +30,7 @@ function Quote({ label, value, dot }) {
 }
 
 // Most-asked first: the counter reads 24K / 22K before anything else.
-const QUOTES = [
+export const QUOTES = [
   ["24K", "rate_24k", "#c9a84c"], ["22K", "rate_22k", "#d4b65e"], ["18K", "rate_18k", "#e3cd8a"],
   ["14K", "rate_14k", "#c9b78c"], ["9K", "rate_9k", "#cfc3a4"], ["Silver", "silver_999", "#a8adb7"],
 ];
@@ -69,24 +69,6 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [menuOpen]);
 
-  // Phone back affordance. The app routes on the URL hash and App.jsx listens
-  // for hashchange, so the browser's own history is already correct — going
-  // back is history.back(), not a second navigation stack to keep in sync.
-  // Resolved in an effect, never during render, because the page is
-  // prerendered and reading location.hash while rendering mismatches hydration.
-  // On desktop this never shows: the sidebar is always visible, so there is
-  // nothing to go back from.
-  const [canGoBack, setCanGoBack] = useState(false);
-  useEffect(() => {
-    const sync = () => {
-      const here = window.location.hash.replace(/^#\/?/, "").trim();
-      setCanGoBack(Boolean(here) && here !== "dashboard" && window.history.length > 1);
-    };
-    sync();
-    window.addEventListener("hashchange", sync);
-    return () => window.removeEventListener("hashchange", sync);
-  }, []);
-
   const showSearch = typeof onSearch === "function";
 
   return (
@@ -107,19 +89,6 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          {/* Phone-only Back. Without it the drawer was the only way out of a
-              deep screen, which on a phone reads as being stuck. */}
-          {canGoBack && (
-            <button
-              className="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-ink transition-colors duration-150 active:bg-accent-soft lg:hidden"
-              onClick={() => window.history.back()}
-              aria-label="Go back"
-            >
-              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-            </button>
-          )}
           {/* Compact context breadcrumb. The page title itself lives once, in
               the body — never duplicated here. */}
           {(crumb || (!hideTitle && title)) && (
@@ -200,48 +169,9 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
           </div>
         )}
 
-        {/* Phone rail. The desk board above is far too wide for a handset, so
-            the space between the menu and the account button sat empty on every
-            screen. Same feed, same payload, same endless scroll - two identical
-            runs travelling exactly one run width - just sized for a thumb. A
-            phone is never shown a different rate from the desktop. */}
-        {!showSearch && (
-          <div className="group ml-auto flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-full border border-accent-line bg-surface py-1 pl-2.5 pr-2 lg:hidden">
-            <span
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${bullion && bullion.isToday === false ? "bg-muted" : "bg-accent"}`}
-              title={bullion && bullion.isToday === false
-                ? `Last published ${fmtDateShort(bullion.effective_date)}`
-                : "Today's published rate"}
-            />
-            <div className="relative min-w-0 flex-1 overflow-hidden">
-              {/* Figures dissolve at the edges instead of clipping mid-digit. */}
-              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-surface to-transparent" />
-              <div className="flex w-max animate-ticker items-center group-hover:[animation-play-state:paused]">
-                {[0, 1].map((run) => (
-                  <div key={run} className="flex items-center" aria-hidden={run === 1}>
-                    {[["Silver", bullion?.silver_999], ["9K", bullion?.rate_9k],
-                      ["14K", bullion?.rate_14k], ["18K", bullion?.rate_18k],
-                      ["22K", bullion?.rate_22k], ["24K", bullion?.rate_24k]].map(([label, value]) => (
-                      <span key={label} className="flex items-baseline gap-1 whitespace-nowrap pr-4">
-                        <span className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-muted">{label}</span>
-                        <span className="num text-[12px] font-extrabold tabular-nums text-ink">
-                          {value != null
-                            ? Number(value).toLocaleString("en-IN", { maximumFractionDigits: 0 })
-                            : "—"}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* On a phone the rate chip above already carries the ml-auto, so this
-            group must not also claim it or the two fight for the gap. On
-            desktop that chip is hidden, so the push-right lives here as before. */}
-        <div className={`flex shrink-0 items-center gap-2.5 ${showSearch ? "" : "lg:ml-auto"}`}>
+        {/* Phone: the rate now sits under the header (MobileRate), so the
+            controls just push right. */}
+        <div className={`flex shrink-0 items-center gap-2.5 ${showSearch ? "" : "ml-auto"}`}>
           {action}
           {/* Current-day indicator (auto-updates; no dropdown, no From/To). */}
           <div className="hidden h-9 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-xs font-bold text-ink 2xl:flex">
@@ -310,4 +240,49 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
 
 export function PageAction({ children }) {
   return <Button size="sm" className="hidden sm:inline-flex">{children}</Button>;
+}
+
+/* Phone-only live rate, rendered by the shell between the header and the page.
+   Same `bullion` payload the header strip uses - no request of its own. It
+   shows two purities side by side in a fixed-size box and swaps to the next
+   pair every 3s on a local timer (presentation only). */
+export function MobileRate({ bullion }) {
+  const rows = QUOTES.filter(([, key]) => bullion?.[key] != null);
+  const pairs = [];
+  for (let k = 0; k < rows.length; k += 2) pairs.push(rows.slice(k, k + 2));
+  const [i, setI] = useState(0);
+  const n = pairs.length;
+  useEffect(() => {
+    if (n < 2) return undefined;
+    const t = setInterval(() => setI((v) => (v + 1) % n), 3000);
+    return () => clearInterval(t);
+  }, [n]);
+  const stale = bullion && bullion.isToday === false;
+  const pair = pairs[n ? i % n : 0] || [];
+  return (
+    <div className="mx-3 mt-2 rounded-xl border border-accent-line bg-accent-soft/50 px-3 py-1.5 sm:mx-6 lg:hidden">
+      <div className="flex items-center justify-between text-[10px] font-extrabold text-ink">
+        <span className="flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${stale ? "bg-muted" : "bg-accent"}`} />
+          {stale ? "Last published rate" : "Live Gold Rates"}
+        </span>
+        <span className="font-semibold text-muted">{stale ? `${fmtDateShort(bullion.effective_date)} · ` : ""}₹/g</span>
+      </div>
+      <div key={i} className="grid h-8 grid-cols-2 items-center" style={{ animation: "fadein 350ms ease both" }}>
+        {pair.length ? [0, 1].map((c) => {
+          const q = pair[c];
+          return (
+            <div key={c} className={`flex items-baseline justify-center gap-1.5 ${c ? "border-l border-[#efe4cb]" : ""}`}>
+              {q && <>
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent-strong">{q[0]}</span>
+                <span className="num text-[16px] font-extrabold tabular-nums text-ink">
+                  ₹{Number(bullion[q[1]]).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                </span>
+              </>}
+            </div>
+          );
+        }) : <span className="col-span-2 text-center text-[13px] font-bold text-muted">—</span>}
+      </div>
+    </div>
+  );
 }

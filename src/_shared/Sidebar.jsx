@@ -1,3 +1,4 @@
+import DfxLogo from "@/_shared/DfxLogo";
 import { useEffect, useState } from "react";
 import { cn } from "@/_shared/utils";
 import { useAuth } from "@/_shared/AuthContext";
@@ -147,7 +148,12 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
           </div>
         ) : (
           <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-4 bg-[radial-gradient(ellipse_at_center,rgba(212,168,67,0.30)_0%,rgba(212,168,67,0.12)_38%,transparent_70%)]" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
-            <img src="/dfx-gold-logo.png" alt="DFX GOLD" width={124} height={58} className="h-[54px] w-auto object-contain drop-shadow-[0_0_10px_rgba(212,168,67,0.45)]" />
+            {/* Phone drawer: the Login page's own DFX mark with a GOLD wordmark. */}
+            <span className="flex items-center gap-2 text-ink lg:hidden" aria-label="DFX GOLD">
+              <DfxLogo size={30} />
+              <span className="text-[19px] font-extrabold leading-none tracking-[0.18em] text-accent-strong">GOLD</span>
+            </span>
+            <img src="/dfx-gold-logo.png" alt="DFX GOLD" width={124} height={58} className="hidden h-[54px] w-auto object-contain drop-shadow-[0_0_10px_rgba(212,168,67,0.45)] lg:block" />
           </div>
         )}
 
