@@ -345,7 +345,7 @@ const SESSION_STATUS = [
   { k: "active", label: "Using now" },
   { k: "idle", label: "Inactive" },
   { k: "ended", label: "Logged out" },
-  { k: "expired", label: "Timed out" },
+  { k: "expired", label: "Auto logged out" },
   { k: "all", label: "All" },
 ];
 
@@ -384,7 +384,7 @@ function SessionsTab({ tenants, live, onPerson }) {
         </div>
       </div>
       <div className="sa-dim" style={{ fontSize: 12.5, padding: "0 16px 10px" }}>
-        Each row is one login. <b>Using now</b> = DFX is open on their screen. <b>Inactive</b> = they closed DFX without logging out; if they don't come back within 2 days, DFX logs them out by itself (<b>Auto logged out</b>). Point at a device to see its internet address.
+        Each row is one login. <b>Using now</b> = DFX is open on their screen. <b>Inactive</b> = they closed DFX without logging out; if they don't come back within 2 days, DFX logs them out by itself (<b>Auto logged out</b>). The same person can have several rows if they logged in on more than one device or browser. Point at a device to see its internet address.
       </div>
       <SessionTable rows={res.data?.items} loading={res.loading && !res.data} onPerson={onPerson} now={now}
         empty={f.status === "active" ? "Nobody is using DFX right now." : "No sessions match these filters."} />
