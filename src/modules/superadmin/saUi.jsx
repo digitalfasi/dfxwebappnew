@@ -100,12 +100,23 @@ export function Pill({ tone = "mute", children, dot, box }) {
 export const STATUS_TONE = { active: "live", online: "live", idle: "warn", ended: "mute", expired: "mute", offline: "mute", never: "mute" };
 // Plain words. "Away" = still logged in on that device but not used in the
 // last 5 minutes (tab closed, phone locked); they come back without a login.
-export const STATUS_LABEL = { active: "Live", online: "Live", idle: "Away", ended: "Logged out", expired: "Timed out", offline: "Logged out", never: "Never logged in" };
+export const STATUS_LABEL = { active: "Using now", online: "Using now", idle: "Inactive", ended: "Logged out", expired: "Auto logged out", offline: "Logged out", never: "Never logged in" };
+
+// "Chrome 154 · Windows" -> "Windows computer · Chrome browser"; the app -> "DFX mobile app".
+export function deviceWords(x) {
+  const b = x?.browser || "";
+  const os = /Windows/i.test(b) ? "Windows computer" : /Mac/i.test(b) ? "Mac computer" : /Android/i.test(b) ? "Android phone"
+    : /iOS|iPhone|iPad/i.test(b) ? "iPhone" : /Linux/i.test(b) ? "Linux computer" : "";
+  if (x?.client === "app") return os ? `DFX app on ${os}` : "DFX mobile app";
+  const name = (b.split(" · ")[0] || "").replace(/\s[\d.]+$/, "");
+  return [os, name && name !== "Other" ? `${name} browser` : ""].filter(Boolean).join(" · ") || "Unknown device";
+}
+export const ipTitle = (ip) => (ip ? `Internet address (IP): ${ip} - shows which network they were on, not who they are` : undefined);
 export const ROLE_TONE = { SuperAdmin: "pri", Admin: "sky", Staff: "app", Customer: "mute" };
 
 export function ClientTag({ client, device }) {
-  if (client === "app") return <Pill tone="app"><Icon name="phone" size={12} />App</Pill>;
-  if (client === "web") return <Pill tone="sky"><Icon name={device === "phone" ? "phone" : "web"} size={12} />{device === "phone" ? "Web · phone" : "Web"}</Pill>;
+  if (client === "app") return <Pill tone="app"><Icon name="phone" size={12} />Mobile app</Pill>;
+  if (client === "web") return <Pill tone="sky"><Icon name={device === "phone" ? "phone" : "web"} size={12} />{device === "phone" ? "Website on phone" : "Website"}</Pill>;
   return <Pill>Other</Pill>;
 }
 

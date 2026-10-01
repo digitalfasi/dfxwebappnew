@@ -8,12 +8,12 @@ import { SA_CSS, Icon, initialsOf, useNow, usePoll } from "@/modules/superadmin/
 
 // Deep-linkable: #/control/<module>/<tab>
 export const MON_PAGES = [
-  { key: "live", label: "Live now", icon: "pulse", title: "Live now", sub: "What is happening on DFX this minute" },
-  { key: "people", label: "People", icon: "users", title: "People", sub: "Every admin, staff member and customer, and when they were last seen" },
-  { key: "sessions", label: "Sessions", icon: "clock", title: "Sessions", sub: "Every login, from the moment someone logs in until they log out" },
-  { key: "signins", label: "Sign-ins & security", icon: "shield", title: "Sign-ins & security", sub: "Every login attempt - successful, failed and blocked - and security alarms" },
-  { key: "activity", label: "Activity log", icon: "list", title: "Activity log", sub: "Who changed what, in every shop" },
-  { key: "system", label: "Server & database", icon: "server", title: "Server & database", sub: "The machine, containers, backups, traffic and logs" },
+  { key: "live", label: "Live now", icon: "pulse", title: "Live now", sub: "Right now: how many people are using DFX, and whether everything is working. Green means all is well." },
+  { key: "people", label: "People", icon: "users", title: "People", sub: "Everyone who has a DFX login - shop owners, staff and customers - and when each one last used DFX. Click a name to see their full history." },
+  { key: "sessions", label: "Login history", icon: "clock", title: "Login history", sub: "One row for every time someone logged in: when they logged in, when they logged out, on which device, and how long they used DFX." },
+  { key: "signins", label: "Login problems & safety", icon: "shield", title: "Login problems & safety", sub: "Wrong passwords, blocked logins and anything suspicious. If the numbers are 0, there is nothing to worry about." },
+  { key: "activity", label: "Changes made", icon: "list", title: "Changes made", sub: "What each shop's team changed in DFX - who did it, what they changed and when. Newest first." },
+  { key: "system", label: "System health", icon: "server", title: "System health", sub: "For the technical team: the computer DFX runs on, its storage and the nightly backups. Green everywhere means nothing needs doing." },
 ];
 
 function readHash() {
@@ -50,7 +50,7 @@ export default function SuperAdminApp() {
   const go = (mod, tab) => { setRoute((r) => ({ mod, tab: tab || (mod === r.mod ? r.tab : "live") })); setNavOpen(false); };
   const watchShop = (id) => { setShopFilter(id); go("monitor", "people"); };
   const page = route.mod === "tenants"
-    ? { title: "Shops", sub: "Every shop on DFX - its plan, when access ends, its owner and today's business" }
+    ? { title: "Shops", sub: "Every jewellery shop using DFX - its plan, when its access ends, the owner, when the owner last logged in and out, and today's sales. Click a shop for details." }
     : MON_PAGES.find((p) => p.key === route.tab);
   const time = new Date(now).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
   const date = new Date(now).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", year: "numeric" });

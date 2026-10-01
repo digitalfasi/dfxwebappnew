@@ -6,16 +6,16 @@ import {
 } from "@/modules/superadmin/saService";
 import {
   Card, Kpi, Pill, Icon, Empty, Skel, Pager, Drawer, HourChart, ClientTag, Who, Donut, HealthBanner, SystemMap,
-  STATUS_TONE, STATUS_LABEL, ROLE_TONE, usePoll, useNow, hashParam, scrollToId,
+  STATUS_TONE, STATUS_LABEL, ROLE_TONE, deviceWords, ipTitle, usePoll, useNow, hashParam, scrollToId,
 } from "@/modules/superadmin/saUi";
 
 const TABS = [
   { key: "live", label: "Live now", icon: "pulse" },
   { key: "people", label: "People", icon: "users" },
-  { key: "sessions", label: "Sessions", icon: "clock" },
-  { key: "signins", label: "Sign-ins & security", icon: "shield" },
-  { key: "activity", label: "Activity", icon: "list" },
-  { key: "system", label: "Server & database", icon: "server" },
+  { key: "sessions", label: "Login history", icon: "clock" },
+  { key: "signins", label: "Login problems & safety", icon: "shield" },
+  { key: "activity", label: "Changes made", icon: "list" },
+  { key: "system", label: "System health", icon: "server" },
 ];
 
 const EVENT_TONE = { LOGIN_SUCCESS: "live", LOGIN_FAILED: "bad", LOGIN_BLOCKED: "warn", LOGOUT: "mute", LOGOUT_ALL: "mute", TOKEN_REUSE: "bad" };
@@ -107,10 +107,10 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
   const nodes = {
     web: { title: "On the website", value: `${c.web || 0} online`, note: "admins, staff, customers", state: c.web ? "live" : "off" },
     app: { title: "On the mobile app", value: `${c.app || 0} online`, note: "customer app", state: c.app ? "live" : "off" },
-    gw: { title: "Gateway · nginx", value: rpm != null ? `${rpm} req/min` : "HTTPS on", note: hh.certDays != null ? `SSL valid ${hh.certDays} days` : "secure entry point", state: hh.certDays != null && hh.certDays < 20 ? "warn" : "live" },
-    api: { title: "DFX server", value: api ? (api.health === "healthy" ? "Healthy" : api.health || api.state) : S ? "Running" : "…", note: H ? `${hh.errs} errors last hour` : "backend API", state: api && api.health !== "healthy" ? "bad" : hh.errs ? "warn" : "live" },
-    db: { title: "Database", value: S?.database ? bytes(S.database.size_bytes) : "…", note: S?.database ? `${conns} connections open` : "", state: S?.database && !S.database.healthy ? "bad" : "live" },
-    bk: { title: "Backups", value: hh.dumpH != null ? `${Math.round(hh.dumpH)} h ago` : "—", note: "nightly, 07:45 IST", state: hh.dumpH == null ? (H ? "bad" : "off") : hh.dumpH > 30 ? "bad" : "live" },
+    gw: { title: "Secure front door", value: rpm != null ? `${rpm} calls/min` : "Secure", note: hh.certDays != null ? `security certificate: ${hh.certDays} days left` : "every visit passes here", state: hh.certDays != null && hh.certDays < 20 ? "warn" : "live" },
+    api: { title: "DFX server", value: api ? (api.health === "healthy" ? "Healthy" : api.health || api.state) : S ? "Running" : "…", note: H ? `${hh.errs} errors in the last hour` : "the DFX program", state: api && api.health !== "healthy" ? "bad" : hh.errs ? "warn" : "live" },
+    db: { title: "Database", value: S?.database ? bytes(S.database.size_bytes) : "…", note: S?.database ? "all shop data is stored here" : "", state: S?.database && !S.database.healthy ? "bad" : "live" },
+    bk: { title: "Backups", value: hh.dumpH != null ? `${Math.round(hh.dumpH)} h ago` : "—", note: "safety copy of all data, every night 07:45", state: hh.dumpH == null ? (H ? "bad" : "off") : hh.dumpH > 30 ? "bad" : "live" },
   };
   // One row per person: their most recent session, with how many are open.
   const byPerson = [];
@@ -211,7 +211,7 @@ function EventFeed({ items, now, onPerson }) {
               {e.user_name || e.identifier || "Unknown account"}
             </b>{" "}
             <span style={{ display: "inline", color: "var(--muted)" }}>{(EVENT_LABEL[e.event] || e.event).toLowerCase()}</span>
-            <span>{[e.tenant_name || (e.role === "SuperAdmin" ? "Platform" : null), e.role, e.client === "app" ? "App" : e.client === "web" ? "Web" : null, e.ip].filter(Boolean).join(" · ")}{e.reason ? ` · ${e.reason}` : ""}</span>
+            <span>{[e.tenant_name || (e.role === "SuperAdmin" ? "Platform" : null), e.role, e.client === "app" ? "Mobile app" : e.client === "web" ? "Website" : null].filter(Boolean).join(" · ")}{e.reason ? ` · ${e.reason}` : ""}</span>
           </div>
           <time title={fmtDateTime(e.at)}>{seenAt(e.at)}</time>
         </div>
@@ -258,8 +258,8 @@ const PEOPLE_GROUPS = [
 ];
 const PRESENCE = [
   { k: "", label: "All", n: "all" },
-  { k: "online", label: "Live", n: "online" },
-  { k: "idle", label: "Away", n: "idle" },
+  { k: "online", label: "Using now", n: "online" },
+  { k: "idle", label: "Inactive", n: "idle" },
   { k: "offline", label: "Logged out", n: "offline" },
   { k: "never", label: "Never logged in", n: "never" },
 ];
@@ -299,7 +299,7 @@ function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
           </div>
         </div>
         <div className="sa-dim" style={{ fontSize: 12.5, padding: "0 16px 10px" }}>
-          <b>Live</b> = DFX is open in their browser right now (checked every minute, even if they are not clicking) or they used the app in the last 3 minutes · <b>Away</b> = still logged in, but the browser or app is closed · click a person for their full history.
+          <b>Using now</b> = DFX is open on their screen right now. <b>Inactive</b> = they closed DFX without pressing Log out, so they are still logged in. <b>Logged out</b> = they pressed Log out. Click a person to see every login.
         </div>
         {res.loading && !d ? <div className="sa-card-b"><Skel h={160} /></div> : !d?.items?.length ? <Empty title="Nobody here">Try another group, status, shop or search.</Empty> : (
           <div className="sa-tbl">
@@ -314,7 +314,7 @@ function PeopleTab({ tenants, shop, setShop, live, onPerson }) {
                     <td><Pill tone={ROLE_TONE[u.role]}>{u.role === "Admin" ? "Owner" : u.role === "SuperAdmin" ? "Super admin" : u.role}</Pill></td>
                     <td><Pill dot tone={STATUS_TONE[u.presence]}>{STATUS_LABEL[u.presence]}</Pill></td>
                     <td>{u.last_seen_at
-                      ? <><span title={fmtDateTime(u.last_seen_at)}>{u.presence === "online" ? <b style={{ color: "var(--live, #0B7A4F)" }}>Live now</b> : seenAt(u.last_seen_at)}</span><div className="sa-dim" style={{ fontSize: 12 }}>last login {fmtDateTime(u.last_login_at)}</div></>
+                      ? <><span title={fmtDateTime(u.last_seen_at)}>{u.presence === "online" ? <b style={{ color: "var(--live, #0B7A4F)" }}>Using now</b> : seenAt(u.last_seen_at)}</span><div className="sa-dim" style={{ fontSize: 12 }}>last login {fmtDateTime(u.last_login_at)}</div></>
                       : <span className="sa-dim">—</span>}</td>
                     <td className="r">{u.today_seconds || u.sessions_today
                       ? <><b>{dur(u.today_seconds)}</b><div className="sa-dim" style={{ fontSize: 12, fontFamily: "inherit" }}>{u.sessions_today} login{u.sessions_today === 1 ? "" : "s"}</div></>
@@ -342,8 +342,8 @@ function ShopSelect({ tenants, value, onChange }) {
 
 // ── Sessions ───────────────────────────────────────────────────────────
 const SESSION_STATUS = [
-  { k: "active", label: "Live now" },
-  { k: "idle", label: "Away" },
+  { k: "active", label: "Using now" },
+  { k: "idle", label: "Inactive" },
   { k: "ended", label: "Logged out" },
   { k: "expired", label: "Timed out" },
   { k: "all", label: "All" },
@@ -384,7 +384,7 @@ function SessionsTab({ tenants, live, onPerson }) {
         </div>
       </div>
       <div className="sa-dim" style={{ fontSize: 12.5, padding: "0 16px 10px" }}>
-        A session is one login on one device, from login to logout. <b>Live</b> = that browser has DFX open right now. <b>Away</b> = the browser or app is closed but still logged in - it can come back without a password for up to 2 days, then it <b>times out</b>.
+        Each row is one login. <b>Using now</b> = DFX is open on their screen. <b>Inactive</b> = they closed DFX without logging out; if they don't come back within 2 days, DFX logs them out by itself (<b>Auto logged out</b>). Point at a device to see its internet address.
       </div>
       <SessionTable rows={res.data?.items} loading={res.loading && !res.data} onPerson={onPerson} now={now}
         empty={f.status === "active" ? "Nobody is using DFX right now." : "No sessions match these filters."} />
@@ -402,19 +402,21 @@ function SessionTable({ rows, loading, onPerson, compact, now, empty, hidePerson
     <div className="sa-tbl">
       <table>
         <thead><tr>
-          {!hidePerson && <th>Person</th>}<th>Status</th><th>Device</th>
-          {!compact && <th>Logged in</th>}<th>Last active</th><th className="r">Length</th>
+          {!hidePerson && <th>Person</th>}<th>Status</th><th>Logged in</th><th>Logged out</th>
+          {!compact && <th>Device</th>}<th className="r">Time spent</th>
         </tr></thead>
         <tbody>
           {rows.map((s) => (
             <tr key={s.id} className={hidePerson ? "" : "click"} onClick={() => !hidePerson && onPerson?.(s.user_id)}>
               {!hidePerson && <td><Who name={s.user_name} role={s.role} sub={`${s.tenant_name || "DFX platform"} · ${ROLE_WORD[s.role] || s.role}`} /></td>}
-              <td><Pill dot tone={STATUS_TONE[s.status]}>{STATUS_LABEL[s.status]}</Pill>
-                {s.ended_at && <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{END_LABEL[s.end_reason] || s.end_reason} {fmtTime(s.ended_at)}</div>}</td>
-              <td><ClientTag client={s.client} device={s.device} />
-                {!compact && <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{[s.browser, s.ip].filter(Boolean).join(" · ")}</div>}</td>
-              {!compact && <td>{fmtDateTime(s.started_at)}{s.login_method === "google" ? <span className="sa-dim"> · Google</span> : null}</td>}
-              <td title={fmtDateTime(s.last_seen_at)}>{s.status === "active" ? <b style={{ color: "var(--live, #0B7A4F)" }}>Live now</b> : seenAt(s.last_seen_at)}</td>
+              <td><Pill dot tone={STATUS_TONE[s.status]}>{STATUS_LABEL[s.status]}</Pill></td>
+              <td>{fmtDateTime(s.started_at)}{s.login_method === "google" ? <span className="sa-dim"> · with Google</span> : null}</td>
+              <td className="wrap">{s.ended_at ? <>{fmtDateTime(s.ended_at)}{s.end_reason && s.end_reason !== "logout" ? <div className="sa-dim" style={{ fontSize: 12 }}>{END_LABEL[s.end_reason] || s.end_reason}</div> : null}</>
+                : s.status === "active" ? <b style={{ color: "var(--live)" }}>Still using DFX</b>
+                : s.status === "expired" ? <span className="sa-dim">Automatically, after 2 days unused</span>
+                : <span className="sa-dim">Not yet - last used {seenAt(s.last_seen_at)}</span>}</td>
+              {!compact && <td title={ipTitle(s.ip)}><ClientTag client={s.client} device={s.device} />
+                <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{deviceWords(s)}</div></td>}
               <td className="r">{lengthOf(s.duration_seconds)}</td>
             </tr>
           ))}
@@ -507,8 +509,8 @@ function EventTable({ rows, loading, onPerson, hidePerson }) {
               <td><Pill tone={EVENT_TONE[e.event]}>{EVENT_LABEL[e.event] || e.event}</Pill></td>
               {!hidePerson && <td><Who name={e.user_name || e.identifier || "Unknown login"} role={e.role}
                 sub={e.user_name ? `${e.tenant_name || (e.role === "SuperAdmin" ? "DFX platform" : "—")} · ${ROLE_WORD[e.role] || e.role}` : "no account uses this login"} /></td>}
-              <td>{e.client ? <ClientTag client={e.client} device={e.device} /> : "—"}
-                <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{[e.browser, e.ip].filter(Boolean).join(" · ")}</div></td>
+              <td title={ipTitle(e.ip)}>{e.client ? <ClientTag client={e.client} device={e.device} /> : "—"}
+                <div className="sa-dim" style={{ fontSize: 12, marginTop: 3 }}>{deviceWords(e)}</div></td>
               <td className="sa-muted wrap" style={{ maxWidth: 260 }}>{e.reason || "—"}</td>
             </tr>
           ))}

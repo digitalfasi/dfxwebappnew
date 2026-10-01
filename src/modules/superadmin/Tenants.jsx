@@ -199,7 +199,7 @@ export default function Tenants({ onWatch }) {
                   <td className="who"><b>{d.customers ?? "—"} customers</b><span>{d.staff ?? 0} staff</span></td>
                   <td className="r">{d.sales_today ? <><b>{inr(d.sales_today_amount)}</b><div className="sa-dim" style={{ fontSize: 12 }}>{d.sales_today} bill{d.sales_today === 1 ? "" : "s"}</div></> : <span className="sa-dim" style={{ fontFamily: "inherit" }}>No sales</span>}</td>
                   <td>
-                    {d.live_now > 0 ? <Pill dot tone="live">{d.live_now} live now</Pill>
+                    {d.live_now > 0 ? <Pill dot tone="live">{d.live_now} using now</Pill>
                       : d.last_activity_at ? <span title={fmtDateTime(d.last_activity_at)}>{seenAt(d.last_activity_at)}</span>
                       : <span className="sa-dim">Never</span>}
                   </td>
