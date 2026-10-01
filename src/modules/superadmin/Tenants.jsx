@@ -92,6 +92,22 @@ function PlanCell({ t }) {
   );
 }
 
+// The owner's last sign-in and sign-out. A session nobody logged out of has
+// no logout time, so it reads "no logout" with when they were last seen.
+function loggedOut(t) {
+  return t.admin_last_logout_at && new Date(t.admin_last_logout_at) >= new Date(t.admin_last_login_at);
+}
+function AdminLogin({ t }) {
+  if (!t.admin_last_login_at) return <span className="sa-dim">Never logged in</span>;
+  return (
+    <>
+      <span>In {fmtDateTime(t.admin_last_login_at)}</span>
+      <span>{loggedOut(t) ? <>Out {fmtDateTime(t.admin_last_logout_at)}</>
+        : <span className="sa-dim">No logout · seen {seenAt(t.admin_last_seen_at)}</span>}</span>
+    </>
+  );
+}
+
 export default function Tenants({ onWatch }) {
   const [filter, setFilter] = useState(() => (FILTERS.some((f) => f.k === hashParam("filter")) ? hashParam("filter") : ""));
   const [q, setQ] = useState("");
@@ -164,7 +180,7 @@ export default function Tenants({ onWatch }) {
         ) : (
           <div className="sa-tbl"><table>
             <thead><tr>
-              <th>Shop</th><th>Plan &amp; access</th><th>Owner</th>
+              <th>Shop</th><th>Plan &amp; access</th><th>Owner</th><th>Owner login / logout</th>
               <th>People</th><th className="r">Sales today</th><th>Last used</th><th aria-label="Open" />
             </tr></thead>
             <tbody>{rows.map((t) => {
@@ -179,6 +195,7 @@ export default function Tenants({ onWatch }) {
                     <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }} title={t.admin_email || ""}>{t.admin_email || (t.admin_phone ? "" : "—")}</span>
                     {t.admin_is_active === false && <span style={{ color: "var(--bad)" }}>Owner login disabled</span>}
                   </td>
+                  <td className="who" style={{ fontSize: 13 }}><AdminLogin t={t} /></td>
                   <td className="who"><b>{d.customers ?? "—"} customers</b><span>{d.staff ?? 0} staff</span></td>
                   <td className="r">{d.sales_today ? <><b>{inr(d.sales_today_amount)}</b><div className="sa-dim" style={{ fontSize: 12 }}>{d.sales_today} bill{d.sales_today === 1 ? "" : "s"}</div></> : <span className="sa-dim" style={{ fontFamily: "inherit" }}>No sales</span>}</td>
                   <td>
@@ -402,6 +419,9 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
               <dt>Admin</dt><dd>{tenant.admin_name || "—"}</dd>
               <dt>Admin email</dt><dd>{tenant.admin_email || "—"}</dd>
               <dt>Admin mobile</dt><dd className="mono">{tenant.admin_phone || "—"}</dd>
+              <dt>Last login</dt><dd>{tenant.admin_last_login_at ? fmtDateTime(tenant.admin_last_login_at) : "Never"}</dd>
+              <dt>Last logout</dt><dd>{loggedOut(tenant) ? fmtDateTime(tenant.admin_last_logout_at)
+                : tenant.admin_last_login_at ? <span className="sa-dim">No logout · last seen {fmtDateTime(tenant.admin_last_seen_at)}</span> : "—"}</dd>
               <dt>Admin account</dt><dd>{tenant.admin_is_active == null ? "No admin" : <Pill tone={tenant.admin_is_active ? "live" : "bad"}>{tenant.admin_is_active ? "Enabled" : "Disabled"}</Pill>}</dd>
               <dt>Last updated</dt><dd>{fmtDateTime(tenant.updated_at)}</dd>
             </dl>
