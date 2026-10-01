@@ -60,8 +60,9 @@ function healthOf(d, sys, feed) {
   if (feed?.stale) bad.push(`Gold rate feed stopped - no live rate for ${feed.minutes_since_live != null ? `${feed.minutes_since_live} min` : "today"}`);
   const db = sys?.database, h = sys?.host;
   if (db && !db.healthy) bad.push("Database is not answering");
-  const down = (h?.containers || []).filter((c) => c.state !== "running" || (c.health && c.health !== "healthy"));
-  if (down.length) bad.push(`${down.map((c) => c.name).join(", ")} not healthy`);
+  const down = (h?.containers || []).filter((c) => !/^[0-9a-f]{12}_/.test(c.name) && (c.state !== "running" || (c.health && c.health !== "healthy")));
+  const PART = { "dfx-web": "Website", "dfx-backend": "DFX program", "dfx-postgres": "Database" };
+  if (down.length) bad.push(`${down.map((c) => PART[c.name] || c.name).join(", ")} not working - tell the tech team`);
   const dump = h?.backups?.files?.find((f) => f.name.startsWith("dfx-"));
   const dumpH = dump ? (Date.now() - new Date(dump.at).getTime()) / 3600000 : null;
   if (h && dumpH == null) bad.push("No nightly safety copy found - tell the tech team");
