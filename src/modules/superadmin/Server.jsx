@@ -126,7 +126,7 @@ function Security({ h, counts, failedTop }) {
         <Kpi go={() => scrollToId("sec-attacks")} icon="db" hue={injections ? "bad" : "ink"} label="Break-in tricks" value={t ? injections : "—"} sub="SQL / code injection, path tricks" />
         <Kpi go={() => scrollToId("sec-recent")} icon="alert" hue={k["Scanner probe"] ? "warn" : "ink"} label="Scanner probes" value={t ? k["Scanner probe"] || 0 : "—"} sub="looking for .env, wp-admin, .git" />
         <Kpi go={"#/control/monitor/signins?event=LOGIN_FAILED"} icon="key" hue={counts.LOGIN_FAILED ? "warn" : "ink"} label="Failed logins · 24 h" value={counts.LOGIN_FAILED || 0} sub={`${counts.LOGIN_BLOCKED || 0} blocked`} />
-        <Kpi go={() => scrollToId("sec-fail2ban")} icon="lock" hue="teal" label="Banned right now" value={h?.fail2ban ? h.fail2ban.reduce((s, j) => s + Number(j.currently_banned || 0), 0) : "—"} sub="IPs blocked by fail2ban" />
+        <Kpi go={() => scrollToId("sec-fail2ban")} icon="lock" hue="teal" label="SSH bans right now" value={h?.fail2ban ? h.fail2ban.filter((j) => j.name === "sshd").reduce((s, j) => s + Number(j.currently_banned || 0), 0) : "—"} sub="fail2ban · web is guarded by Cloudflare" />
         <Kpi go={() => scrollToId("sec-scripts")} icon="box" hue="ink" label="Scripts & tools" value={t ? k[AUTO] || 0 : "—"} sub="not attacks - mostly our own jobs" />
       </div>
       {t && attacks > 0 && !injections && (
@@ -190,6 +190,10 @@ function Security({ h, counts, failedTop }) {
                 <span style={{ fontSize: 12.5 }}><b className="mono" style={{ color: Number(j.currently_banned) ? "var(--bad)" : "var(--ink)" }}>{j.currently_banned}</b> <span className="sa-dim">banned now · {j.total_banned} total</span></span>
               </div>
             ))}
+            {/* Web traffic arrives through Cloudflare (only its addresses may reach
+                ports 80/443), so a fail2ban web ban on a visitor IP is a record,
+                not a block. SSH comes direct, so sshd bans really block. */}
+            {h?.fail2ban && <p className="sa-dim" style={{ fontSize: 12, margin: "10px 0 0" }}>Website traffic comes through Cloudflare, so the nginx lines are a record, not a block. Web attacks are stopped by Cloudflare and the per-IP rate limit. sshd bans block for real.</p>}
           </Card>
           <Card title="Failed logins by IP · 24 h" icon="key" hue="bad">
             {!failedTop.length ? <Empty title="None in 24 hours" /> : failedTop.slice(0, 6).map((r) => (
