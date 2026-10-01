@@ -72,7 +72,7 @@ background:var(--page)}
 .sa-kpi.h-bad .val{color:var(--bad)}
 .sa-pulse{width:8px;height:8px;border-radius:50%;background:var(--live);flex:none;animation:saPulse 2s infinite}
 @keyframes saPulse{0%{box-shadow:0 0 0 0 rgba(16,163,106,.5)}70%{box-shadow:0 0 0 8px rgba(16,163,106,0)}100%{box-shadow:0 0 0 0 rgba(16,163,106,0)}}
-@media (prefers-reduced-motion:reduce){.sa-drawer,.sa-drawer-bg,.sa-skel,.sa-pulse,.sa-map .train,.sa-map .flow{animation:none}.sa *{transition:none!important}}
+@media (prefers-reduced-motion:reduce){.sa-drawer,.sa-drawer-bg,.sa-skel{animation:none}}
 /* panels */
 .sa-card{background:var(--paper);border:1px solid var(--rule);border-radius:var(--r);box-shadow:0 1px 2px rgba(14,22,48,.04);min-width:0;display:flex;flex-direction:column}
 .sa-card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 0;flex-wrap:wrap}
