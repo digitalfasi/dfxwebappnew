@@ -365,10 +365,10 @@ export function SystemMap({ nodes, flows }) {
         </svg>
       </div>
       <div className="sa-legend" style={{ justifyContent: "center", marginTop: 6 }}>
-        <span><i style={{ background: "#2F5BD3", borderRadius: 99 }} />Fast blinking trains: people using DFX right now (thin ones are answers coming back)</span>
-        <span><i style={{ background: "#9FB3F5", borderRadius: 99 }} />One slow train: the server's own heartbeat</span>
-        <span><i style={{ background: "#C7CEDD", borderRadius: 99 }} />Dotted: nobody on this route</span>
-        <span><i style={{ background: "#E5484D", borderRadius: 99 }} />Red box: needs attention</span>
+        <span><i style={{ background: "#2F5BD3", borderRadius: 99 }} />Moving lines: people using DFX right now</span>
+        <span><i style={{ background: "#9FB3F5", borderRadius: 99 }} />Slow line: DFX checking itself</span>
+        <span><i style={{ background: "#C7CEDD", borderRadius: 99 }} />Dotted line: nobody using that part</span>
+        <span><i style={{ background: "#E5484D", borderRadius: 99 }} />Red box: needs attention - tell the tech team</span>
       </div>
     </div>
   );

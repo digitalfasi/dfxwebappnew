@@ -64,24 +64,24 @@ function healthOf(d, sys, feed) {
   if (down.length) bad.push(`${down.map((c) => c.name).join(", ")} not healthy`);
   const dump = h?.backups?.files?.find((f) => f.name.startsWith("dfx-"));
   const dumpH = dump ? (Date.now() - new Date(dump.at).getTime()) / 3600000 : null;
-  if (h && dumpH == null) bad.push("No nightly backup found");
-  else if (dumpH > 30) bad.push(`Last backup ${Math.round(dumpH)} h ago`);
+  if (h && dumpH == null) bad.push("No nightly safety copy found - tell the tech team");
+  else if (dumpH > 30) bad.push(`Last safety copy ${Math.round(dumpH)} h ago - tell the tech team`);
   const disk = h?.disk || sys?.machine?.disk;
   const diskPct = disk ? Math.round((disk.used / disk.total) * 100) : null;
-  if (diskPct >= 90) bad.push(`Disk ${diskPct}% full`); else if (diskPct >= 80) warn.push(`Disk ${diskPct}% full`);
+  if (diskPct >= 90) bad.push(`Storage ${diskPct}% full`); else if (diskPct >= 80) warn.push(`Storage ${diskPct}% full`);
   const errs = h?.app_logs?.errors_last_hour || 0;
   if (errs) warn.push(`${errs} server error${errs > 1 ? "s" : ""} in the last hour`);
-  if (h?.updates?.reboot_required) warn.push("Server wants a reboot to finish updates");
-  if ((d?.today?.failed_logins || 0) >= 10) warn.push(`${d.today.failed_logins} failed sign-ins today`);
-  if (d?.today?.token_reuse) warn.push(`${d.today.token_reuse} stolen-token alarm today`);
-  if (sys && !h) warn.push("Server agent not reporting");
+  if (h?.updates?.reboot_required) warn.push("Server needs a restart to finish updates - tell the tech team");
+  if ((d?.today?.failed_logins || 0) >= 10) warn.push(`${d.today.failed_logins} wrong-password logins today`);
+  if (d?.today?.token_reuse) warn.push(`${d.today.token_reuse} copied-login alarm today - check Login problems & safety`);
+  if (sys && !h) warn.push("Server health check is not reporting - tell the tech team");
   else if (h?.age_seconds > 300) warn.push(`Server snapshot ${Math.round(h.age_seconds / 60)} min old`);
   const certDays = h?.certificate?.expires ? Math.round((new Date(h.certificate.expires) - Date.now()) / 86400000) : null;
-  if (certDays != null && certDays < 20) warn.push(`SSL certificate expires in ${certDays} days`);
-  if (db?.healthy) ok.push("Database healthy");
-  if (dumpH != null && dumpH <= 30) ok.push(`Backup ${Math.round(dumpH)} h ago`);
-  if (diskPct != null && diskPct < 80) ok.push(`Disk ${diskPct}% used`);
-  if (certDays != null && certDays >= 20) ok.push(`SSL valid ${certDays} days`);
+  if (certDays != null && certDays < 20) warn.push(`Website security certificate expires in ${certDays} days - tell the tech team`);
+  if (db?.healthy) ok.push("Shop data safe");
+  if (dumpH != null && dumpH <= 30) ok.push(`Last safety copy ${Math.round(dumpH)} h ago`);
+  if (diskPct != null && diskPct < 80) ok.push(`Storage ${diskPct}% full`);
+  if (certDays != null && certDays >= 20) ok.push(`Website security OK (${certDays} days left)`);
   if (feed && !feed.stale) ok.push(feed.market_open ? `Gold rate live${feed.minutes_since_live != null ? ` (${feed.minutes_since_live} min ago)` : ""}` : "Gold rate: market closed, last rate carried");
   const level = bad.length ? "bad" : warn.length ? "warn" : "ok";
   const title = bad.length ? "Something needs fixing now" : warn.length ? "Running, a few things need attention" : "Everything is running normally";
@@ -105,8 +105,8 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
   const conns = Object.values(S?.database?.connections || {}).reduce((a, n) => a + n, 0);
   const people = (c.web || 0) + (c.app || 0) + (c.other || 0);
   const nodes = {
-    web: { title: "On the website", value: `${c.web || 0} online`, note: "admins, staff, customers", state: c.web ? "live" : "off" },
-    app: { title: "On the mobile app", value: `${c.app || 0} online`, note: "customer app", state: c.app ? "live" : "off" },
+    web: { title: "On the website", value: `${c.web || 0} online`, note: "shop owners, staff, customers", state: c.web ? "live" : "off" },
+    app: { title: "On the mobile app", value: `${c.app || 0} online`, note: "customers on their phones", state: c.app ? "live" : "off" },
     gw: { title: "Secure front door", value: rpm != null ? `${rpm} calls/min` : "Secure", note: hh.certDays != null ? `security certificate: ${hh.certDays} days left` : "every visit passes here", state: hh.certDays != null && hh.certDays < 20 ? "warn" : "live" },
     api: { title: "DFX server", value: api ? (api.health === "healthy" ? "Healthy" : api.health || api.state) : S ? "Running" : "…", note: H ? `${hh.errs} errors in the last hour` : "the DFX program", state: api && api.health !== "healthy" ? "bad" : hh.errs ? "warn" : "live" },
     db: { title: "Database", value: S?.database ? bytes(S.database.size_bytes) : "…", note: S?.database ? "all shop data is stored here" : "", state: S?.database && !S.database.healthy ? "bad" : "live" },
@@ -431,10 +431,10 @@ function SignInsTab({ tenants, live, onPerson }) {
           sub={c.TOKEN_REUSE ? "a copied login was used - that person was logged out everywhere" : "no copied logins detected"} />
       </div>
       <div className="sa-split">
-        <Card title="Failed logins by internet address · 24 h" icon="alert">
+        <Card title="Failed logins by network (IP address) · 24 h" icon="alert">
           <RankList rows={d?.summary_24h?.top_failed_ips} k="ip" mono />
         </Card>
-        <Card title="Failed logins by email / phone · 24 h" icon="users">
+        <Card title="Failed logins by login name (email or phone) · 24 h" icon="users">
           <RankList rows={d?.summary_24h?.top_failed_identifiers} k="identifier" />
         </Card>
       </div>
