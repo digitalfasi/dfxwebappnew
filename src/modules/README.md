@@ -11,6 +11,7 @@ Each folder here is one feature area of the admin app. If a screen misbehaves, t
 - Ringing up a sale -> billing/new-sale/
 - Past sales -> billing/sale-history/
 - Shared sale logic -> billing/billingService.js
+- Barcodes: drawing and printing stickers (barcode.jsx), scanning at New Sale with a USB/phone scanner or the camera (scanner.jsx) -> barcode/
 - Recording payments (scheme installments AND bill payments) -> payments/
 - Product catalogue -> catalogue-studio/
 - Promotions and banners -> marketing/

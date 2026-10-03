@@ -17,3 +17,6 @@ tsconfig.tsbuildinfo
 *.log
 .DS_Store
 web-src.tar.gz
+
+# Copied from node_modules by scripts/copy-zxing-wasm.mjs
+/public/zxing_reader.wasm

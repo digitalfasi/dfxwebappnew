@@ -15,6 +15,7 @@ import { useAuth } from "@/_shared/AuthContext";
 import { loadDraft, saveDraft, clearDraft } from "@/_shared/purchaseDraft";
 import { VendorForm } from "@/modules/procurement/purchase-history/Vendors";
 import { staffService } from "@/modules/staff/staffService";
+import { Barcode, barcodeValueOf, printBarcodeLabels } from "@/modules/barcode/barcode";
 
 // A purchase is ALWAYS priced at the 24K (pure gold) rate — the purity only
 // converts the net weight into the pure gold it contains, it never changes the
@@ -411,6 +412,89 @@ const nowLocalInput = () => {
 };
 // "2026-09-22T18:15" -> "2026-09-22", the DATE the backend keeps indexed.
 const dateOnly = (v) => (v ? String(v).slice(0, 10) : "");
+
+function labelOf(item) {
+  const net = Number(item?.net_gold_weight_grams);
+  return {
+    value: barcodeValueOf(item),
+    title: item?.product_name || "",
+    line: [item?.purity ? purityLabel(item.purity) : "", Number.isFinite(net) ? `${net.toFixed(3)} g` : ""].filter(Boolean).join(" · "),
+  };
+}
+
+// After a bulk purchase is recorded: every saved piece with its barcode, one
+// Print per row and Print all. Uses the codes the server SAVED, never the
+// grid's preview, so a sticker can never carry a code that was not recorded.
+function BarcodeSheet({ set, onClose }) {
+  const labels = set.items.map(labelOf).filter((l) => l.value);
+  const print = (list) => { if (!printBarcodeLabels(list)) toast("Nothing to print"); };
+  // Stickers printed from the grid before recording: a code whose purity /
+  // weight changed, or a code that was not saved at all, means that sticker
+  // would open the wrong piece (or none) at billing.
+  const printed = set.printed || new Map();
+  const saved = new Set(labels.map((l) => l.value));
+  const status = (l) => (!printed.has(l.value) ? "new" : printed.get(l.value) === l.line ? "ok" : "wrong");
+  const wrong = labels.filter((l) => status(l) === "wrong");
+  const orphans = [...printed.keys()].filter((v) => !saved.has(v));
+  const toPrint = labels.filter((l) => status(l) !== "ok");
+  return (
+    <div className="fixed inset-0 z-[75] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="barcode-sheet-title">
+      <button className="absolute inset-0 bg-ink/50 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
+      <div className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-[720px] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 px-6 pb-4 pt-6">
+          <div>
+            <h3 id="barcode-sheet-title" className="text-base font-extrabold">Barcodes for this purchase</h3>
+            <p className="mt-0.5 text-sm text-muted">
+              {labels.length} {set.kind === "RAW_GOLD" ? (labels.length === 1 ? "bar" : "bars") : (labels.length === 1 ? "piece" : "pieces")} recorded. Print the stickers and stick each one on its {set.kind === "RAW_GOLD" ? "bar" : "piece"} - at billing, scanning it opens that {set.kind === "RAW_GOLD" ? "bar" : "piece"}.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => print(labels)} disabled={!labels.length}>Print all ({labels.length})</Button>
+            {printed.size > 0 && toPrint.length > 0 && toPrint.length < labels.length && (
+              <Button size="sm" variant="outline" onClick={() => print(toPrint)}>Print only the {toPrint.length} still needed</Button>
+            )}
+          </div>
+        </div>
+        {(wrong.length > 0 || orphans.length > 0) && (
+          <div className="mx-6 mb-4 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm text-danger" role="alert">
+            <div className="font-extrabold">Some stickers printed before recording are now wrong</div>
+            <p className="mt-1 font-semibold leading-snug">
+              {orphans.length > 0 && <>Throw away the sticker{orphans.length > 1 ? "s" : ""} <span className="font-mono">{orphans.join(", ")}</span> - no piece was saved with {orphans.length > 1 ? "those codes" : "that code"}. </>}
+              {wrong.length > 0 && <>Reprint the row{wrong.length > 1 ? "s" : ""} marked below - the weight or purity on it no longer matches what was saved.</>}
+            </p>
+          </div>
+        )}
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-line">
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-[1] bg-canvas text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
+              <tr><th className="px-6 py-2.5">{set.kind === "RAW_GOLD" ? "Bar" : "Piece"}</th><th className="px-3 py-2.5">Barcode</th><th className="px-6 py-2.5 text-right">Print</th></tr>
+            </thead>
+            <tbody>
+              {labels.map((l) => (
+                <tr key={l.value} className="border-t border-line-soft">
+                  <td className="px-6 py-3 align-middle">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-mono text-sm font-bold tracking-wide text-accent-strong">{l.value}</span>
+                      {status(l) === "ok" && <span className="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">Sticker printed</span>}
+                      {status(l) === "wrong" && <span className="whitespace-nowrap rounded-full bg-danger-soft px-2 py-0.5 text-[10px] font-bold text-danger">Old sticker wrong - reprint</span>}
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted">{[l.title, l.line].filter(Boolean).join(" · ")}</div>
+                  </td>
+                  <td className="px-3 py-3 align-middle"><Barcode value={l.value} height={34} width={1.3} className="h-9 w-[150px]" /></td>
+                  <td className="px-6 py-3 text-right align-middle"><Button size="sm" variant="outline" onClick={() => print([l])}>Print</Button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-line bg-canvas/30 px-6 py-4">
+          <p className="text-[11px] text-muted">Prints on an A4 sheet of 65 stickers (38 x 21 mm) at 100% / actual size. For a PDF, choose "Save as PDF" as the printer.</p>
+          <Button variant="outline" size="sm" onClick={onClose} autoFocus>Done</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Inventory({ onNavigate, intent, clearIntent }) {
   const scope = useRef(null);
@@ -961,6 +1045,9 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
       } else {
         toast(f.addToCatalogue ? "Purchase recorded and published to catalogue" : "Purchase recorded");
       }
+      // Same sticker sheet as Bulk: the code the server SAVED, printed now or
+      // saved as PDF from the print window.
+      if (created && barcodeValueOf(created)) setBarcodeSet({ kind: "JEWELLERY", items: [created], printed: new Map() });
     } catch (err) {
       toast(err?.message || "Purchase failed");
     } finally {
@@ -1187,6 +1274,12 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
 
   // The Item Code each row will be saved with. A HUID piece has none (it bills
   // Online by its HUID); a raw-gold row gets one as soon as it has content.
+  const [barcodeSet, setBarcodeSet] = useState(null);
+  // code -> "purity · net" of every sticker printed from the grid this session.
+  const printedRef = useRef(new Map());
+  const printFromGrid = (labels) => {
+    if (printBarcodeLabels(labels)) labels.forEach((l) => printedRef.current.set(l.value, l.line));
+  };
   const bulkCodes = useMemo(() => {
     const seq = {};
     return bulkRows.map((r) => {
@@ -1199,6 +1292,36 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
       return { code: `${p}${String(nextCodes[p] + seq[p]).padStart(4, "0")}`, note: "" };
     });
   }, [bulkRows, bulkType, nextCodes]);
+
+  // Barcode per grid row: a HUID piece's HUID, otherwise its Item Code. A row
+  // can be printed once it passes the same checks Record applies to it, and
+  // its code is not repeated in the grid (the server would refuse the lot).
+  const bulkBarcodes = useMemo(() => {
+    const vals = bulkRows.map((r, i) => (bulkType === "JEWELLERY" && r.ident.trim() ? r.ident.trim().toUpperCase() : bulkCodes[i]?.code || ""));
+    const seen = {};
+    vals.forEach((v) => { if (v) seen[v] = (seen[v] || 0) + 1; });
+    return bulkRows.map((r, i) => {
+      const v = vals[i];
+      if (!v) return { value: "", ready: false, why: "" };
+      if (seen[v] > 1) return { value: v, ready: false, why: "This code is on more than one row" };
+      const net = rowWeights(r).net;
+      let why = "";
+      if (r.name.trim() && r.name.trim().length < 2) why = "Product Name needs 2+ characters";
+      else if (bulkType === "RAW_GOLD") { if (!(net > 0)) why = "Enter the net weight"; }
+      else if (!(Number(r.gross) > 0)) why = "Enter the gross weight";
+      else if ((Number(r.stoneWt) || 0) > Number(r.gross) || !(net > 0)) why = "Check the stone and net weight";
+      else if (tunchFromNumber(r.tunchNo, r.purity).error) why = "Check the Tunch";
+      if (!why && isAdmin && !(Number(r.rate) > 0)) why = "Enter the 24K Cost/g";
+      // A staff draft's Item Codes are renumbered when the Admin records it;
+      // only a HUID is already final.
+      if (!why && !isAdmin && !(bulkType === "JEWELLERY" && r.ident.trim())) why = "Item Code stickers print after the Admin records";
+      return {
+        value: v, ready: !why, why,
+        label: { value: v, title: nameOrDefault(r.name, r.category, r.subCategory), line: [purityLabel(bulkType === "RAW_GOLD" ? "24K" : r.purity), `${net.toFixed(3)} g`].join(" · ") },
+      };
+    });
+  }, [bulkRows, bulkType, bulkCodes, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+  const readyLabels = bulkBarcodes.filter((b) => b.ready).map((b) => b.label);
 
   // force === true only from the lot dialog's "Record anyway" (the button's
   // click event is never `true`).
@@ -1308,6 +1431,8 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
         ? await billingService.bulkPurchaseRawGold(payload)
         : await billingService.bulkPurchase(payload);
       const final = res?.purchase?.purchaseAmount;
+      if (res?.items?.length) setBarcodeSet({ kind: bulkType, items: res.items, printed: new Map(printedRef.current) });
+      printedRef.current = new Map();
       const fromDraft = !!draftCtx;
       setShowBulk(false);
       if (fromDraft) {
@@ -1989,6 +2114,17 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                   <Input placeholder="Hallmark Unique ID (optional)" value={addForm.huid} onChange={e=>setAddForm({...addForm, huid:e.target.value})} />
                   <span className="text-[11px] text-muted">If entered, replaces the Item Code. Bills <b>Online</b> — rate/g locked.</span>
                 </label>
+                {/* The sticker this piece gets: its HUID, or else its Item Code.
+                    Printed after Record, from the code the server saved. */}
+                {(addForm.huid.trim() || addCode.code) && (
+                  <div className="flex items-center gap-3 rounded-xl border border-line bg-canvas/40 px-3.5 py-2.5 sm:col-span-2">
+                    <Barcode value={addForm.huid.trim().toUpperCase() || addCode.code} height={30} width={1.3} className="h-8 w-[170px] shrink-0" />
+                    <div className="min-w-0">
+                      <div className="truncate font-mono text-xs font-bold tracking-wide text-ink">{addForm.huid.trim().toUpperCase() || addCode.code}</div>
+                      <div className="text-[11px] text-muted">Barcode preview. Print or save as PDF after you record the purchase.</div>
+                    </div>
+                  </div>
+                )}
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name <span className="font-semibold text-muted">(optional)</span></span><Input placeholder="e.g. Gold Bangle" value={addForm.name} onChange={e=>setAddForm({...addForm, name:e.target.value})} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Category</span><Select value={addForm.category} onValueChange={v=>setAddForm({...addForm, category:v, subCategory:""})} options={catChoices} placeholder={catChoices.length ? "Select category" : "Add categories in Master Inventory"} /></label>
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Sub-category</span><Select value={addForm.subCategory} onValueChange={v=>setAddForm({...addForm, subCategory:v})} options={subChoicesFor(addForm.category)} placeholder={addForm.category ? "Select sub-category" : "Pick a category first"} /></label>
@@ -2247,12 +2383,13 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-line">
-                <table className={`table-fixed ${bulkType === "JEWELLERY" ? (isAdmin ? "w-[1990px]" : "w-[1380px]") : (isAdmin ? "w-[1330px]" : "w-[1060px]")} border-collapse text-sm`}>
+                <table className={`table-fixed ${bulkType === "JEWELLERY" ? (isAdmin ? "w-[2200px]" : "w-[1590px]") : (isAdmin ? "w-[1540px]" : "w-[1270px]")} border-collapse text-sm`}>
                   <thead><tr className="bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                     {/* Jewellery: Item Code (blank = auto, Offline) XOR HUID
                         (Online, replaces the Item Code). Raw gold: serial. */}
                     <th className="px-3 py-2 w-[150px]">Item Code</th>
                     {bulkType === "JEWELLERY" && <th className="px-3 py-2 w-[150px]">HUID</th>}
+                    <th className="px-2 py-2 w-[210px]" title="Made from the HUID, or else the Item Code. Print turns on once the row is filled in.">Barcode</th>
                     <th className="px-2 py-2 w-[180px]">Product Name</th>
                     <th className="px-2 py-2 w-[170px]">Category</th>
                     <th className="px-2 py-2 w-[190px]">Sub-category</th>
@@ -2291,6 +2428,25 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                           {bulkType === "JEWELLERY" && (
                             <td className="px-2 py-2"><Input value={r.ident} onChange={e=>setCell("ident",e.target.value)} placeholder="Optional" className="h-9 text-sm" /></td>
                           )}
+                          <td className="px-2 py-2">
+                            {(() => {
+                              const b = bulkBarcodes[i];
+                              if (!b?.value) return <div className="flex h-9 items-center rounded-xl border border-dashed border-line bg-canvas/40 px-3 text-[11px] font-semibold text-muted">After the code</div>;
+                              return (
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex h-9 min-w-0 flex-1 items-center justify-center rounded-xl border border-line bg-white px-2" title={b.value}>
+                                    <Barcode value={b.value} height={26} width={1.1} className="h-6 w-full" />
+                                  </div>
+                                  <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0" disabled={!b.ready}
+                                    title={b.ready ? `Print the ${b.value} sticker` : b.why} aria-label={b.ready ? `Print barcode ${b.value}` : `Cannot print yet: ${b.why}`}
+                                    onClick={() => printFromGrid([b.label])}>
+                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><path d="M6 14h12v7H6z" /></svg>
+                                  </Button>
+                                </div>
+                              );
+                            })()}
+                            {bulkBarcodes[i]?.value && !bulkBarcodes[i].ready && <span className="mt-1 block text-[10px] font-semibold text-muted">{bulkBarcodes[i].why}</span>}
+                          </td>
                           <td className="px-2 py-2"><Input value={r.name} onChange={e=>setCell("name",e.target.value)} placeholder="Name" className="h-9 text-sm" /></td>
                           <td className="px-2 py-2">{bulkType==="JEWELLERY"
                             ? <Select value={r.category||""} onValueChange={v=>setCell("category",v)} options={catChoices} placeholder="Category" />
@@ -2371,8 +2527,15 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                 </table>
               </div>
 
-              <div>
+              <div className="flex flex-wrap items-center gap-2.5">
                 <Button variant="outline" size="sm" onClick={()=>setBulkRows([...bulkRows, newBulkRow()])}>Add Row</Button>
+                <Button variant="outline" size="sm" disabled={!readyLabels.length} onClick={() => printFromGrid(readyLabels)}
+                  title={readyLabels.length ? "Print a sticker for every filled-in row" : "Fill in a row to print its barcode"}>
+                  Print all barcodes{readyLabels.length ? ` (${readyLabels.length})` : ""}
+                </Button>
+                {readyLabels.length > 0 && readyLabels.length < bulkBarcodes.filter((b) => b.value).length && (
+                  <span className="text-[11px] font-semibold text-muted">Rows not filled in yet are skipped</span>
+                )}
               </div>
 
               {/* Settlement breakdown — the same four steps as the vendor's slip:
@@ -2626,6 +2789,8 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
         </div>
       )}
       {/* Lot mismatch - the rows entered do not add up to the lot yet. */}
+      {barcodeSet && <BarcodeSheet set={barcodeSet} onClose={() => setBarcodeSet(null)} />}
+
       {lotConfirm && showBulk && (() => {
         const lines = [
           { label: "Gold weight", unit: "g", used: lotConfirm.weight, lot: lotConfirm.lotW, fmt: (x) => x.toFixed(3) },

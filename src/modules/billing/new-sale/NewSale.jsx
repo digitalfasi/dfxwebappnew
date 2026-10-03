@@ -13,6 +13,7 @@ import { billingService } from "@/modules/billing/billingService";
 import { useAuth } from "@/_shared/AuthContext";
 import { customerService } from "@/modules/customers/customerService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
+import { useScannerInput, CameraScanner } from "@/modules/barcode/scanner";
 
 // New Sale / customer billing. Backend is the sole financial authority: this
 // screen only sends inputs/overrides (applicable rate/g, making, wastage, GST,
@@ -48,7 +49,7 @@ function formatAmountsInText(text) {
   );
 }
 
-export default function NewSale() {
+export default function NewSale({ intent, clearIntent } = {}) {
   const scope = useRef(null);
   usePressFeedback(scope);
 
@@ -391,8 +392,8 @@ export default function NewSale() {
               : "BREAK_EVEN");
 
   // First HUID lookup — confirm a real sellable item and seed edit fields.
-  const handleFind = useCallback(async () => {
-    const key = code.trim();
+  const handleFind = useCallback(async (scanned) => {
+    const key = (typeof scanned === "string" ? scanned : code).trim();
     if (!key) { toast("Enter a HUID, Item Code or serial number"); return; }
     if (loading) return;
     setLoading(true); setLookupError("");
@@ -455,6 +456,34 @@ export default function NewSale() {
       setLoading(false);
     }
   }, [code, loading]);
+
+  // A scan (USB scanner, phone app or camera) runs the same lookup as Find
+  // Product. With a bill already open it never replaces the piece on its own:
+  // the code is put in the box and the cashier confirms with Find Product.
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const onScanned = useCallback((raw) => {
+    const v = String(raw || "").trim().toUpperCase();
+    if (!v) return;
+    if (product || rawGold) {
+      const onBill = [code, product?.productCode, product?.huid].map((x) => String(x || "").trim().toUpperCase());
+      if (onBill.includes(v)) { toast("This piece is already on the bill"); return; }
+      setCode(v);
+      toast(`Scanned ${v} - press Find Product to bill it instead`);
+      return;
+    }
+    setCode(v);
+    handleFind(v);
+  }, [product, rawGold, code, handleFind]);
+  useScannerInput(onScanned, !loading && !cameraOpen);
+  const onCameraResult = useCallback((v) => { setCameraOpen(false); onScanned(v); }, [onScanned]);
+  const closeCamera = useCallback(() => setCameraOpen(false), []);
+  // Arrived from a scan on another page: bill that piece.
+  useEffect(() => {
+    if (!intent?.scan) return;
+    const v = intent.scan;
+    clearIntent?.();
+    onScanned(v);
+  }, [intent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-quote authoritatively when any pricing input changes (debounced). The
   // backend recomputes; an over-ceiling discount is rejected server-side and we
@@ -1022,11 +1051,16 @@ export default function NewSale() {
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1.5 flex-1 min-w-[220px]">
             <span className="text-xs font-bold">HUID, Item Code or Serial No. *</span>
-            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="HUID or Item Code for jewellery, serial number for a gold bar" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
+            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Type or scan: HUID or Item Code for jewellery, serial number for a gold bar" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
           </label>
           <Button size="sm" className="bg-accent hover:bg-accent-strong h-10 px-6" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
+          <Button size="sm" variant="outline" className="h-10 px-5" disabled={loading} onClick={() => setCameraOpen(true)} title="Scan the piece's barcode sticker with the camera. A USB or phone scanner works without this - just scan.">
+            <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10.5 8v8M14 8v8M17 8v8" /></svg>
+            Scan barcode
+          </Button>
           <Button size="sm" variant="outline" className="h-10 px-5" onClick={openDrafts}>Unfinished bills</Button>
         </div>
+        {cameraOpen && <CameraScanner onResult={onCameraResult} onClose={closeCamera} />}
         {/* Not a toast. A toast fades and this must not: until someone cancels
           that invoice there is a sale on the books for a piece the customer
           never took. It stays until dismissed by hand. */}

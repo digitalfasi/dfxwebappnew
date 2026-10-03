@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Sidebar, { NAV_SECTIONS } from "@/_shared/Sidebar";
 import { useAuth } from "@/_shared/AuthContext";
 import { canOpen, landingPage } from "@/_shared/moduleAccess";
@@ -28,7 +28,8 @@ import PricingSettings from "@/modules/billing/pricing-settings/PricingSettings"
 import ReportsAnalytics from "@/modules/reports/ReportsAnalytics";
 import SalesHistory from "@/modules/billing/sale-history/SalesHistory";
 import ComingSoon from "@/_shared/ComingSoon";
-import { subscribe } from "@/_shared/toast";
+import { subscribe, toast } from "@/_shared/toast";
+import { useScannerInput } from "@/modules/barcode/scanner";
 import { goldRateService } from "@/modules/gold-rate/goldRateService";
 
 const PAGES = {
@@ -191,6 +192,17 @@ export default function App() {
     const home = landingPage(role, permissions, navOrder);
     if (home && home !== page) setPage(home);
   }, [allowed, role, page, permissions]);
+
+  // A barcode scanned on any other page opens that piece in New Sale. New Sale
+  // runs its own scanner listener, so this one is off there.
+  const onAppScan = useCallback((raw) => {
+    const v = String(raw || "").trim().toUpperCase();
+    if (!v) return;
+    if (!canOpen("new-sale", role, permissions)) { toast(`Scanned ${v} - this login cannot open New Sale`); return; }
+    // Owner's rule: a scan on any page goes straight to New Sale, found or not.
+    setPage("new-sale", { scan: v });
+  }, [role, permissions]); // eslint-disable-line react-hooks/exhaustive-deps
+  useScannerInput(onAppScan, !!user && page !== "new-sale");
 
   const meta = PAGES[page] ?? NAV_SECTIONS.flatMap((s) => s.items).find((i) => i.id === page) ?? { title: "Dashboard" };
   const Page = allowed ? meta.component : null;

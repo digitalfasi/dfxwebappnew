@@ -275,7 +275,7 @@ describe("one lookup box for both trades", () => {
     // here, when typing its serial has always worked.
     // Phase 3: a piece is found by HUID OR by its Item Code.
     expect(ns).toMatch(/HUID, Item Code or Serial No\. \*/);
-    expect(ns).toMatch(/placeholder="HUID or Item Code for jewellery, serial number for a gold bar"/);
+    expect(ns).toMatch(/placeholder="Type or scan: HUID or Item Code for jewellery, serial number for a gold bar"/);
     expect(ns).not.toMatch(/placeholder="Enter HUID"/);
     // including the empty-field toast, which is the one place the old wording
     // survived a bundle check

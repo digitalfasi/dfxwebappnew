@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-zxing-wasm.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-zxing-wasm.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -12,9 +14,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "barcode-detector": "3.2.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "gsap": "^3.12.5",
+    "jsbarcode": "3.12.3",
     "leaflet": "^1.9.4",
     "next": "^16.3.5",
     "react": "19.1.1",

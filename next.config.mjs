@@ -62,7 +62,9 @@ const IS_DEV = process.env.NODE_ENV !== "production";
 
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${IS_DEV ? " 'unsafe-eval'" : ""}`,
+  // 'wasm-unsafe-eval' lets the barcode reader (WebAssembly, served from this
+  // site) compile. It allows WebAssembly only - JavaScript eval stays blocked.
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${IS_DEV ? " 'unsafe-eval'" : ""}`,
   // Google Fonts serves the stylesheet that loads Manrope and JetBrains Mono,
   // which layout.tsx links. Without it here the stylesheet is BLOCKED and the
   // whole product silently falls back to system fonts - the typography looks
@@ -102,8 +104,9 @@ const securityHeaders = [
   // Send the origin to other sites, the full path only to ourselves: an invoice
   // or customer id has no business travelling in a Referer header.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // Nothing here uses a camera, a microphone or a location.
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
+  // The camera is for New Sale's "Scan barcode", on this site only (self) -
+  // never inside another site's frame. No microphone or location.
+  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), interest-cohort=()" },
   // HTTPS only, once the browser has seen this header. Kept off preload: that
   // is a one-way commitment for the whole domain.
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
