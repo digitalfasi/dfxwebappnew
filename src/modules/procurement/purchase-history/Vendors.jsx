@@ -119,7 +119,7 @@ function rollupByVendor(purchases) {
   return m;
 }
 
-export default function Vendors() {
+export default function Vendors({ intent, clearIntent } = {}) {
   const scope = useRef(null);
   usePressFeedback(scope);
 
@@ -180,6 +180,15 @@ export default function Vendors() {
 
   useEffect(() => { loadCore(); }, [loadCore]);
   useEffect(() => { loadSummary(); }, [loadSummary]);
+  // A "supplier payment due" notification opens that supplier on Purchases.
+  useEffect(() => {
+    if (!intent?.purchase || loading) return;
+    const p = purchases.find((x) => x.id === intent.purchase);
+    const v = p && vendors.find((x) => x.id === p.vendorId);
+    clearIntent?.();
+    if (v) { setDetailTab("purchases"); setDetailVendor(v); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent, loading, purchases, vendors]);
 
   const refreshAll = useCallback(async () => { await Promise.all([loadCore(), loadSummary()]); }, [loadCore, loadSummary]);
 

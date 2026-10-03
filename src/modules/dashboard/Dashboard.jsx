@@ -745,9 +745,9 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // fire, while the two beside it read correct keys and did. Silence looked
   // like good news. Worded in enrollment terms because that is what is counted:
   // one customer may hold several overdue enrollments.
-  if (cards.overdue_enrollments) alerts.push({ id: "overdue", tone: "danger", title: `${cards.overdue_enrollments} enrollment(s) with overdue payments`, detail: "Review collections", page: "payments" });
+  if (cards.overdue_enrollments) alerts.push({ id: "overdue", tone: "danger", title: `${cards.overdue_enrollments} enrollment(s) with overdue payments`, detail: "Review collections", page: "scheme-management", intent: { status: "Overdue", period: "all" } });
   if (cards.pending_inspection) alerts.push({ id: "inspect", tone: "warning", title: `${cards.pending_inspection} item(s) pending inspection`, detail: "Inspect returned inventory", page: "inventory" });
-  if (cards.pending_kyc) alerts.push({ id: "kyc", tone: "warning", title: `${cards.pending_kyc} pending KYC`, detail: "Verify customers", page: "customers" });
+  if (cards.pending_kyc) alerts.push({ id: "kyc", tone: "warning", title: `${cards.pending_kyc} pending KYC`, detail: "Verify customers", page: "customers", intent: { kyc: "Pending" } });
 
   return (
     <div ref={scope} className="mx-auto w-full max-w-[1440px]">
@@ -1018,7 +1018,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {alerts.map((a) => (
               <li key={a.id}>
-                <button onClick={() => nav(a.page)} className="flex w-full items-start gap-3 rounded-xl border border-line p-2.5 text-left transition-colors hover:bg-canvas/60">
+                <button onClick={() => nav(a.page, a.intent)} className="flex w-full items-start gap-3 rounded-xl border border-line p-2.5 text-left transition-colors hover:bg-canvas/60">
                   <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${a.tone === "danger" ? "bg-danger-soft text-danger" : "bg-warn-soft text-warn"}`}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
                   </span>

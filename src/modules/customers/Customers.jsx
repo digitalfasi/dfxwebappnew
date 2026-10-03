@@ -242,6 +242,9 @@ export default function Customers({ intent, clearIntent } = {}) {
   // Dashboard -> New Enrollment lands here asking for that dialog. Consumed
   // once and cleared, so it does not reopen when this screen next renders.
   useEffect(() => {
+    // Dashboard "pending KYC" / a "KYC submitted" notification: open the list
+    // filtered to the customers waiting for verification.
+    if (intent?.kyc && KYC_FILTERS.includes(intent.kyc)) { setKycFilter(intent.kyc); clearIntent?.(); return; }
     if (intent !== "add-customer") return;
     openAddCustomer();
     clearIntent?.();

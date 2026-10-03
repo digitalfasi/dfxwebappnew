@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import InboxRow from "@/modules/inbox/InboxRow";
-import { inboxService, INBOX_CHANGED } from "@/modules/inbox/inboxService";
+import { inboxService, inboxIntent, INBOX_CHANGED } from "@/modules/inbox/inboxService";
 import { badgeText } from "@/modules/inbox/inboxFormat";
 
 /**
@@ -109,7 +109,7 @@ export default function NotificationBell({ onNavigate }) {
       setCount((c) => Math.max(0, c - 1));
       inboxService.markRead([item.key]).catch(refreshCount);
     }
-    if (item.page && onNavigate) onNavigate(item.page);
+    if (item.page && onNavigate) onNavigate(item.page, inboxIntent(item));
   };
 
   const markAll = async () => {

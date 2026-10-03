@@ -102,7 +102,7 @@ describe("one concession, three boxes that agree", () => {
     expect(ns).toMatch(/const askingPretax = product/);
     expect(ns).toMatch(/\(product\.subtotalBeforeTax \|\| 0\) - \(product\.makingChargeAmount \|\| 0\) \+ pctToRupees\(listPct\)/);
     // and the come-down is measured from THAT, not from the current price
-    expect(ns).toMatch(/Come down from \{money\(askingPrice\)\}/);
+    expect(ns).toMatch(/\$\{money\(askingPrice\)\} list − \$\{money\(comeDown\)\}/);
   });
 
   it("selling price is what the bill comes to", () => {
@@ -370,7 +370,7 @@ describe("the enrollment list shows overdue, not the rest of the contract", () =
 describe("the metal rate the two modes quote", () => {
   it("Offline uses the published rate, ex-tax", () => {
     expect(ns).toMatch(/const modeRate = \(m\) => \{/);
-    expect(ns).toMatch(/the published \$\{product\.purity \|\| ""\} rate, before tax/);
+    expect(ns).toMatch(/`Published \$\{publishedRate != null \? money\(publishedRate\) : "—"\} \(before GST\)/);
   });
 
   it("Online uses the same published rate, before tax (no tax-inclusive rate)", () => {
@@ -537,13 +537,21 @@ describe("one answer to \"how much may I give?\"", () => {
     // It printed the tax-inclusive figure (8,025.94) beside the box's pre-tax
     // one (7,792.17) - both true, in different units, with nothing saying so.
     // The owner could not tell which number to type.
-    expect(ns).toMatch(/Max Discount<\/div><div className="num text-sm font-extrabold">\{discountCeiling != null \? money\(discountCeiling\)/);
+    expect(ns).toMatch(/Discount box: up to <b>\{money\(discountCeiling\)\}<\/b>/);
     expect(ns).not.toMatch(/Price Can Drop/);
     expect(ns).not.toMatch(/const maxDiscount =/);
   });
 
-  it("and states what that cap does to the bill, so the two figures reconcile", () => {
-    expect(ns).toMatch(/The bill falls by \{money\(round2\(discountCeiling \* taxFactor\)\)\}/);
+  it("room left is measured from the current price, so it shrinks as a discount is given", () => {
+    expect(ns).toMatch(/const roomLeft = minSafe != null \? round2\(\(product\.finalAmount \|\| 0\) - minSafe\) : null;/);
+    // and the discount line states what it takes off the bill, GST included
+    expect(ns).toMatch(/bill <b className="num">−\{money\(round2\(concession \* taxFactor\)\)\}<\/b>/);
+  });
+
+  it("a paisa gap between the rounded lines and the total is shown as round-off, nothing larger", () => {
+    expect(ns).toMatch(/if \(Math\.abs\(diff\) < 0\.005 \|\| Math\.abs\(diff\) > 0\.05\) return null;/);
+    expect(ns).toMatch(/<RoundOffRow total=\{billTotal\}/);
+    expect(ns).toMatch(/<RoundOffRow total=\{totalPayable\}/);
   });
 
   it("a scheme bill shows what the customer actually hands over", () => {

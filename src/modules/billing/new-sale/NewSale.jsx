@@ -1480,15 +1480,15 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         print. Showing the un-carved one is how this strip came
                         to display a price the server had already refused. */}
                     <SpecCell
-                      label={quoteHasScheme ? "Bill total before scheme credit" : "Selling price"}
+                      label={quoteHasScheme ? "Bill total" : "Selling price"}
                       value={schemeSelected && !quoteHasScheme ? "—" : money(sellingPrice)}
                       sub={
                         schemeSelected && !quoteHasScheme
                           ? "once the scheme is applied"
                           : quoteHasScheme
-                            ? `less scheme credit ${money(quotedScheme)} = ${money(round2(sellingPrice - quotedScheme))} payable`
+                            ? `${money(quotedScheme)} paid by scheme`
                             : comeDown > 0
-                              ? `${money(askingPrice)} asking, less ${money(comeDown)} given`
+                              ? `${money(askingPrice)} list − ${money(comeDown)}`
                               : undefined
                       }
                       mono
@@ -1516,23 +1516,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       onValueChange={onCustomerPriceInput}
                       onBlur={() => setPriceText(null)}
                       aria-label="Customer price in rupees" />
-                    {quoteHasScheme && !quoteError && (
-                      /* The box above is the money changing hands. This states
-                         where it came from, so an Admin can see the credit
-                         doing its work instead of having to subtract. */
-                      <div className="mt-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2.5">
-                        <div className="flex items-baseline justify-between gap-3">
-                          <span className="text-[11px] font-semibold text-emerald-900">Bill total for the piece</span>
-                          <span className="num text-[13px] font-bold tabular-nums text-emerald-900">
-                            {money(round2(product.finalAmount ?? sellingPrice))}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-emerald-200/70 pt-1">
-                          <span className="text-[11px] font-semibold text-emerald-700">Less: scheme credit</span>
-                          <span className="num text-[13px] font-bold tabular-nums text-emerald-700">− {money(quotedScheme)}</span>
-                        </div>
-                      </div>
-                    )}
                     {quoteError ? (
                       <p className="mt-1.5 rounded-lg border border-danger-line bg-danger-soft px-2.5 py-1.5 text-[11px] font-semibold leading-snug text-danger">
                         {/* The server's own floor is authoritative and is already
@@ -1568,21 +1551,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
                             </span>
                           </div>
                         )}
-                        {/* What the admin has actually given away. The bill
-                            records the concession as a lower making charge, so
-                            without this the only way to know how far you had
-                            come down was to subtract two numbers off two
-                            different cards. */}
-                        {comeDown > 0 && (
-                          <div className="mt-2 flex items-baseline justify-between gap-3 rounded-xl border border-line-soft bg-canvas/60 px-3 py-2">
-                            <span className="text-[11px] font-semibold text-muted">Come down from {money(askingPrice)}</span>
-                            <span className="num text-[12px] font-bold tabular-nums text-ink">−{money(comeDown)}</span>
-                          </div>
-                        )}
-                        <p className="mt-1 text-[11px] text-muted">
+                        <p className="mt-1.5 text-[11px] text-muted">
                           {schemeSelected
-                            ? <>What the customer hands over today. Raise or lower it and the making charge moves to match — the scheme credit of {money(quotedScheme)} is already taken off.</>
-                            : <>Type the quoted price. The making charge moves to match it — no discount line, one charge at the percentage actually agreed.</>}
+                            ? "After the scheme credit. Change it and the making charge adjusts."
+                            : "Type the agreed price. The making charge adjusts to match."}
                         </p>
                       </>
                     )}
@@ -1603,15 +1575,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
                          bill contradicting itself when both are right:
                          22,081.22 gold + 6,624.37 making + 100 stone. The name
                          and the suffix now say which figure this is. */
-                      label="Whole-bill margin over metal"
+                      label="Margin over metal"
                       amount={product.currentGoldValuePnl}
                       pct={product.currentGoldValueMarginPct}
-                      sub="incl. making, wastage & stone"
-                      /* The figure is opaque without its own arithmetic: it is
-                         the bill with GST taken back out (that money is the
-                         government's, not the store's) against what the metal
-                         is worth at today's rate. */
-                      detail={<>{money(toPretax(product.finalAmount || 0))} bill less GST − {money(todaysGoldValue)} metal at published rate</>}
+                      sub="before GST"
                     />
                   )}
                 </Card>
@@ -1623,18 +1590,15 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
                       <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
-                      <span className="text-[11px] text-muted">{saleMode === "ONLINE" ? `Locked at the published ${product.purity || ""} rate ${publishedRate != null ? money(publishedRate) : "—"}, before tax. GST is added on the bill.` : `Editable. Default ${publishedRate != null ? money(publishedRate) : "—"} — the published ${product.purity || ""} rate, before tax.`}</span>
                       {/* The backend refuses a rate more than 15% either side of
-                          the published one — a tamper/typo net, not a haggling
-                          limit. Stating the range here means the counter never
-                          meets that rejection blind. */}
-                      {saleMode === "OFFLINE" && rateBand != null && (
-                        <span className={`text-[11px] ${rateOutOfBand ? "font-semibold text-danger" : "text-muted"}`}>
-                          {rateOutOfBand
-                            ? `Rate must be between ${money(rateBand.low)} and ${money(rateBand.high)} — ${money(publishedRate)} is today's published ${product.purity || ""} rate.`
-                            : `Allowed ${money(rateBand.low)} – ${money(rateBand.high)}.`}
-                        </span>
-                      )}
+                          the published one, so the range is stated up front. */}
+                      <span className={`text-[11px] ${rateOutOfBand ? "font-semibold text-danger" : "text-muted"}`}>
+                        {saleMode === "ONLINE"
+                          ? `Locked at today's published rate ${publishedRate != null ? money(publishedRate) : "—"} (before GST).`
+                          : rateOutOfBand
+                            ? `Must be between ${money(rateBand.low)} and ${money(rateBand.high)}.`
+                            : `Published ${publishedRate != null ? money(publishedRate) : "—"} (before GST)${rateBand != null ? ` · allowed ${money(rateBand.low)} – ${money(rateBand.high)}` : ""}.`}
+                      </span>
                     </label>
                     <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">Making Charge {chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}</span>
@@ -1653,13 +1617,13 @@ export default function NewSale({ intent, clearIntent } = {}) {
                               counter needs the decision, not the derivation. */}
                           {bands
                             ? billVerdict === "LOSS"
-                              ? `At ${round2(impliedMakingPct)}% this bill loses money — break-even is ${round2(breakEvenPct)}% (tunch + running cost).`
+                              ? `Loss — break-even is ${round2(breakEvenPct)}%.`
                               : billVerdict === "BREAK_EVEN"
-                                ? `At ${round2(impliedMakingPct)}% the bill only covers tunch + running cost — no profit.`
-                                : `At ${round2(impliedMakingPct)}% the bill is in profit — ${round2(impliedMakingPct - breakEvenPct)}% above break-even.`
-                            : billVerdict === "LOSS" ? "This bill loses money."
-                              : billVerdict === "BREAK_EVEN" ? "Costs recovered, no profit."
-                              : "In profit."}
+                                ? "Break-even — no profit."
+                                : `Profit — ${round2(impliedMakingPct - breakEvenPct)}% above break-even.`
+                            : billVerdict === "LOSS" ? "Loss."
+                              : billVerdict === "BREAK_EVEN" ? "Break-even — no profit."
+                              : "Profit."}
                         </span>
                       )}
                     </label>
@@ -1672,7 +1636,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       {/* The unit matters now: a discount comes off the taxable
                           value, so the bill falls by the discount plus the GST
                           that is no longer due on it. */}
-                      <span className="text-xs font-bold">Discount (₹) <span className="font-normal text-muted">— off the taxable value</span></span>
+                      <span className="text-xs font-bold">Discount (₹) <span className="font-normal text-muted">— before GST</span></span>
                       {/* The same concession the Making Charge box is showing,
                           in rupees. Type here and the percentage above moves to
                           match; type there and this follows. Neither is a
@@ -1686,20 +1650,16 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         placeholder="0" />
                       {concession > 0 && (
                         <span className="text-[11px] text-muted">
-                          Given as a lower making charge — {round2(listPct)}% down to {round2(agreedPct)}%.
-                          The bill falls by <b className="num">{money(round2(concession * taxFactor))}</b>, off the {money(askingPrice)} asking price
-                          {product.gstApplied && (product.taxRatePercent || 0) > 0 ? ` — the ${money(concession)} plus the ${product.taxRatePercent}% GST no longer due on it` : ""}.
+                          Making {round2(listPct)}% → {round2(agreedPct)}% · bill <b className="num">−{money(round2(concession * taxFactor))}</b> incl. GST
                         </span>
                       )}
-                      {discountCeiling != null && (showProfit || discountExceedsProfit) ? (
+                      {discountCeiling != null && (showProfit || discountExceedsProfit) && (
                         <span className={`text-[11px] ${discountExceedsProfit ? "font-semibold text-amber-700" : "text-muted"}`}>
                           {discountExceedsProfit
-                            ? `Beyond ${money(discountCeiling)} this bill sells below break-even (LOSS). You can still bill it.`
-                            : schemeSelected
-                              ? `Up to ${money(discountCeiling)} — the profit above break-even on the grams the scheme has not covered. That takes ${money(round2(discountCeiling * taxFactor))} off the bill, with the GST no longer due on it.`
-                              : `Up to ${money(discountCeiling)} — the profit above break-even on this piece. That takes ${money(round2(discountCeiling * taxFactor))} off the bill, with the GST no longer due on it. Past it the bill is a loss.`}
+                            ? `Over ${money(discountCeiling)} the bill is below break-even. You can still bill it.`
+                            : `Max ${money(discountCeiling)} before break-even.`}
                         </span>
-                      ) : <span className="text-[11px] text-muted">A discount is the making charge coming down, and nothing else.</span>}
+                      )}
                     </label>
                     <label className="grid gap-1.5 sm:col-span-2">
                       <span className="text-xs font-bold">Exchange Value (₹) <span className="font-normal text-muted">— the customer&apos;s old gold</span></span>
@@ -1712,12 +1672,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         placeholder="0" />
                       <span className={`text-[11px] ${exchangeInvalid ? "font-semibold text-danger" : "text-muted"}`}>
                         {schemeSelected
-                          ? "Not available on a scheme bill — the scheme settles this bill."
+                          ? "Not available on a scheme bill."
                           : exchangeInvalid
                             ? `Can't be more than the bill total of ${money(billTotal)}.`
-                            : exchangeValue > 0
-                              ? `Taken off what the customer pays: ${money(billTotal)} − ${money(exchangeValue)} = ${money(round2(billTotal - exchangeValue))}. The bill value and GST stay the same.`
-                              : "Comes off what the customer pays. The bill value, GST and profit stay the same."}
+                            : "Deducted from the amount to pay. Bill value and GST are unchanged."}
                       </span>
                     </label>
                   </div>
@@ -1870,7 +1828,16 @@ export default function NewSale({ intent, clearIntent } = {}) {
                           below is calculated on. */}
                       <Row label="Chargeable gold value" value={money(round2(chargeableGold))} divider />
 
-                      <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
+                      {/* Same presentation as a non-scheme bill: making at list,
+                          then the concession taken off it. */}
+                      {concession > 0.004 ? (
+                        <>
+                          <Row label={`Making Charge ${round2(listPct)}%`} value={money(round2((product.makingChargeAmount || 0) + concession))} />
+                          <Row label={`Discount (${round2(listPct)}% → ${round2(agreedPct)}%)`} value={`− ${money(concession)}`} tone="text-emerald-700" />
+                        </>
+                      ) : (
+                        <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
+                      )}
                       <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
                       {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
                       {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
@@ -1892,6 +1859,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         </>
                       )}
                       <Row label={`GST${taxLabel}`} value={money(product.taxAmount)} />
+                      <RoundOffRow total={totalPayable} parts={round2(normalSubtotal - disc) + (product.taxAmount || 0)} />
                       <Row label="Total Payable" value={money(totalPayable)} strong divider />
 
                       {/* What the scheme gold did NOT carry. Not deducted from
@@ -1904,9 +1872,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         </div>
                       )}
                       <p className="mt-1 text-[10px] leading-snug text-emerald-800/80">
-                        The scheme&rsquo;s{pureRate > 0 ? ` ${schemeG.toFixed(3)} g ` : " "}gold is bought at pure gold value — no making charge, no wastage and no GST on it. Making and GST above are charged only on the
-                        {pureRate > 0 ? ` ${normalG.toFixed(3)} g ` : " gold "}
-                        it did not cover.
+                        No making, wastage or GST on the scheme gold{pureRate > 0 ? ` (${schemeG.toFixed(3)} g)` : ""} — only on the rest{pureRate > 0 ? ` (${normalG.toFixed(3)} g)` : ""}.
                       </p>
 
                       {/* Mirrors the Payment card. Until a status is picked
@@ -1931,7 +1897,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     {concession > 0.004 ? (
                       <>
                         <Row label={`Making Charge ${round2(listPct)}%`} value={money(round2((product.makingChargeAmount || 0) + concession))} />
-                        <Row label="Discount" value={`− ${money(concession)}`} tone="text-emerald-700" />
+                        <Row label={`Discount (${round2(listPct)}% → ${round2(agreedPct)}%)`} value={`− ${money(concession)}`} tone="text-emerald-700" />
                       </>
                     ) : (
                       <Row label={`Making Charge${chargePct(product.makingChargeType, makingVal || product.makingChargeValue) ? ` ${chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}` : ""}`} value={money(product.makingChargeAmount)} />
@@ -1951,6 +1917,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       </>
                     )}
                     <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
+                    <RoundOffRow total={billTotal} parts={round2((product.subtotalBeforeTax || 0) - (product.discountAmount || 0)) + (product.taxAmount || 0)} />
                     <BillTotalBand label="Bill Total" value={money(billTotal)} />
                     {exchangeValue > 0 && !exchangeInvalid && (
                       <>
@@ -1983,18 +1950,25 @@ export default function NewSale({ intent, clearIntent } = {}) {
                           beside a real 3,10,799.66. */}
                       <div><div className="text-[10px] font-bold uppercase text-muted">{quoteHasScheme ? "Customer Pays" : "Current Price"}</div><div className="num text-sm font-extrabold">{money(round2((product.finalAmount || 0) - quotedScheme))}</div></div>
                       <div><div className="text-[10px] font-bold uppercase text-muted">Min Safe Price</div><div className="num text-sm font-extrabold">{minSafe != null ? money(round2(minSafe - quotedScheme)) : "—"}</div></div>
-                      {/* The SAME figure the Discount box takes, not a second
-                          one in another unit. Two numbers for one question -
-                          7,792.17 there, 8,025.94 here - is what made this
-                          panel impossible to act on. */}
-                      <div><div className="text-[10px] font-bold uppercase text-muted">Max Discount</div><div className="num text-sm font-extrabold">{discountCeiling != null ? money(discountCeiling) : "—"}</div></div>
+                      {/* How far THIS price can still come down - measured
+                          from what the customer pays now, not from list, so it
+                          shrinks as a discount is given. */}
+                      {(() => {
+                        const roomLeft = minSafe != null ? round2((product.finalAmount || 0) - minSafe) : null;
+                        return (
+                          <div><div className="text-[10px] font-bold uppercase text-muted">Room left</div>
+                            <div className={`num text-sm font-extrabold ${roomLeft != null && roomLeft < 0 ? "text-danger" : ""}`}>{roomLeft != null ? (roomLeft < 0 ? `− ${money(-roomLeft)}` : money(roomLeft)) : "—"}</div></div>
+                        );
+                      })()}
                     </div>
-                    <div className="mt-2 text-[10px] leading-snug text-emerald-800/80">
-                      {discountCeiling != null && discountCeiling > 0
-                        ? <>Type up to <b>{money(discountCeiling)}</b> in Discount &mdash; that is the lowest price before the bill goes below break-even. The bill falls by {money(round2(discountCeiling * taxFactor))}: the discount plus the {product.taxRatePercent || 0}% GST no longer due on it.</>
-                        : <>The lowest price before the bill goes below break-even.</>}
-                    </div>
-                    {product.safePrice.message && <div className={`mt-2 text-[11px] ${product.safePrice.isLoss ? "font-semibold text-danger" : "text-emerald-800"}`}>{product.safePrice.message}</div>}
+                    {discountCeiling != null && (
+                      <div className="mt-2 text-[10px] leading-snug text-emerald-800/80">
+                        Discount box: up to <b>{money(discountCeiling)}</b> in total before break-even{concession > 0 ? ` (${money(concession)} given)` : ""}.
+                      </div>
+                    )}
+                    {/* The screen sends the agreed making charge, not a price,
+                        so the server's "No customer price entered." is noise. */}
+                    {product.safePrice.message && product.safePrice.requestedPrice != null && <div className={`mt-2 text-[11px] ${product.safePrice.isLoss ? "font-semibold text-danger" : "text-emerald-800"}`}>{product.safePrice.message}</div>}
                   </div>
                 ) : (
                   <div className="mt-4 rounded-xl border border-line bg-canvas/40 p-3 text-[11px] text-muted">Safe-price guidance needs this item's purchase cost — not available for it.</div>
@@ -2337,3 +2311,13 @@ const Row = ({ label, value, strong, divider, tone }) => (
     <span className={`num text-sm ${strong ? "text-base font-extrabold text-accent-strong" : `font-semibold ${tone || ""}`}`}>{value}</span>
   </div>
 );
+
+// The backend totals from unrounded figures (and a typed customer price is
+// kept exactly), so the rounded lines can miss the total by a paisa. That gap
+// is stated as a round-off so the column adds up; anything larger is not a
+// rounding gap and is left visible rather than absorbed.
+const RoundOffRow = ({ total, parts }) => {
+  const diff = round2(total - parts);
+  if (Math.abs(diff) < 0.005 || Math.abs(diff) > 0.05) return null;
+  return <Row label="Round off" value={`${diff > 0 ? "+" : "−"} ${money(Math.abs(diff))}`} tone="text-muted" />;
+};

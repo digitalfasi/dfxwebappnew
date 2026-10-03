@@ -1761,7 +1761,15 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
   const openAddPurchase = () => { setAddForm(f => ({ ...f, purchaseDate: f.purchaseDateEdited && f.purchaseDate ? f.purchaseDate : nowLocalInput() })); setNextCodes({}); setShowAdd(true); };
   // Consumed once and cleared, like Customers does for add-customer. Staff have
   // no Add/Bulk buttons here, so they land on their own draft dialog instead.
+  // A purchase-draft notification lands on the drafts card, once it has loaded.
+  const [toDrafts, setToDrafts] = useState(false);
   useEffect(() => {
+    if (!toDrafts || !purchaseDrafts.length) return;
+    document.getElementById("purchase-drafts")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setToDrafts(false);
+  }, [toDrafts, purchaseDrafts.length]);
+  useEffect(() => {
+    if (intent === "drafts") { setToDrafts(true); clearIntent?.(); return; }
     if (intent !== "bulk-purchase" && intent !== "add-purchase") return;
     if (!isAdmin) startStaffDraft();
     else if (intent === "bulk-purchase") openBulkPurchase();
@@ -1793,7 +1801,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
       </div>
 
       {purchaseDrafts.length > 0 && (
-        <Card data-motion="reveal" className={`mb-4 overflow-hidden ${isAdmin && draftsWaiting ? "border-amber-300" : ""}`}>
+        <Card id="purchase-drafts" data-motion="reveal" className={`mb-4 scroll-mt-4 overflow-hidden ${isAdmin && draftsWaiting ? "border-amber-300" : ""}`}>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-6 py-3">
             <div className="flex items-center gap-2.5">
               <h3 className="text-sm font-extrabold">{isAdmin ? "Staff purchase drafts" : "My purchase drafts"}</h3>

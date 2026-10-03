@@ -29,7 +29,7 @@ const fmtWhen = (iso) => {
   } catch { return fmtDate(iso); }
 };
 
-export default function Support() {
+export default function Support({ intent, clearIntent } = {}) {
   const scope = useRef(null);
   usePressFeedback(scope);
 
@@ -108,6 +108,16 @@ export default function Support() {
       setDetailLoading(false);
     }
   };
+
+  // From a "support ticket" / "reply on ticket" notification: open that ticket
+  // once the list has it. Consumed once, like the other landing intents.
+  useEffect(() => {
+    if (!intent?.ticket || loading) return;
+    const row = tickets.find((t) => t.ticketNumber === intent.ticket);
+    clearIntent?.();
+    if (row) openTicket(row);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent, loading, tickets]);
 
   // Writes straight through; the row and the open panel both take the ticket
   // the backend returns, so nothing on screen can drift from what was saved.
