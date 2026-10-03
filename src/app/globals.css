@@ -59,6 +59,15 @@ body { margin: 0; }
   margin-right: 0 !important;
 }
 
+/* Phone: the shell's Back arrow sits at the top right, level with the page
+   title, so a long title ("Jeweller Store Configuration") wraps before it
+   instead of running underneath. */
+@media (max-width: 1023.98px) {
+  .content-shell:has(> [data-shell-back]) [data-motion="page-head"] h2 {
+    padding-right: 2.75rem;
+  }
+}
+
 ::selection { background: var(--color-accent-soft); }
 
 .glass {
