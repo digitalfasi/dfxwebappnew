@@ -382,11 +382,9 @@ const rowHasContent = (r) => !!(String(r.ident || "").trim() || String(r.name ||
 const EMPTY_PURCHASE = {
   // Item Code XOR HUID: itemCode blank = auto-generated; a HUID replaces it.
   photoFile: null, photo: null, itemCode: "", huid: "", name: "", category: "Rings", subCategory: "Traditional",
-  // gross + stoneWt are entered; net is DERIVED from them. netOverride holds a
-  // hand-corrected net for the real case where the piece weighs differently
-  // from gross - stone; the computed figure is kept beside it and both are
-  // shown, so an override is never silent.
-  purity: "22K", gross: "", stoneWt: "", netOverride: "", netOverridden: false,
+  // gross + stoneWt are entered; net is always DERIVED from them (owner: the
+  // "Scale net differs" override confused everyone and was removed).
+  purity: "22K", gross: "", stoneWt: "",
   vendor: "", deliveredBy: "", deliveredByPhone: "", deliveredNew: false, purchaseDate: "", invoice: "", referenceType: "INVOICE", rate: "",
   tunchNo: "", other: "", amount: null, ...emptyPayment(), addToCatalogue: true,
 };
@@ -846,26 +844,13 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
 
   // THE derivation for a single purchase - the mirror of rowWeights for a bulk
   // row. The slip states gross and stone, so net is what is left: a 45 g piece
-  // carrying 5 g of stones is 40 g of gold. The operator may override the net
-  // when the scale disagrees, and then BOTH figures are kept and shown - an
-  // override is never silent, and never quietly becomes the computed one.
+  // carrying 5 g of stones is 40 g of gold.
   const addWeights = useMemo(() => {
     const gross = Number(addForm.gross) || 0;
     const stone = Math.max(0, Number(addForm.stoneWt) || 0);
-    const computedNet = Math.max(0, gross - stone);
-    const overrideNet = Number(addForm.netOverride) || 0;
-    const overridden = !!addForm.netOverridden && addForm.netOverride !== "";
-    return {
-      gross,
-      stone,
-      computedNet,
-      net: overridden ? overrideNet : computedNet,
-      overridden,
-      // Only a DIFFERENCE is worth reporting; an override that happens to equal
-      // the computed figure is not a discrepancy.
-      differs: overridden && Math.abs(overrideNet - computedNet) > 0.0005,
-    };
-  }, [addForm.gross, addForm.stoneWt, addForm.netOverride, addForm.netOverridden]);
+    const net = Math.max(0, gross - stone);
+    return { gross, stone, computedNet: net, net };
+  }, [addForm.gross, addForm.stoneWt]);
   const stoneWeight = addWeights.stone;
 
   // Add Purchase amount preview, in the vendor's own terms: everything is
@@ -2147,9 +2132,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                 </label>
               </div>
 
-              {/* Net gold: computed, shown, and overridable — a locked field
-                  makes the operator abandon the form when the scale disagrees,
-                  but an override is never silent: both figures stay on screen. */}
+              {/* Net gold: always Gross − Stone, shown with its working. */}
               <div className="rounded-xl border border-accent-line bg-accent-soft/25 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -2157,24 +2140,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                     <div className="num mt-1 text-2xl font-extrabold">{addWeights.net.toFixed(3)} <span className="text-base font-bold">g</span></div>
                     <div className="text-[11px] text-muted">Gross {addWeights.gross.toFixed(3)} g − Stone {addWeights.stone.toFixed(3)} g</div>
                   </div>
-                  <label className="flex items-center gap-2 text-[11px] font-bold">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-[var(--color-accent)]"
-                      checked={!!addForm.netOverridden}
-                      onChange={e=>setAddForm({...addForm, netOverridden: e.target.checked, netOverride: e.target.checked ? String(addWeights.computedNet || "") : ""})}
-                    />
-                    <span title="Tick only if the scale shows a different net than Gross − Stone. Normally leave it unticked.">Scale net differs</span>
-                  </label>
                 </div>
-                {addForm.netOverridden && (
-                  <div className="mt-3 grid gap-1.5 sm:max-w-[240px]">
-                    <Input type="number" value={addForm.netOverride} onChange={e=>setAddForm({...addForm, netOverride:e.target.value})} placeholder="Weighed net" />
-                    {addWeights.differs
-                      ? <span className="text-[11px] font-semibold text-warning">Differs from the computed {addWeights.computedNet.toFixed(3)} g by {Math.abs(addWeights.net - addWeights.computedNet).toFixed(3)} g. The entered figure is used.</span>
-                      : <span className="text-[11px] text-muted">Same as the computed figure.</span>}
-                  </div>
-                )}
                 {addAmounts.fineGrams > 0 && (
                   <div className="mt-3 border-t border-accent-line/60 pt-3 text-[11px] font-semibold text-accent-strong">
                     ≈ {addAmounts.fineGrams.toFixed(3)} g pure gold (24K equivalent = Net × {addForm.purity}/24) · + Tunch {addAmounts.tunchGrams.toFixed(3)} g = <strong>{addAmounts.payableGrams.toFixed(3)} g payable</strong>
