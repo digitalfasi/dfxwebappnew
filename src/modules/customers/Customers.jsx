@@ -517,9 +517,9 @@ export default function Customers({ intent, clearIntent } = {}) {
         const typeCounts = summary?.types ?? null;
         const typeComp = [
           { label: "Walk-in", key: "Walk-in", color: "#c9a84c" },
-          { label: "Scheme", key: "Scheme Customer", color: "#0f9b7a" },
-          { label: "Hybrid", key: "Hybrid", color: "#6366f1" },
-          { label: "New", key: "New", color: "#94a3b8" },
+          { label: "Scheme", key: "Scheme Customer", color: "#9f1d35" },
+          { label: "Hybrid", key: "Hybrid", color: "#d98a96" },
+          { label: "New", key: "New", color: "#8a93a6" },
         ].map((t) => ({ ...t, count: typeCounts ? typeCounts[t.key] ?? 0 : null }));
         // Backend counts when available; the page-derived numbers only as a
         // fallback (and then they are what they are — this page's rows).
@@ -548,16 +548,16 @@ export default function Customers({ intent, clearIntent } = {}) {
           <div className="mb-4 grid gap-3" data-motion="stat">
             <div className="grid gap-3 sm:grid-cols-3">
               <StatCard
-                label="Total customers" value={totalCustomers} note="All time" tint="#c9a84c" ring="rgba(201,168,76,0.35)"
+                label="Total customers" value={totalCustomers} note="All time" tint="#9f1d35" ring="rgba(159,29,53,0.3)"
                 icon={<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /></svg>}
               />
               <StatCard
-                label="KYC pending" value={kycPending} note="Needs review" tint={kycPending > 0 ? "#dc2626" : "#0f9b7a"} ring={kycPending > 0 ? "rgba(220,38,38,0.3)" : "rgba(15,155,122,0.3)"}
+                label="KYC pending" value={kycPending} note="Needs review" tint={kycPending > 0 ? "#dc2626" : "#9f1d35"} ring={kycPending > 0 ? "rgba(220,38,38,0.3)" : "rgba(159,29,53,0.3)"}
                 valueClass={kycPending > 0 ? "text-danger" : ""}
                 icon={<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M9 15h6" /></svg>}
               />
               <StatCard
-                label="Scheme enrolled" value={schemeEnrolled} note="With live schemes" tint="#0f9b7a" ring="rgba(15,155,122,0.3)"
+                label="Scheme enrolled" value={schemeEnrolled} note="With live schemes" tint="#9f1d35" ring="rgba(159,29,53,0.3)"
                 icon={<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="5" /><circle cx="16" cy="13" r="4" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></svg>}
               />
             </div>
@@ -599,7 +599,7 @@ export default function Customers({ intent, clearIntent } = {}) {
           <SearchInput className="w-full max-w-sm" placeholder="Search name, code, contact..." value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search customers" />
           <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by type">
             {FILTERS.map((f) => (
-              <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${filter === f ? "border-ink bg-ink text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{f}</button>
+              <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${filter === f ? "border-accent bg-accent text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{f}</button>
             ))}
           </div>
         </div>

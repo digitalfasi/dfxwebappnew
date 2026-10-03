@@ -147,7 +147,7 @@ export default function NotificationBell({ onNavigate }) {
           <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
         </svg>
         {count > 0 && (
-          <span className="num absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-surface bg-danger px-1 text-[10px] font-extrabold leading-none text-white">
+          <span className="num absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-surface bg-accent px-1 text-[10px] font-extrabold leading-none text-white">
             {badgeText(count, capped)}
           </span>
         )}

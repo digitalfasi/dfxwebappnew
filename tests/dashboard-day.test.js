@@ -64,10 +64,11 @@ describe("D1 — the page says which day it is talking about", () => {
     expect(src).toMatch(/addEventListener\("focus"/);
   });
 
-  it("has a Refresh control", () => {
-    // The senior reached for one, found none, and used the browser instead.
-    expect(src).toMatch(/>\s*Refresh\s*</);
-    expect(src).toMatch(/onClick=\{reload\}/);
+  it("still refreshes its data through reload()", () => {
+    // The visible Refresh button was removed from Quick Actions at the owner's
+    // request (2026-10-04); the page still re-fetches on a new day / stale tab.
+    expect(src).toMatch(/const reload = useCallback/);
+    expect(src).toMatch(/reloadToken/);
   });
 });
 

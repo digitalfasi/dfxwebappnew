@@ -6,29 +6,6 @@ import { useAuth } from "@/_shared/AuthContext";
 import { BUILD_SHA } from "@/_shared/utils";
 import NotificationBell from "@/_shared/NotificationBell";
 
-/* One purity's cell in the rate rail. Each purity gets its own bounded cell
-   rather than sharing one run of text, so the eye lands on a single figure
-   instead of reading across a row. The figure is tabular so the digits hold
-   their columns when a rate is republished mid-shift - an unaligned price that
-   shifts sideways on refresh is what makes a feed look unreliable. */
-function Quote({ label, value, dot }) {
-  return (
-    <div className="flex min-w-[118px] flex-col items-center justify-center border-r border-[#efe4cb] px-5 transition-colors duration-200 hover:bg-accent-soft">
-      <div className="flex items-center gap-1.5">
-        <span
-          className="h-1.5 w-1.5 rounded-full"
-          style={{ background: dot, boxShadow: `0 0 5px ${dot}, 0 0 0 2px ${dot}22` }}
-        />
-        <span className="text-[9.5px] font-extrabold uppercase tracking-[0.11em] text-muted">{label}</span>
-      </div>
-      <div className="num text-[14px] font-extrabold leading-tight tabular-nums text-ink">
-        {value != null ? Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
-        <span className="ml-0.5 text-[9.5px] font-semibold text-muted/70">/g</span>
-      </div>
-    </div>
-  );
-}
-
 // Most-asked first: the counter reads 24K / 22K before anything else.
 export const QUOTES = [
   ["24K", "rate_24k", "#c9a84c"], ["22K", "rate_22k", "#d4b65e"], ["18K", "rate_18k", "#e3cd8a"],
@@ -72,7 +49,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
   const showSearch = typeof onSearch === "function";
 
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-[#efe7d3] shadow-sm backdrop-blur-xl">
+    <header className="sticky top-0 z-20 border-b border-line bg-surface shadow-[0_1px_2px_rgba(120,80,60,0.05),0_10px_24px_-18px_rgba(120,80,60,0.28)] backdrop-blur-xl">
       <div className="flex items-center gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:h-[71px] lg:px-4 lg:py-0">
         {/* Only phone controls live here unless a crumb/title is shown - on
             desktop the empty box would push the rate rail out of line with
@@ -114,62 +91,7 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
           </div>
         )}
 
-        {/* Live bullion rate — global across every module, fills the header
-            middle when there's no search. Always shown (—/g until today's rate is
-            published). Hidden on small screens to stay clean. */}
-        {!showSearch && (
-          <div className="hidden h-12 min-w-0 flex-1 items-stretch overflow-hidden rounded-2xl border border-accent-line bg-surface shadow-[0_1px_3px_rgba(30,41,59,0.08),0_6px_16px_-8px_rgba(166,134,49,0.25),inset_0_1px_0_rgba(255,255,255,0.85)] lg:flex">
-            {/* Which day this rail is showing. "Live" ONLY when today's rate has
-                been published; otherwise the date it is actually from, so a
-                yesterday figure is never read as today's. */}
-            <div className="flex shrink-0 items-center gap-2 border-r border-line-soft bg-accent-soft px-3.5">
-              {bullion && bullion.isToday === false ? (
-                <span
-                  className="flex items-center gap-1.5 rounded-full bg-canvas px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.12em] text-muted"
-                  title="Today's rate has not been published yet — this is the last published rate."
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-muted" />
-                  {fmtDateShort(bullion.effective_date)}
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 rounded-full bg-ink px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white">
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
-                  </span>
-                  Live
-                </span>
-              )}
-            </div>
-            {/* Every published purity, scrolling as one endless feed the way a
-                bullion desk board reads — no counter has to leave the screen to
-                find 14K or 9K. Two identical runs sit back to back inside a
-                fixed window; the track travels exactly one run width so the
-                wrap is seamless. Ordered ascending by value (Silver → 24K).
-                Pauses on hover; under reduced-motion it stops moving and
-                becomes a normal horizontal scroll instead. */}
-            {/* The live feed always moves, like a bullion board. Each run holds
-                the six purities three times over (wider than any rail), and
-                the track travels exactly one run, so the loop is seamless and
-                no blank space ever shows - at any screen width or zoom.
-                Pauses on hover. */}
-            <div className="group relative min-w-[120px] flex-1 overflow-hidden">
-              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-surface to-transparent" />
-              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-surface to-transparent" />
-              <div className="flex h-full w-max animate-ticker ticker-slow items-stretch group-hover:[animation-play-state:paused]">
-                {[0, 1].map((run) => (
-                  <div key={run} className="flex items-stretch" aria-hidden={run === 1}>
-                    {[0, 1, 2].flatMap((rep) => QUOTES.map(([label, key, dot]) => (
-                      <Quote key={`${rep}-${label}`} label={label} value={bullion?.[key]} dot={dot} />
-                    )))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Phone: the rate now sits under the header (MobileRate), so the
+        {/* The rate sits under the header (MobileRate) on every screen size, so the
             controls just push right. */}
         <div className={`flex shrink-0 items-center gap-2.5 ${showSearch ? "" : "ml-auto"}`}>
           {action}
@@ -260,22 +182,22 @@ export function MobileRate({ bullion }) {
   const stale = bullion && bullion.isToday === false;
   const pair = pairs[n ? i % n : 0] || [];
   return (
-    <div className="mx-3 mt-2 rounded-xl border border-accent-line bg-accent-soft/50 px-3 py-1.5 sm:mx-6 lg:hidden">
-      <div className="flex items-center justify-between text-[10px] font-extrabold text-ink">
-        <span className="flex items-center gap-1.5">
-          <span className={`h-1.5 w-1.5 rounded-full ${stale ? "bg-muted" : "bg-accent"}`} />
+    <div className="mx-3 mt-2 rounded-xl border border-accent-line border-x-2 border-x-accent/38 bg-[#fbf1f1] shadow-[0_8px_22px_-14px_rgba(159,29,53,0.3)] px-3 py-1.5 sm:mx-6 lg:mx-8 lg:mt-4 lg:flex lg:items-center lg:gap-5 lg:px-5 lg:py-2.5">
+      <div className="flex items-center justify-between text-[10px] font-extrabold text-accent-strong lg:contents">
+        <span className="flex items-center gap-1.5 lg:shrink-0 lg:text-[11px]">
+          <span className={`h-1.5 w-1.5 rounded-full ${stale ? "bg-muted" : "bg-accent shadow-[0_0_0_3px_rgba(159,29,53,0.15)]"}`} />
           {stale ? "Last published rate" : "Live Gold Rates"}
         </span>
-        <span className="font-semibold text-muted">{stale ? `${fmtDateShort(bullion.effective_date)} · ` : ""}₹/g</span>
+        <span className="font-semibold text-muted lg:order-last lg:shrink-0 lg:text-[11px]">{stale ? `${fmtDateShort(bullion.effective_date)} · ` : ""}₹/g</span>
       </div>
-      <div key={i} className="grid h-8 grid-cols-2 items-center" style={{ animation: "fadein 350ms ease both" }}>
+      <div key={i} className="mt-1 grid h-8 grid-cols-2 items-center rounded-lg border border-accent-line/60 bg-surface lg:mt-0 lg:h-11 lg:min-w-0 lg:flex-1" style={{ animation: "fadein 350ms ease both" }}>
         {pair.length ? [0, 1].map((c) => {
           const q = pair[c];
           return (
-            <div key={c} className={`flex items-baseline justify-center gap-1.5 ${c ? "border-l border-[#efe4cb]" : ""}`}>
+            <div key={c} className={`flex items-baseline justify-center gap-1.5 lg:gap-3 ${c ? "border-l border-line-soft" : ""}`}>
               {q && <>
-                <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent-strong">{q[0]}</span>
-                <span className="num text-[16px] font-extrabold tabular-nums text-ink">
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent-strong lg:text-[11px] lg:tracking-[0.14em]">{q[0]}</span>
+                <span className="num text-[16px] font-extrabold tabular-nums text-ink lg:text-[22px]">
                   ₹{Number(bullion[q[1]]).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                 </span>
               </>}

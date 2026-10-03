@@ -15,12 +15,12 @@ import { LineChart } from "@/_shared/ui/LineChart";
 import { fmtDateShort } from "@/_shared/utils";
 
 const BUSINESS_ACCENT = "var(--color-accent)";
-const SCHEME_ACCENT = "#b8934a"; // refined champagne, not bright orange
+const SCHEME_ACCENT = "#9f1d35"; // DFX burgundy, same as the interface accent
 // Distinct categorical hues so each donut segment/legend row is identifiable
 // at a glance. Business starts at emerald (theme), Schemes offset to gold.
-const DONUT_PALETTE = ["#059669", "#d19a2e", "#2563eb", "#8b5cf6", "#e11d48", "#0891b2", "#ea580c", "#475569", "#16a34a", "#db2777"];
+const DONUT_PALETTE = ["#9f1d35", "#c9a84c", "#d98a96", "#152238", "#7f1529", "#a68631", "#667085", "#e8b4bb", "#5c1020", "#8a93a6"];
 const DONUT_BUSINESS = DONUT_PALETTE;
-const DONUT_SCHEME = ["#d19a2e", "#059669", "#8b5cf6", "#2563eb", "#e11d48", "#0891b2", "#ea580c", "#475569", "#db2777", "#16a34a"];
+const DONUT_SCHEME = ["#c9a84c", "#9f1d35", "#d98a96", "#152238", "#a68631", "#7f1529", "#667085", "#e8b4bb", "#8a93a6", "#5c1020"];
 
 // Distinguishes "the shop has no pending actions" from "we could not find out".
 // How long a dashboard may sit unwatched before returning to it is worth a
@@ -302,7 +302,8 @@ function KpiCard({ title, value, growth, growthOf, danger, onClick, loading = fa
   const up = g === null ? true : !String(g).startsWith("-");
   return (
     <button onClick={onClick} data-motion="stat"
-      className="group flex flex-col rounded-xl border border-line bg-surface p-4 text-left transition-all duration-150 hover:border-accent-line hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
+      className="group relative isolate flex flex-col overflow-hidden rounded-xl border border-line bg-surface p-4 text-left transition-all duration-150 hover:border-accent-line hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
+      <div className="pointer-events-none absolute -right-5 -top-5 -z-10 h-16 w-16 rounded-full bg-accent opacity-[0.07]" aria-hidden="true" />
       <div className="flex items-center justify-between gap-2">
         <div className="line-clamp-2 min-h-[1.9em] text-[10px] font-bold uppercase tracking-[0.06em] text-muted">{title}</div>
         {g && <span className={`text-[11px] font-bold ${up ? "text-accent-strong" : "text-danger"}`}>{g}</span>}
@@ -750,24 +751,24 @@ export default function Dashboard({ onNavigate, search = "" }) {
 
   return (
     <div ref={scope} className="mx-auto w-full max-w-[1440px]">
-      {/* PHONE: page title + Quick Actions (the live rate sits above, in the
-          shared shell). Desktop keeps the card below. */}
-      <div className="lg:hidden">
-        <h2 className="mb-3 text-2xl font-extrabold tracking-tight">Dashboard</h2>
+      {/* Page title (phone only) + Quick Actions: two modules, each opening its
+          own actions. The live rate sits above, in the shared shell. */}
+      <div>
+        <h2 className="mb-3 text-2xl font-extrabold tracking-tight lg:hidden">Dashboard</h2>
 
         <Card data-motion="reveal" className="mb-4 p-4">
           <CardTitle className="mb-3 text-sm font-extrabold">Quick Actions</CardTitle>
           {(() => {
             const mod = MOBILE_MODULES.find((m) => m.id === mobileModule);
-            const tile = "flex rounded-xl border border-line bg-white text-left transition-colors duration-150 active:bg-accent-soft/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
+            const tile = "group flex rounded-xl border border-line bg-white text-left transition-all duration-200 [&:hover]:border-accent/50 [&:hover]:bg-accent-soft [&:hover]:shadow-[0_8px_20px_-12px_rgba(159,29,53,0.35)] active:border-accent/50 active:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
             const ico = (d) => <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
             if (!mod) return (
-              <div className="grid grid-cols-1 gap-2.5">
+              <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2 lg:gap-3">
                 {MOBILE_MODULES.map((m) => (
                   <button key={m.id} type="button" onClick={() => setMobileModule(m.id)} className={`${tile} min-h-[60px] items-center gap-3 px-3.5 py-2.5`}>
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line">{ico(m.icon)}</span>
-                    <span className="min-w-0 flex-1 text-[14px] font-bold leading-tight text-ink">{m.title}</span>
-                    <span className="text-lg text-accent-strong/70" aria-hidden="true">›</span>
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line transition-colors group-[:hover]:bg-white group-[:hover]:text-accent group-[:hover]:ring-accent/30 group-active:bg-white group-active:text-accent group-active:ring-accent/30">{ico(m.icon)}</span>
+                    <span className="min-w-0 flex-1 text-[14px] font-bold leading-tight text-ink transition-colors group-[:hover]:text-accent-strong group-active:text-accent-strong">{m.title}</span>
+                    <span className="text-lg text-accent-strong/70 transition-colors group-[:hover]:text-accent-strong group-active:text-accent-strong" aria-hidden="true">›</span>
                   </button>
                 ))}
               </div>
@@ -781,12 +782,12 @@ export default function Dashboard({ onNavigate, search = "" }) {
                   </button>
                   <span className="min-w-0 text-[15px] font-extrabold leading-tight text-ink">{mod.title}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className={`grid grid-cols-2 gap-2.5 lg:gap-3 ${mod.actions.length > 2 ? "lg:grid-cols-4" : "lg:grid-cols-2"}`}>
                   {mod.actions.map((a) => (
                     <button key={a.title} type="button" onClick={() => nav(a.page, a.intent)}
                       className={`${tile} ${a.wide ? "col-span-2 min-h-[60px] items-center gap-3 px-3 py-2.5" : "min-h-[84px] flex-col items-start justify-between p-3"}`}>
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line">{ico(a.icon)}</span>
-                      <span className="text-[13px] font-bold leading-tight text-ink">{a.title}</span>
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line transition-colors group-[:hover]:bg-white group-[:hover]:text-accent group-[:hover]:ring-accent/30 group-active:bg-white group-active:text-accent group-active:ring-accent/30">{ico(a.icon)}</span>
+                      <span className="text-[13px] font-bold leading-tight text-ink transition-colors group-[:hover]:text-accent-strong group-active:text-accent-strong">{a.title}</span>
                     </button>
                   ))}
                 </div>
@@ -795,35 +796,6 @@ export default function Dashboard({ onNavigate, search = "" }) {
           })()}
         </Card>
       </div>
-
-      {/* QUICK ACTIONS */}
-      <Card data-motion="reveal" className="mb-4 hidden p-4 lg:block">
-        {/* The senior reached for a Refresh here, found none, used the browser
-            and concluded the product was stuck. Enrollment Management already
-            has one; this page did not. */}
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <CardTitle className="text-sm font-extrabold">Quick Actions</CardTitle>
-          <button type="button" onClick={reload}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-[11px] font-bold text-muted transition-colors hover:border-accent-line hover:text-ink">
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
-            Refresh
-          </button>
-        </div>
-        <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:grid-cols-3 min-[1800px]:grid-cols-6">
-          {QUICK_ACTIONS.map((qa) => (
-            <button key={qa.title} type="button" onClick={() => (qa.report ? setShowReport(true) : nav(qa.page, qa.intent))}
-              className="group flex min-h-[64px] items-center gap-3 rounded-xl border border-line bg-white px-3.5 py-3 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line hover:bg-accent-soft/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line transition-colors group-hover:bg-accent group-hover:text-white">
-                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={qa.icon} /></svg>
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-[13px] font-bold text-ink">{qa.title}</span>
-                <span className="block truncate text-[11px] font-medium text-muted">{qa.hint}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </Card>
 
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* ============ BUSINESS ============ */}
@@ -885,7 +857,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             {bizPeriod === "custom" && <CustomRange value={bizCustom} onApply={setBizCustom} accent={BUSINESS_ACCENT} />}
             {bizPeriod === "custom" && (!bizCustom.from || !bizCustom.to)
               ? <div className="flex h-40 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
-              : <LineChart series={bizSeries} accent="#059669" gradId="bizArea" fmtY={(v) => axisFmt(v, bizUnit)} />}
+              : <LineChart series={bizSeries} accent="#9f1d35" gradId="bizArea" fmtY={(v) => axisFmt(v, bizUnit)} />}
           </Card>
 
           {/* Top Selling Categories */}
@@ -931,8 +903,8 @@ export default function Dashboard({ onNavigate, search = "" }) {
         </section>
 
         {/* ============ SCHEMES ============ */}
-        <section data-motion="reveal" className="space-y-2.5 rounded-2xl border border-warn-line bg-warn-soft/40 p-3">
-          <div className="flex items-center gap-2.5 rounded-xl border border-warn-line bg-warn-soft px-3 py-2.5">
+        <section data-motion="reveal" className="space-y-2.5 rounded-2xl border border-accent-line bg-accent-soft/40 p-3">
+          <div className="flex items-center gap-2.5 rounded-xl border border-accent-line bg-accent-soft px-3 py-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-lg text-white" style={{ backgroundColor: SCHEME_ACCENT }}>
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
             </span>
@@ -999,7 +971,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
           <Card className="p-3.5">
             <div className="mb-2 flex items-center justify-between">
               <CardTitle className="text-xs font-bold">Recent Scheme Enrollments</CardTitle>
-              <button onClick={() => nav("scheme-management")} className="text-[10px] font-bold text-warn hover:underline">View All</button>
+              <button onClick={() => nav("scheme-management")} className="text-[10px] font-bold text-accent hover:underline">View All</button>
             </div>
             {shownEnroll.length === 0 ? <p className="py-5 text-center text-xs font-medium text-muted">{q ? "No matching enrollments" : "No enrollments yet"}</p> : (
               <div className="overflow-x-auto">

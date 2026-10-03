@@ -4,22 +4,30 @@
   --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  --color-canvas: #ffffff;
-  --color-surface: #ffffff;
-  --color-ink: #1e293b;
-  --color-ink-soft: #334155;
-  --color-muted: #475569;
-  --color-faint: #64748b;
-  --color-line: #d4c5b2;
-  --color-line-soft: #eae5dc;
+  /* DFX GOLD palette: ivory ground, warm-white surfaces, deep-ink type, burgundy
+     as the interface accent. Gold is kept for the logo and gold-specific data
+     only (--color-gold*). */
+  --color-canvas: #faf6f4;
+  --color-surface: #fffdfc;
+  --color-ink: #152238;
+  --color-ink-soft: #2a3a55;
+  --color-muted: #667085;
+  --color-faint: #8a93a6;
+  --color-line: #e8ddd7;
+  --color-line-soft: #f0e7e2;
+  --color-blush: #faf0ef;
 
-  --color-accent: #c9a84c;
-  --color-accent-strong: #a68631;
-  --color-accent-soft: #fffbf0;
-  --color-accent-line: #ffe5c7;
+  --color-accent: #9f1d35;
+  --color-accent-strong: #7f1529;
+  --color-accent-soft: #f6e5e7;
+  --color-accent-line: #ead0d4;
+  /* Champagne gold: the DFX lettermark and gold-specific indicators. */
+  --color-gold: #c9a84c;
+  --color-gold-strong: #a68631;
   /* The lighter end of the champagne gradient in the DFX lettermark. Added
      rather than carrying the sign-in design's separate oklch palette, so the
      mark is the same gold as every other gold in the product. */
+  --color-gold-light: #e7d59a;
   --color-accent-light: #e7d59a;
   /* The sign-in page's display face and its ink-dark primary button. Used only
      there; every other screen stays on Manrope and the gold button. */
@@ -37,7 +45,7 @@
   --color-info-line: #bfdbfe;
 
   --radius-card: 1rem;
-  --shadow-card: 0 2px 4px rgba(30,41,59,0.05), 0 8px 20px -4px rgba(30,41,59,0.08);
+  --shadow-card: 0 2px 4px rgba(120,60,50,0.05), 0 8px 20px -4px rgba(120,60,50,0.08);
   --ease-out-soft: cubic-bezier(0.2, 0, 0, 1);
 }
 
@@ -180,4 +188,13 @@ input[type="number"] {
 @keyframes shrink {
   from { transform: scaleX(1); }
   to { transform: scaleX(0); }
+}
+
+/* KPI / stat cards: a very soft rose circle clipped into the top-right corner,
+   behind the text. Same detail as the Customer and Dashboard stat cards. */
+.kpi-corner { position: relative; isolation: isolate; overflow: hidden; }
+.kpi-corner::before {
+  content: ""; position: absolute; top: -1.25rem; right: -1.25rem; z-index: -1;
+  width: 4rem; height: 4rem; border-radius: 9999px;
+  background: var(--color-accent); opacity: 0.07; pointer-events: none;
 }
