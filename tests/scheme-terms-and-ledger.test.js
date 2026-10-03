@@ -116,7 +116,7 @@ describe("New Sale says what it is doing", () => {
 
   it("the concession is stated instead of left to be worked out", () => {
     expect(src).toMatch(/const comeDown = product \? Math\.max\(0, round2\(askingPrice - sellingPrice\)\) : 0;/);
-    expect(src).toMatch(/off the \{money\(askingPrice\)\} asking price/);
+    expect(src).toMatch(/\$\{money\(askingPrice\)\} list − \$\{money\(comeDown\)\}/);
   });
 });
 
