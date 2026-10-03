@@ -31,6 +31,24 @@ const mapItem = (i = {}) => ({
   read: !!i.read,
 });
 
+// Where inside the page a notification lands - the page alone is not enough:
+// "KYC submitted" has to open the customers waiting for KYC, a ticket reply has
+// to open that ticket. Support titles carry the ticket number ("... #TKT-12").
+export const inboxIntent = (item = {}) => {
+  switch (item.kind) {
+    case "KYC_SUBMITTED": return { kyc: "Pending" };
+    case "SUPPORT_TICKET":
+    case "SUPPORT_REPLY": {
+      const m = /#(\S+)\s*$/.exec(item.title || "");
+      return m ? { ticket: m[1] } : null;
+    }
+    case "SUPPLIER_DUE": return { purchase: String(item.key || "").split(":")[1] || null };
+    case "PURCHASE_DRAFT":
+    case "DRAFT_FOR_YOU": return "drafts";
+    default: return null;
+  }
+};
+
 export const inboxService = {
   async list({ limit = 10, before = null, unread = false } = {}) {
     const q = new URLSearchParams({ limit: String(limit) });

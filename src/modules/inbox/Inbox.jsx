@@ -4,7 +4,7 @@ import { Button } from "@/_shared/ui/button";
 import { usePageMotion } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import InboxRow from "@/modules/inbox/InboxRow";
-import { inboxService, INBOX_CHANGED } from "@/modules/inbox/inboxService";
+import { inboxService, inboxIntent, INBOX_CHANGED } from "@/modules/inbox/inboxService";
 import { dayGroup, badgeText } from "@/modules/inbox/inboxFormat";
 
 const PAGE = 25;
@@ -64,7 +64,7 @@ export default function Inbox({ onNavigate }) {
       setCount((c) => Math.max(0, c - 1));
       inboxService.markRead([item.key]).catch(() => {});
     }
-    if (item.page) onNavigate(item.page);
+    if (item.page) onNavigate(item.page, inboxIntent(item));
   };
 
   const markAll = async () => {
