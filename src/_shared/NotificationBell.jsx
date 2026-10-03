@@ -157,7 +157,7 @@ export default function NotificationBell({ onNavigate }) {
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 top-full z-50 mt-2 w-[min(380px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_18px_50px_-12px_rgba(0,0,0,0.25)]"
+          className="absolute right-0 top-full z-50 mt-2 w-[min(380px,calc(100vw-32px))] max-lg:fixed max-lg:left-4 max-lg:right-4 max-lg:w-auto max-lg:max-w-[380px] max-lg:mx-auto overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_18px_50px_-12px_rgba(0,0,0,0.25)]"
         >
           <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
             <div className="flex items-center gap-2">

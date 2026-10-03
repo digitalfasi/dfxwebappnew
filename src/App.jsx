@@ -208,7 +208,7 @@ export default function App() {
   const Page = allowed ? meta.component : null;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden lg:h-screen">
       <Sidebar page={page} onNavigate={setPage} open={navOpen} onClose={() => setNavOpen(false)} collapsed={navCollapsed} onToggleCollapse={toggleNavCollapsed} />
       <div className="auto-fade-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain" onScroll={(e) => { const el = e.currentTarget; el.classList.add("is-scrolling"); clearTimeout(el._fadeT); el._fadeT = setTimeout(() => el.classList.remove("is-scrolling"), 1000); }}>
         <TopBar
@@ -220,7 +220,7 @@ export default function App() {
           hideTitle
         />
         <MobileRate bullion={bullion} />
-        <main className="content-shell relative w-full [&:has([data-own-back])>[data-shell-back]]:hidden min-w-0 flex-1 overflow-x-hidden px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+        <main className="content-shell relative w-full [&:has([data-own-back])>[data-shell-back]]:hidden min-w-0 flex-1 overflow-x-hidden px-3 py-5 max-lg:pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-7 lg:px-8 lg:py-8">
           {/* Phone page-level Back, level with the page title. Every page but the
               Dashboard is reached from somewhere else, so it goes one step back
               through the same hash history the browser already keeps. */}
