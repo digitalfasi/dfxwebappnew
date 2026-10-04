@@ -262,7 +262,7 @@ export default function PricingSettings() {
                       </div>
                     ))}
                   </div>
-                  <p className="mt-2 text-[11px] text-muted">Incl. 3% GST. Anything above break-even is profit; a discount can go down to break-even.</p>
+                  <p className="mt-2 text-[11px] text-muted">Incl. 3% GST. Anything above break-even is profit; a discount can go down to break-even. A piece that cost more than today's gold + its Tunch gets a higher break-even, so its making % on New Sale can be above this.</p>
                   <label className="mt-auto grid gap-1.5 border-t border-line pt-3.5">
                     <span className="text-xs font-bold">Set by full price <span className="font-normal text-muted">— before Tunch</span></span>
                     <div className="relative">

@@ -1510,7 +1510,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         priceText != null
                           ? priceText
                           : product.finalAmount != null
-                            ? String(round2(product.finalAmount - quotedScheme))
+                            ? round2(product.finalAmount - quotedScheme).toFixed(2)
                             : ""
                       }
                       onValueChange={onCustomerPriceInput}
@@ -1722,7 +1722,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
               </div>
               <div className="mt-3 rounded-xl border border-line bg-canvas/40 p-3 text-[11px] leading-relaxed">
                 <div className="font-bold text-ink">{product.name || "—"}</div>
-                <div className="text-muted">HUID {product.huid || "—"} · {product.purity || "—"} · {grams(product.netGoldWeightGrams)}</div>
+                <div className="text-muted">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "—"}`} · {product.purity || "—"} · {grams(product.netGoldWeightGrams)}</div>
                 <div className="mt-1 text-muted">
                   Buyer: <span className="font-semibold text-ink">{customerMode === "existing" ? (selectedCustomer?.name || "Not selected") : (walkinName.trim() || "Walk-in")}</span>
                   {(() => {
@@ -1833,7 +1833,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       {concession > 0.004 ? (
                         <>
                           <Row label={`Making Charge ${round2(listPct)}%`} value={money(round2((product.makingChargeAmount || 0) + concession))} />
-                          <Row label={`Discount (${round2(listPct)}% → ${round2(agreedPct)}%)`} value={`− ${money(concession)}`} tone="text-emerald-700" />
                         </>
                       ) : (
                         <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
@@ -1841,6 +1840,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
                       {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
                       {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
+                      {concession > 0.004 && <Row label={`Discount (${round2(listPct)}% → ${round2(agreedPct)}%)`} value={`− ${money(concession)}`} tone="text-emerald-700" />}
                       {/* This is the GST base, and on a scheme bill it is the
                           CARVED base (1,63,186.95 on the S003 case) while the
                           invoice's "Subtotal" is the full one (2,03,186.95).
@@ -1897,7 +1897,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     {concession > 0.004 ? (
                       <>
                         <Row label={`Making Charge ${round2(listPct)}%`} value={money(round2((product.makingChargeAmount || 0) + concession))} />
-                        <Row label={`Discount (${round2(listPct)}% → ${round2(agreedPct)}%)`} value={`− ${money(concession)}`} tone="text-emerald-700" />
                       </>
                     ) : (
                       <Row label={`Making Charge${chargePct(product.makingChargeType, makingVal || product.makingChargeValue) ? ` ${chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}` : ""}`} value={money(product.makingChargeAmount)} />
@@ -1905,6 +1904,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     <Row label={`Wastage${chargePct(product.wastageType, wastageVal || product.wastageValue) ? ` ${chargePct(product.wastageType, wastageVal || product.wastageValue)}` : ""}`} value={money(product.wastageAmount)} />
                     {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
                     {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
+                    {concession > 0.004 && <Row label={`Discount (${round2(listPct)}% → ${round2(agreedPct)}%)`} value={`− ${money(concession)}`} tone="text-emerald-700" />}
                     <Row label="Subtotal" value={money(product.subtotalBeforeTax)} divider />
                     {/* A discount is excluded from the taxable value, so it is
                         taken off BEFORE the tax line and the taxable value is
