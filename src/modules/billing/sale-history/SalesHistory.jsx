@@ -8,7 +8,11 @@ import { Input, SearchInput } from "@/_shared/ui/input";
 import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
-import { formatINR, istToday } from "@/_shared/utils";
+import { formatINR as formatWholeINR, istToday } from "@/_shared/utils";
+
+// A bill is shown to the paisa, like New Sale and the invoice: whole rupees
+// let the breakdown rows stop adding up to the total.
+const formatINR = (v, opts = {}) => formatWholeINR(v, { minimumFractionDigits: 2, maximumFractionDigits: 2, ...opts });
 import { PnlWordCard } from "@/_shared/ui/verdict";
 import { billingService } from "@/modules/billing/billingService";
 
@@ -63,7 +67,7 @@ function formatWeight(grams) {
 // Charge label like the PDF: "(11%)" / "(Rs.600.00/g)" / "(fixed)".
 function chargeLabel(type, value) {
   const t = String(type || "").toUpperCase();
-  if (t === "PERCENTAGE") return `(${value}%)`;
+  if (t === "PERCENTAGE") return `(${Math.round(Number(value) * 100) / 100}%)`;
   if (t === "PER_GRAM") return `(₹${Number(value).toFixed(2)}/g)`;
   return "(fixed)";
 }
@@ -327,14 +331,14 @@ export default function SalesHistory() {
                 <th>Category</th>
                 <th>Sub-category</th>
                 <th className="text-right">Items</th>
-                <th className="text-right">Weight</th>
+                <th className="text-right">Gross Wt</th>
                 <th>Payment Type</th>
                 <th className="text-right">Total Amount</th>
                 <th className="text-right">Paid</th>
                 <th className="text-right">Outstanding</th>
                 {profitCol && <th className="text-right">Profit/Loss</th>}
                 <th>Status</th>
-                <th className="!pr-5 text-center">Actions</th>
+                <th className="sticky right-0 z-10 bg-canvas !pr-5 text-center shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -342,7 +346,7 @@ export default function SalesHistory() {
                 <tr
                   key={b.id}
                   onClick={() => setSelectedId(b.id)}
-                  className="cursor-pointer border-b border-line-soft align-middle transition-colors duration-150 last:border-0 hover:bg-canvas/60 [&>td]:px-3 [&>td]:py-3.5"
+                  className="group cursor-pointer border-b border-line-soft align-middle transition-colors duration-150 last:border-0 hover:bg-canvas/60 [&>td]:px-3 [&>td]:py-3.5"
                 >
                   <td className="!pl-5 font-mono text-xs font-semibold">
                     {b.inv}
@@ -380,7 +384,7 @@ export default function SalesHistory() {
                     </td>
                   )}
                   <td><Badge tone={STATUS_TONE[b.status]} dot>{b.status}</Badge></td>
-                  <td className="!pr-5">
+                  <td className="sticky right-0 bg-surface !pr-5 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)] group-hover:bg-canvas">
                     <div className="flex items-center justify-center gap-1.5">
                       <button
                         className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-bold text-ink transition-colors duration-150 hover:border-accent-line hover:bg-accent-soft hover:text-accent-strong"
@@ -612,7 +616,7 @@ function SaleDetail({ sale, onClose, onChanged }) {
                   does not hold. Same rule as the invoice, same helper. */}
               <BreakdownRow
                 label={`Gold Value${sale.sellingRateApplied
-                  ? ` (₹${Number(sale.sellingRateApplied).toFixed(2)}/g)`
+                  ? ` (${formatINR(Number(sale.sellingRateApplied))}/g)`
                   : ""}`}
                 value={formatINR(sale.goldValueCharged ?? sale.goldValueAmount)}
               />
@@ -701,6 +705,9 @@ function SaleDetail({ sale, onClose, onChanged }) {
                 <BreakdownRow label={`Running Cost${sale.runningCostPct != null ? ` ${sale.runningCostPct}%` : ""}`} value={formatINR(sale.runningCost)} />
               )}
               {sale.runningCost != null && <BreakdownRow label="Break-even" value={formatINR(breakEven)} />}
+              {sale.runningCost != null && breakEven > (sale.purchaseCost || 0) + (sale.runningCost || 0) + 0.5 && (
+                <p className="pb-1 text-[11px] leading-snug text-muted">Today's gold + Tunch + running cost. It is higher than this piece's cost, so it is used.</p>
+              )}
               <div className="flex items-center justify-between py-1">
                 <span className="text-muted">{sale.grossMargin < 0 ? "Loss" : "Profit"}</span>
                 <span className={`num font-bold ${sale.grossMargin < 0 ? "text-danger" : "text-emerald-600"}`}>

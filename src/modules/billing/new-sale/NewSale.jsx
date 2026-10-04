@@ -34,7 +34,7 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 /** Charge label for a Making/Wastage row: "3%", "₹120.00/g" or "" (fixed). */
 function chargePct(type, value) {
-  if (type === "PERCENTAGE") return `${Number(value)}%`;
+  if (type === "PERCENTAGE") return `${Math.round(Number(value) * 100) / 100}%`;
   if (type === "PER_GRAM") return `${money(value)}/g`;
   return "";
 }
@@ -340,12 +340,12 @@ export default function NewSale({ intent, clearIntent } = {}) {
    *  boxes back to being derived, so no box can hold a figure typed against an
    *  older asking price. */
   const setAgreedPct = (pct) => {
-    // FOUR decimals, not two. A concession is typed in rupees and stored as a
+    // SIX decimals, not two. A concession is typed in rupees and stored as a
     // percentage, and rounding that percentage to 2dp moved the money: a typed
     // 8,000 came back as 7,996.80. The percentage is a carrier here, not a
     // figure anyone negotiates in, so it keeps enough precision to hold the
     // rupees the admin actually agreed.
-    const clamped = Math.max(0, Math.round(pct * 10000) / 10000);
+    const clamped = Math.max(0, Math.round(pct * 1e6) / 1e6);
     setMakingVal(String(clamped));
   };
   const onMakingInput = (v) => { setMakingVal(v); setDiscountText(null); setPriceText(null); };
@@ -1487,7 +1487,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                           ? "once the scheme is applied"
                           : quoteHasScheme
                             ? `${money(quotedScheme)} paid by scheme`
-                            : comeDown > 0
+                            : comeDown > 0.05
                               ? `${money(askingPrice)} list − ${money(comeDown)}`
                               : undefined
                       }

@@ -271,7 +271,7 @@ export default function Vendors({ intent, clearIntent } = {}) {
               same line left two spaces between <table> and the comment, and a
               whitespace text node is not a legal child of <table> — React
               reported it as a hydration error on every render of this page. */}
-          <table className="w-full min-w-[1100px] border-collapse text-sm">
+          <table className="w-full min-w-[1040px] border-collapse text-sm">
             <thead>
               <tr className="whitespace-nowrap border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                 {/* PH-UI-001. Every column but the first and last carried
@@ -282,8 +282,8 @@ export default function Vendors({ intent, clearIntent } = {}) {
                     growing with the viewport, and when it can no longer fit it
                     scrolls (see overflow-x on the wrapper) rather than crushing
                     the columns into each other. */}
-                <th className="px-6 py-3 min-w-[12rem]">Supplier Code</th><th className="px-4 py-3 min-w-[11rem]">Supplier Staff</th><th className="px-4 py-3 min-w-[11rem]">Store Staff</th>
-                <th className="px-4 py-3 text-right min-w-[9rem]">Total Purchases</th><th className="px-4 py-3 text-right min-w-[8rem]">Paid</th><th className="px-4 py-3 text-right min-w-[9rem]">Outstanding</th><th className="px-4 py-3 text-right pr-6 min-w-[10.5rem]">Actions</th>
+                <th className="px-6 py-3 min-w-[10rem]">Supplier Code</th><th className="px-4 py-3 min-w-[10rem]">Supplier Staff</th><th className="px-4 py-3 min-w-[10rem]">Store Staff</th>
+                <th className="px-4 py-3 text-right min-w-[8rem]">Total Purchases</th><th className="px-4 py-3 text-right min-w-[7rem]">Paid</th><th className="px-4 py-3 text-right min-w-[8rem]">Outstanding</th><th className="px-4 py-3 text-right pr-6 min-w-[10.5rem]">Actions</th>
               </tr>
             </thead>
             <tbody>

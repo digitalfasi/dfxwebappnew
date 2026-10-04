@@ -100,7 +100,7 @@ export default function SupplierDirectory() {
                       <span className="grid h-9 min-w-[2.25rem] place-items-center rounded-lg border border-accent-line bg-accent-soft px-1.5 font-mono text-xs font-extrabold tracking-wide text-accent-strong">{s.code || "—"}</span>
                       <div className="min-w-0">
                         <div className="truncate font-bold text-ink">{s.name}</div>
-                        <div className="truncate text-[11px] text-muted" title={s.address || ""}>{s.address || `Supplier code ${s.code || "not set"}`}</div>
+                        {s.address && <div className="truncate text-[11px] text-muted" title={s.address}>{s.address}</div>}
                       </div>
                     </div>
                   </td>

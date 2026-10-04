@@ -1949,7 +1949,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
               <span className="num font-semibold">
                 {filteredRawGold.reduce((s, r) => s + (Number(r.netGoldWeightGrams) || 0), 0).toFixed(3)} g
               </span>{" "}
-              net · 24K · tracked by item code
+              net · {[...new Set(filteredRawGold.map((r) => r.purity).filter(Boolean))].join(" / ") || "24K"} · tracked by item code
             </span>
           </div>
           <CardContent className="overflow-x-auto px-0 pb-0">
@@ -1994,30 +1994,32 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
         <CardContent className="overflow-x-auto px-0 pb-0">
           {/* Fixed column widths: the Name cell truncates instead of pushing
               into Category, and the full value stays available on hover. */}
-          <table className="w-full min-w-[1210px] table-fixed border-collapse text-sm">
+          <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
             <colgroup>
-              <col className="w-[140px]" /><col className="w-[210px]" /><col className="w-[160px]" />
-              <col className="w-[170px]" /><col className="w-[80px]" /><col className="w-[100px]" />
-              <col className="w-[130px]" />{isAdmin && <col className="w-[70px]" />}<col className="w-[110px]" />
-              <col className="w-[100px]" /><col className="w-[180px]" />
+              <col className="w-[130px]" /><col className="w-[155px]" /><col className="w-[150px]" />
+              <col className="w-[70px]" /><col className="w-[95px]" />
+              <col className="w-[110px]" />{isAdmin && <col className="w-[60px]" />}<col className="w-[105px]" />
+              <col className="w-[75px]" /><col className="w-[160px]" />
             </colgroup>
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left align-middle text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Item Code / HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Sub-category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Supplier</th>{isAdmin && <th className="px-3 py-3 text-center">Tunch</th>}<th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
+                <th className="py-3 pl-6 pr-3">Item Code / HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Supplier</th>{isAdmin && <th className="px-3 py-3 text-center">Tunch</th>}<th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(p => (
                 <tr key={p.id || p.code} className="border-b border-line-soft align-middle last:border-0 hover:bg-canvas/60 transition-colors">
-                  <td className="px-6 py-3.5 whitespace-nowrap">
+                  <td className="py-3.5 pl-6 pr-3 whitespace-nowrap">
                     <div className="font-mono text-xs font-semibold">{p.huid || p.code || "Not provided"}</div>
                     <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-muted" title={p.tag ? `Tag ${p.tag}` : undefined}>
                       {p.huid ? "HUID · Online" : "Item Code · Offline"}
                     </div>
                   </td>
                   <td className="px-3 py-3.5"><span className="block truncate font-semibold leading-snug" title={p.name}>{p.name}</span></td>
-                  <td className="px-3 py-3.5"><span className="block truncate" title={p.category || ""}>{p.category || "—"}</span></td>
-                  <td className="px-3 py-3.5"><span className="block truncate text-muted" title={p.sub || ""}>{p.sub || "—"}</span></td>
+                  <td className="px-3 py-3.5">
+                    <span className="block truncate" title={p.category || ""}>{p.category || "—"}</span>
+                    {p.sub && <span className="mt-0.5 block truncate text-[11px] text-muted" title={p.sub}>{p.sub}</span>}
+                  </td>
                   <td className="px-3 py-3.5"><Badge tone="neutral">{p.purity}</Badge></td>
                   <td className="px-3 py-3.5 text-right font-mono whitespace-nowrap tabular-nums">{p.net} g</td>
                   <td className="px-3 py-3.5"><span className="block truncate text-xs" title={p.vendor}>{p.vendor || "—"}</span></td>
@@ -2038,13 +2040,13 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                 </tr>
               ))}
               {loading && (
-                <tr><td colSpan={11} className="px-6 py-14 text-center text-sm font-bold text-muted">Loading…</td></tr>
+                <tr><td colSpan={10} className="px-6 py-14 text-center text-sm font-bold text-muted">Loading…</td></tr>
               )}
               {!loading && loadError && (
-                <tr><td colSpan={11} className="px-6 py-14 text-center"><div className="font-bold text-danger">Couldn’t load inventory</div><p className="mt-1 text-sm text-muted">{loadError}</p><Button size="sm" variant="outline" className="mt-3" onClick={load}>Retry</Button></td></tr>
+                <tr><td colSpan={10} className="px-6 py-14 text-center"><div className="font-bold text-danger">Couldn’t load inventory</div><p className="mt-1 text-sm text-muted">{loadError}</p><Button size="sm" variant="outline" className="mt-3" onClick={load}>Retry</Button></td></tr>
               )}
               {!loading && !loadError && filtered.length === 0 && (
-                <tr><td colSpan={11} className="px-6 py-14 text-center"><div className="font-bold">No purchases found</div><p className="mt-1 text-sm text-muted">Add a purchase or adjust filters.</p></td></tr>
+                <tr><td colSpan={10} className="px-6 py-14 text-center"><div className="font-bold">No purchases found</div><p className="mt-1 text-sm text-muted">Add a purchase or adjust filters.</p></td></tr>
               )}
             </tbody>
           </table>
@@ -2205,9 +2207,9 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
               <div className="rounded-xl border border-accent-soft bg-accent-soft/40 p-4">
                 <h4 className="text-xs font-extrabold uppercase tracking-widest text-accent-strong">Purchase Amount</h4>
                 <div className="mt-2 space-y-1 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-muted">Gold at {addForm.purity} — {addAmounts.fineGrams.toFixed(3)} g pure @ 24K</span><span className="num font-mono tabular-nums">₹{addAmounts.base.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted">Tunch {addAmounts.tunchPct}% of the 24K value — {addAmounts.tunchGrams.toFixed(3)} g pure</span><span className="num font-mono tabular-nums">₹{addAmounts.tunchAmt.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
-                  <div className="flex items-center justify-between border-t border-line-soft pt-1.5"><span className="text-muted">Payable gold — {addAmounts.payableGrams.toFixed(3)} g pure × ₹{addAmounts.rate24.toLocaleString("en-IN", { maximumFractionDigits: 2 })}/g (24K)</span>{/* The share of the net weight actually being paid for, derived from
+                  <div className="flex items-center justify-between"><span className="text-muted">Gold at {addForm.purity} — {addAmounts.fineGrams.toFixed(3)} g pure @ 24K</span><span className="num font-mono tabular-nums">{money(addAmounts.base)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted">Tunch {addAmounts.tunchPct}% of the 24K value — {addAmounts.tunchGrams.toFixed(3)} g pure</span><span className="num font-mono tabular-nums">{money(addAmounts.tunchAmt)}</span></div>
+                  <div className="flex items-center justify-between border-t border-line-soft pt-1.5"><span className="text-muted">Payable gold — {addAmounts.payableGrams.toFixed(3)} g pure × {money(addAmounts.rate24)}/g (24K)</span>{/* The share of the net weight actually being paid for, derived from
                         the payable grams themselves. It used to add the purity and
                         Tunch percentages together (91.67 + 4 = 95.67%), which is the
                         OTHER Tunch convention - Tunch on the full net weight - and so
