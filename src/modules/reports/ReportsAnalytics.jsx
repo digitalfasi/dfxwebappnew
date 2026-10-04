@@ -59,7 +59,7 @@ function niceScale(min, max, count = 4) {
 }
 
 /* ── Data-driven line chart with real axes, ticks, tooltips ──────────────── */
-function LineChart({ points, color = "#c9a84c", tipFormat = (v) => v, axisFormat = (v) => v, unit = "", label }) {
+function LineChart({ points, color = "#9f1d35", tipFormat = (v) => v, axisFormat = (v) => v, unit = "", label }) {
   const [hover, setHover] = useState(null);
   const wrapRef = useRef(null);
   const W = 660, H = 300, PL = 60, PR = 18, PT = 18, PB = 44;
@@ -99,7 +99,7 @@ function LineChart({ points, color = "#c9a84c", tipFormat = (v) => v, axisFormat
         {ticks.map((t, i) => (
           <g key={i}>
             <line x1={PL} y1={yAt(t)} x2={W - PR} y2={yAt(t)} stroke="#eae5dc" strokeWidth="1" />
-            <text x={PL - 8} y={yAt(t) + 4} textAnchor="end" fontSize="12" fill="#8b7d6b" fontWeight="600">{axisFormat(t)}</text>
+            <text x={PL - 8} y={yAt(t) + 4} textAnchor="end" fontSize="12" fill="#667085" fontWeight="600">{axisFormat(t)}</text>
           </g>
         ))}
         {areaD && <path d={areaD} fill={`url(#ra-${color.slice(1)})`} />}
@@ -110,7 +110,7 @@ function LineChart({ points, color = "#c9a84c", tipFormat = (v) => v, axisFormat
         {hover !== null && <line x1={xy[hover].x} y1={PT} x2={xy[hover].x} y2={PT + plotH} stroke={color} strokeDasharray="4 4" opacity="0.45" />}
         {/* X labels */}
         {xy.map((p, i) => (i % stepL === 0 || i === xy.length - 1) ? (
-          <text key={i} x={p.x} y={H - PB + 20} textAnchor={i === 0 ? "start" : i === xy.length - 1 ? "end" : "middle"} fontSize="12" fill="#8b7d6b" fontWeight="600">{p.label}</text>
+          <text key={i} x={p.x} y={H - PB + 20} textAnchor={i === 0 ? "start" : i === xy.length - 1 ? "end" : "middle"} fontSize="12" fill="#667085" fontWeight="600">{p.label}</text>
         ) : null)}
       </svg>
       {unit && <div className="mt-1 text-center text-[11px] font-semibold text-faint">{unit}</div>}
@@ -127,7 +127,7 @@ function LineChart({ points, color = "#c9a84c", tipFormat = (v) => v, axisFormat
 function Kpi({ label, value, sub, tone }) {
   const toneCls = tone === "danger" ? "text-danger" : tone === "info" ? "text-info" : "text-ink";
   return (
-    <Card className="p-4">
+    <Card className="p-4 kpi-corner">
       <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">{label}</div>
       <div className={`num mt-1 text-2xl font-extrabold ${toneCls}`}>{value}</div>
       {sub != null && <div className="mt-0.5 text-xs font-semibold text-muted">{sub}</div>}
@@ -587,7 +587,7 @@ function MetricCard({ icon, title, value, note, tone }) {
   const toneCls = tone === "danger" ? "text-danger" : tone === "success" ? "text-emerald-700" : tone === "info" ? "text-info" : "text-ink";
   const iconBg = tone === "danger" ? "bg-danger-soft text-danger" : tone === "success" ? "bg-emerald-50 text-emerald-700" : tone === "info" ? "bg-info/10 text-info" : "bg-accent-soft text-accent-strong";
   return (
-    <Card className="p-4">
+    <Card className="p-4 kpi-corner">
       <div className="flex items-start justify-between gap-2">
         <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">{title}</div>
         <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${iconBg}`}><MetricIcon kind={icon} /></span>

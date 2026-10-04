@@ -127,7 +127,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
       />
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col border-r border-accent-line/45 bg-[#efe7d3] transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
+          "fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col border-r border-accent-line/45 bg-surface transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
           "lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:translate-x-0 lg:overflow-hidden",
           collapsed && "lg:w-[76px]",
           open ? "translate-x-0" : "-translate-x-full"
@@ -143,17 +143,16 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
         {/* Brand band: the DFX GOLD logo centred on the sidebar's own cream,
             with a soft gold glow behind it. */}
         {collapsed ? (
-          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-2 bg-[radial-gradient(ellipse_at_center,rgba(212,168,67,0.30)_0%,rgba(212,168,67,0.12)_38%,transparent_70%)]" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
+          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-2" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
             <img src="/dfx-gold-mark.png" alt="DFX GOLD" width={44} height={44} className="h-11 w-11 object-contain drop-shadow-[0_0_8px_rgba(212,168,67,0.45)]" />
           </div>
         ) : (
-          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-4 bg-[radial-gradient(ellipse_at_center,rgba(212,168,67,0.30)_0%,rgba(212,168,67,0.12)_38%,transparent_70%)]" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
-            {/* Phone drawer: the Login page's own DFX mark with a GOLD wordmark. */}
-            <span className="flex items-center gap-2 text-ink lg:hidden" aria-label="DFX GOLD">
+          <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-accent-line/45 px-4" title={`DFX GOLD · ${roleText(user) || "Admin"}`}>
+            {/* Expanded sidebar (phone and desktop alike): the Login page's own DFX mark with a GOLD wordmark. */}
+            <span className="flex items-center gap-2 text-accent-strong" aria-label="DFX GOLD">
               <DfxLogo size={30} />
-              <span className="text-[19px] font-extrabold leading-none tracking-[0.18em] text-accent-strong">GOLD</span>
+              <span className="text-[19px] font-extrabold leading-none tracking-[0.18em] text-gold-strong">GOLD</span>
             </span>
-            <img src="/dfx-gold-logo.png" alt="DFX GOLD" width={124} height={58} className="hidden h-[54px] w-auto object-contain drop-shadow-[0_0_10px_rgba(212,168,67,0.45)] lg:block" />
           </div>
         )}
 
@@ -172,7 +171,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "grid h-10 w-10 place-items-center rounded-xl transition-colors",
-                      active ? "border border-accent-line/40 bg-white text-accent-strong shadow-sm" : "text-ink-soft hover:bg-white hover:text-ink"
+                      active ? "border border-accent-line/60 bg-accent-soft text-accent-strong shadow-sm [&_svg]:text-accent" : "text-ink-soft hover:bg-accent-soft/60 hover:text-accent-strong [&_svg]:text-ink hover:[&_svg]:text-accent"
                     )}
                   >
                     {item.icon}
@@ -218,7 +217,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
                             onClick={() => { onNavigate(item.id); onClose(); }}
                             className={cn(
                               "mb-0.5 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] font-semibold transition-colors",
-                              active ? "bg-white text-accent-strong shadow-sm border border-accent-line/40" : "text-ink-soft hover:bg-white hover:text-ink"
+                              active ? "bg-accent-soft text-accent-strong shadow-sm [&_svg]:text-accent border border-accent-line/60" : "text-ink-soft hover:bg-accent-soft/60 hover:text-accent-strong [&_svg]:text-ink hover:[&_svg]:text-accent"
                             )}
                             aria-current={active ? "page" : undefined}
                           >
@@ -238,7 +237,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
                   {section.items.map((item) => {
                     const active = page === item.id;
                     return (
-                       <button key={item.id} onClick={() => { onNavigate(item.id); onClose(); }} className={cn("mb-0.5 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13.5px] font-semibold transition-colors", active ? "bg-white text-accent-strong shadow-sm border border-accent-line/40" : "text-ink-soft hover:bg-white hover:text-ink")} aria-current={active ? "page" : undefined}>
+                       <button key={item.id} onClick={() => { onNavigate(item.id); onClose(); }} className={cn("mb-0.5 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13.5px] font-semibold transition-colors", active ? "bg-accent-soft text-accent-strong shadow-sm [&_svg]:text-accent border border-accent-line/60" : "text-ink-soft hover:bg-accent-soft/60 hover:text-accent-strong [&_svg]:text-ink hover:[&_svg]:text-accent")} aria-current={active ? "page" : undefined}>
                         {item.icon}
                         {item.name}
                         {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" />}
@@ -254,7 +253,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
                 {section.items.map((item) => {
                   const active = page === item.id;
                   return (
-                    <button key={item.id} onClick={() => { onNavigate(item.id); onClose(); }} className={cn("mb-0.5 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13.5px] font-semibold transition-colors", active ? "bg-white text-accent-strong shadow-sm border border-accent-line/40" : "text-ink-soft hover:bg-white hover:text-ink")} aria-current={active ? "page" : undefined}>
+                    <button key={item.id} onClick={() => { onNavigate(item.id); onClose(); }} className={cn("mb-0.5 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13.5px] font-semibold transition-colors", active ? "bg-accent-soft text-accent-strong shadow-sm [&_svg]:text-accent border border-accent-line/60" : "text-ink-soft hover:bg-accent-soft/60 hover:text-accent-strong [&_svg]:text-ink hover:[&_svg]:text-accent")} aria-current={active ? "page" : undefined}>
                       {item.icon}
                       {item.name}
                       {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" />}

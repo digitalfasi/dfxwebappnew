@@ -429,22 +429,22 @@ export default function Payments() {
               const note = bizKpiLoading ? "Loading…" : (bizKpi?.label || periodPfxNote(bizFilters.dateFilter));
               return (
                 <>
-                  <Card className="p-4">
+                  <Card className="p-4 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Offline (Cash)</div>
                     <div className="num mt-1 text-2xl font-extrabold">₹{(bizKpi?.offline ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-muted">{note} · CASH</div>
                   </Card>
-                  <Card className="p-4">
+                  <Card className="p-4 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Online</div>
                     <div className="num mt-1 text-2xl font-extrabold text-emerald-700">₹{(bizKpi?.online ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-emerald-700/70">{note} · UPI + Card + Bank</div>
                   </Card>
-                  <Card className="p-4 border-danger-line bg-danger-soft/30">
+                  <Card className="p-4 border-danger-line bg-danger-soft/30 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-danger">Outstanding</div>
                     <div className="num mt-1 text-2xl font-extrabold text-danger">₹{bizOutstandingTotal.toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-danger/70">Uncollected · all sales</div>
                   </Card>
-                  <Card className="p-4 border-accent-line bg-accent-soft/40">
+                  <Card className="p-4 border-accent-line bg-accent-soft/40 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent">Total Collected</div>
                     <div className="num mt-1 text-2xl font-extrabold text-accent">₹{(bizKpi?.total ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-accent/70">{note} · money in (excl. scheme &amp; refunds)</div>
@@ -467,22 +467,22 @@ export default function Payments() {
               const note = schemeKpiLoading ? "Loading…" : (schemeKpi?.label || periodPfxNote(schemeFilters.dateFilter));
               return (
                 <>
-                  <Card className="p-4">
+                  <Card className="p-4 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Offline (Cash)</div>
                     <div className="num mt-1 text-2xl font-extrabold">₹{(schemeKpi?.offline ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-muted">{note} · CASH</div>
                   </Card>
-                  <Card className="p-4">
+                  <Card className="p-4 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Online</div>
                     <div className="num mt-1 text-2xl font-extrabold text-emerald-700">₹{(schemeKpi?.online ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-emerald-700/70">{note} · UPI + Card + Bank</div>
                   </Card>
-                  <Card className="p-4 border-danger-line bg-danger-soft/30">
+                  <Card className="p-4 border-danger-line bg-danger-soft/30 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-danger">Overdue Amount</div>
                     <div className="num mt-1 text-2xl font-extrabold text-danger">₹{schemeOverdue.toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-danger/70">Overdue installments · all enrollments</div>
                   </Card>
-                  <Card className="p-4 border-accent-line bg-accent-soft/40">
+                  <Card className="p-4 border-accent-line bg-accent-soft/40 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent">Total Collection</div>
                     <div className="num mt-1 text-2xl font-extrabold text-accent">₹{(schemeKpi?.total ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-accent/70">{note} · scheme money in (excl. refunds)</div>

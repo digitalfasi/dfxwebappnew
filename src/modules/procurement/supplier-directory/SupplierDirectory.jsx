@@ -67,7 +67,7 @@ export default function SupplierDirectory() {
 
       <div className="mb-5 grid grid-cols-3 gap-3" data-motion="stat">
         {stats.map((k) => (
-          <Card key={k.label} className="p-3.5">
+          <Card key={k.label} className="p-3.5 kpi-corner">
             <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{k.label}</div>
             <div className={`num mt-1 text-lg font-extrabold ${k.tone || ""}`}>{loading ? "…" : k.value}</div>
           </Card>

@@ -244,14 +244,14 @@ export default function SalesHistory() {
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(220px,270px)_1fr]">
         <div className="grid gap-3">
-          <Card data-motion="stat" className="p-4">
+          <Card data-motion="stat" className="p-4 kpi-corner">
             <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Gold Sold</div>
             <div className="num mt-1 text-2xl font-extrabold">{totalGoldSold.toFixed(2)} g</div>
             <div className="text-xs text-muted">
               {filtersActive ? "Net gold · filtered view" : "Net gold · whole period"}
             </div>
           </Card>
-          <Card data-motion="stat" className="p-4">
+          <Card data-motion="stat" className="p-4 kpi-corner">
             <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Outstanding</div>
             <div className={`num mt-1 text-2xl font-extrabold ${totalOutstanding > 0 ? "text-danger" : ""}`}>{formatINR(totalOutstanding)}</div>
             {/* This said "Whole period, not just this page" under every

@@ -242,7 +242,7 @@ function QuietNudge({ days }) {
 // figure rendered in the same ink as the rest.
 function KpiCard({ label, value, hint, danger }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-accent-line hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+    <div className="kpi-corner rounded-2xl border border-line bg-surface p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-accent-line hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0">
       <div className="min-h-[2.2em] text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{label}</div>
       <div className={`num mt-1.5 text-xl font-extrabold tracking-tight ${danger ? "text-danger" : ""}`}>{value}</div>
       {hint && <div className="mt-1 text-[10px] font-semibold text-faint">{hint}</div>}

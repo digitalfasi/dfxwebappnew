@@ -245,7 +245,7 @@ export default function Vendors({ intent, clearIntent } = {}) {
       </div>
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5" data-motion="stat">
         {kpis.map((k) => (
-          <Card key={k.label} className="p-3.5">
+          <Card key={k.label} className="p-3.5 kpi-corner">
             <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{k.label}</div>
             <div className={`num mt-1 text-lg font-extrabold ${k.tone || ""}`}>
               {summaryLoading && !summary ? "…" : k.value}

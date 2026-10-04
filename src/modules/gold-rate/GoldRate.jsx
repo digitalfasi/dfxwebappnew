@@ -242,13 +242,13 @@ export default function GoldRate() {
             Updated automatically from the live market. Billing and the storefront always use today&apos;s rate.
           </p>
         </div>
-        <Badge tone={liveErr ? "danger" : "info"} dot>
+        <Badge tone={liveErr ? "danger" : "info"} className={liveErr ? "" : "border-accent-line bg-accent-soft text-accent-strong"} dot>
           {liveErr ? "Live source offline" : live?.fetchedAt ? "Live Sync" : "Connecting to live…"}
         </Badge>
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <div data-motion="stat" className="hero-card group relative overflow-hidden rounded-[20px] border border-white/10 p-7 text-white shadow-xl lg:col-span-2" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 55%, #1e293b 100%)' }}>
+        <div data-motion="stat" className="hero-card group relative overflow-hidden rounded-[20px] border border-white/10 p-7 text-white shadow-xl lg:col-span-2" style={{ background: 'linear-gradient(135deg, #7f1529 0%, #5c1020 55%, #7f1529 100%)' }}>
           <div className="pointer-events-none absolute -right-10 -top-10 h-52 w-52 rounded-full bg-[#c9a84c]/25 blur-2xl" />
           <div className="pointer-events-none absolute -left-12 -bottom-12 h-40 w-40 rounded-full bg-amber-400/10 blur-2xl" />
           <div className="pointer-events-none absolute inset-0 rounded-[20px] border border-white/[0.06]" />
@@ -299,9 +299,9 @@ export default function GoldRate() {
               </CardHeader>
               <CardContent>
                 <div className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border px-3.5 py-2.5 text-sm ${
-                  todaySource === "CARRIED" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
-                  <span className="inline-flex items-center gap-1.5 font-bold">
-                    <span className={`h-2 w-2 rounded-full ${todaySource === "CARRIED" ? "bg-amber-500" : "animate-pulse bg-emerald-500"}`} />
+                  todaySource === "CARRIED" ? "border-accent-line bg-[#fbf1f1] text-ink-soft" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
+                  <span className={`inline-flex items-center gap-1.5 font-bold ${todaySource === "CARRIED" ? "text-accent-strong" : ""}`}>
+                    <span className={`h-2 w-2 rounded-full ${todaySource === "CARRIED" ? "bg-accent" : "animate-pulse bg-emerald-500"}`} />
                     {todaySource === "CARRIED" ? "Market closed — last live rate carried forward" : todaySource ? "Live" : "Waiting for the first live rate"}
                   </span>
                   {todayUpdated && <span className="text-[12px] opacity-80">Last updated {new Date(todayUpdated).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</span>}
@@ -370,7 +370,7 @@ export default function GoldRate() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:items-stretch">
         <Card data-motion="reveal">
           <CardHeader>
             <div className="flex w-full flex-wrap items-center justify-between gap-3">
@@ -393,7 +393,7 @@ export default function GoldRate() {
           <CardContent>
             <LineChart
               series={trendSeries}
-              accent="#c9a84c"
+              accent="#9f1d35"
               gradId="grTrend"
               className="h-56"
               scale="fit"
@@ -407,15 +407,15 @@ export default function GoldRate() {
           </CardContent>
         </Card>
 
-        <Card data-motion="reveal" className="overflow-hidden">
+        <Card data-motion="reveal" className="overflow-hidden lg:flex lg:flex-col">
           <CardHeader>
             <div>
               <CardTitle>Rate history</CardTitle>
               <CardDescription>Last {history.length} published days · {trendLabel} · ₹/gram</CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="px-0 pb-0">
-            <div className="h-56 overflow-y-auto">
+          <CardContent className="relative px-0 pb-0 lg:min-h-0 lg:flex-1">
+            <div className="h-56 overflow-y-auto lg:absolute lg:inset-0 lg:h-auto">
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="sticky top-0 z-10 border-y border-line bg-canvas text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
