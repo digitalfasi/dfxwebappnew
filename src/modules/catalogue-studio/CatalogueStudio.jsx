@@ -177,16 +177,57 @@ export default function CatalogueStudio() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card className="p-5">
-            <h3 className="font-bold">Product Image</h3>
-            <div className="mt-4">
-              {preview ? <img src={preview} alt="preview" className="h-64 w-full rounded-xl object-cover border border-line" /> : <label className="flex h-64 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 text-sm text-muted hover:border-accent"><input type="file" accept="image/*" className="hidden" onChange={handleImage} /><span className="font-bold">Upload Image</span><span className="text-xs">Click to select</span></label>}
-              {preview && <label className="mt-3 inline-flex cursor-pointer rounded-full border border-line bg-white px-4 py-1.5 text-xs font-bold hover:bg-canvas"><input type="file" accept="image/*" className="hidden" onChange={handleImage} />Change Image</label>}
-            </div>
-            <div className="mt-4 rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">
-              {editId ? "A new image replaces the one customers see when you save" : "Image is added when the product is saved"}<br />Original photo is kept as uploaded<br />No cropping or resizing
-            </div>
-          </Card>
+          <div className="space-y-4 lg:sticky lg:top-[72px] lg:self-start">
+            <Card className="p-5">
+              <h3 className="font-bold">Product Image</h3>
+              <div className="mt-4">
+                {preview ? <img src={preview} alt="preview" className="h-64 w-full rounded-xl object-cover border border-line" /> : <label className="flex h-64 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 text-sm text-muted hover:border-accent"><input type="file" accept="image/*" className="hidden" onChange={handleImage} /><span className="font-bold">Upload Image</span><span className="text-xs">Click to select</span></label>}
+                {preview && <label className="mt-3 inline-flex cursor-pointer rounded-full border border-line bg-white px-4 py-1.5 text-xs font-bold hover:bg-canvas"><input type="file" accept="image/*" className="hidden" onChange={handleImage} />Change Image</label>}
+              </div>
+              <div className="mt-4 rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">
+                {editId ? "A new image replaces the one customers see when you save" : "Image is added when the product is saved"}<br />Original photo is kept as uploaded<br />No cropping or resizing
+              </div>
+            </Card>
+
+              <Card className="p-5">
+                <h3 className="font-bold">Live Customer Preview</h3>
+                <p className="text-xs text-muted">How this product appears to customers. Nothing here is saved until you press Save.</p>
+                <div className="mt-3 flex gap-4 rounded-xl border border-line bg-canvas/40 p-4">
+                  {/* A deliberate placeholder, not a stock photo: a product with no
+                      image must LOOK like it has none, or the preview quietly
+                      promises the customer something the catalogue cannot show. */}
+                  {preview ? (
+                    <img src={preview} alt={form.name || "Product preview"} className="h-24 w-24 shrink-0 rounded-lg border border-line object-cover" />
+                  ) : (
+                    <div className="flex h-24 w-24 shrink-0 flex-col items-center justify-center rounded-lg border border-dashed border-line bg-surface text-center text-[10px] font-bold leading-tight text-muted">
+                      No image<br />yet
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-bold">{form.name || "Product name"}</div>
+                    <div className="mt-0.5 text-xs text-muted">
+                      {[form.category, form.purity, form.weight ? `${form.weight} g` : null].filter(Boolean).join(" · ") || "Category · Purity · Weight"}
+                    </div>
+                    <div className="mt-1.5 text-sm font-bold text-accent-strong">
+                      {form.price ? formatINR(Number(form.price)) : "—"}
+                    </div>
+                    {form.offerLabel && (
+                      <div className="mt-1.5 inline-flex rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-bold text-accent-strong">
+                        {form.offerLabel}{form.offerDiscount ? ` — ${form.offerDiscount}% off making` : ""}
+                      </div>
+                    )}
+                    {form.tags.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {form.tags.map(t => <span key={t} className="rounded-full border border-line bg-white px-2 py-0.5 text-[10px] font-semibold text-muted">{t}</span>)}
+                      </div>
+                    )}
+                    {form.description && (
+                      <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-muted">{form.description}</p>
+                    )}
+                  </div>
+                </div>
+              </Card>
+          </div>
 
           <div className="space-y-4">
             <Card className="p-5">
@@ -219,45 +260,6 @@ export default function CatalogueStudio() {
                   <div><div className="text-xs font-bold">Status</div><div className="mt-1.5 flex gap-1.5">{[["Active", true], ["Inactive", false]].map(([label, val]) => <button key={label} type="button" onClick={() => setForm({ ...form, isActive: val })} className={`rounded-full border px-3 py-1 text-xs font-bold ${form.isActive === val ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-white text-muted"}`}>{label}</button>)}</div><div className="mt-1 text-xs text-muted">Inactive products are hidden from customers.</div></div>
                 )}
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Description</span><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Product description" className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-accent" /></label>
-              </div>
-            </Card>
-
-            <Card className="p-5">
-              <h3 className="font-bold">Live Customer Preview</h3>
-              <p className="text-xs text-muted">How this product appears to customers. Nothing here is saved until you press Save.</p>
-              <div className="mt-3 flex gap-4 rounded-xl border border-line bg-canvas/40 p-4">
-                {/* A deliberate placeholder, not a stock photo: a product with no
-                    image must LOOK like it has none, or the preview quietly
-                    promises the customer something the catalogue cannot show. */}
-                {preview ? (
-                  <img src={preview} alt={form.name || "Product preview"} className="h-24 w-24 shrink-0 rounded-lg border border-line object-cover" />
-                ) : (
-                  <div className="flex h-24 w-24 shrink-0 flex-col items-center justify-center rounded-lg border border-dashed border-line bg-surface text-center text-[10px] font-bold leading-tight text-muted">
-                    No image<br />yet
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-bold">{form.name || "Product name"}</div>
-                  <div className="mt-0.5 text-xs text-muted">
-                    {[form.category, form.purity, form.weight ? `${form.weight} g` : null].filter(Boolean).join(" · ") || "Category · Purity · Weight"}
-                  </div>
-                  <div className="mt-1.5 text-sm font-bold text-accent-strong">
-                    {form.price ? formatINR(Number(form.price)) : "—"}
-                  </div>
-                  {form.offerLabel && (
-                    <div className="mt-1.5 inline-flex rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-bold text-accent-strong">
-                      {form.offerLabel}{form.offerDiscount ? ` — ${form.offerDiscount}% off making` : ""}
-                    </div>
-                  )}
-                  {form.tags.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {form.tags.map(t => <span key={t} className="rounded-full border border-line bg-white px-2 py-0.5 text-[10px] font-semibold text-muted">{t}</span>)}
-                    </div>
-                  )}
-                  {form.description && (
-                    <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-muted">{form.description}</p>
-                  )}
-                </div>
               </div>
             </Card>
 
