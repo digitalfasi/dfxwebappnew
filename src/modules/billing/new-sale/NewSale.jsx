@@ -1361,9 +1361,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
               </div>
             </Card>
 
-            <div className="grid items-start gap-4 xl:grid-cols-2">
-            {/* Customer */}
-            <Card className="min-w-0 space-y-3.5 p-4">
+            <div className="grid items-stretch gap-4 xl:grid-cols-2">
+            {/* Customer. Stretches to the Pricing card beside it; the note is
+                pinned to the bottom so the spare height never reads as empty. */}
+            <Card className="flex min-w-0 flex-col gap-3.5 p-4">
               <SectionHead step={2} title="Customer" />
               <div className="flex gap-2">
                 {[["existing", "Existing customer"], ["walkin", "Walk-in"]].map(([m, label]) => (
@@ -1472,6 +1473,12 @@ export default function NewSale({ intent, clearIntent } = {}) {
                   </label>
                 </div>
               )}
+              <p className="mt-auto flex items-start gap-2 rounded-xl border border-line-soft bg-canvas/50 px-3 py-2.5 text-[11px] leading-snug text-muted">
+                <svg viewBox="0 0 24 24" className="mt-px h-3.5 w-3.5 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
+                {customerMode === "existing"
+                  ? "A buyer is required for the bill. Their redeemable schemes appear here once chosen."
+                  : "Walk-in buyers need a name and a 10-digit phone. Schemes apply to existing customers only."}
+              </p>
             </Card>
 
             {/* Purchase Cost and Purchase-Cost P/L are intentionally omitted from
