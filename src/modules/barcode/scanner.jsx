@@ -19,7 +19,8 @@ export function useScannerInput(onScan, enabled = true) {
     if (!enabled) return undefined;
     let buf = "", first = 0, last = 0, box = null, boxVal = "";
     const onKey = (e) => {
-      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      // Autofill / password managers fire keydown with no key at all.
+      if (e.ctrlKey || e.altKey || e.metaKey || typeof e.key !== "string") return;
       const t = e.target;
       // A scan works with the cursor in any text box too: the burst is still
       // spotted, and the box gets back what it held before the scan.
