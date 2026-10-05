@@ -297,6 +297,23 @@ function ReportRow({ label, value }) {
   );
 }
 
+/* Loading figure: four digit reels ticking 0-9 at slightly different speeds,
+   like a counter scrambling. Purely visual - the real value replaces it the
+   moment it arrives. Reduced-motion users get a static, faded 0000. */
+function RollingDigits() {
+  return (
+    <div className="num mt-1.5 flex h-7 items-center text-xl font-extrabold tracking-tight text-accent-strong/45" role="status" aria-label="Loading">
+      {[0.9, 1.15, 0.75, 1.3].map((d, k) => (
+        <span key={k} className="digit-reel">
+          <span style={{ animationDuration: `${d}s`, animationDelay: `-${k * 0.17}s` }}>
+            {"0123456789".split("").map((n, j) => <span key={j}>{n}</span>)}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function KpiCard({ title, value, growth, growthOf, danger, onClick, loading = false }) {
   const g = formatGrowth(growth, growthOf);
   const up = g === null ? true : !String(g).startsWith("-");
@@ -311,7 +328,7 @@ function KpiCard({ title, value, growth, growthOf, danger, onClick, loading = fa
       {/* A figure still on the wire is not a figure of "—". The em dash is
           reserved for "we asked and do not know"; this is "we are asking". */}
       {loading
-        ? <div className="mt-1.5 h-7 w-24 animate-pulse rounded-md bg-line-soft" aria-label="Loading" />
+        ? <RollingDigits />
         : <div data-motion="count" className={`num mt-1.5 text-xl font-extrabold tracking-tight ${danger ? "text-danger" : "text-ink"}`}>{value}</div>}
       <span className="mt-2 self-end inline-flex items-center gap-0.5 text-[10px] font-bold text-accent-strong transition-all group-hover:gap-1">View <span aria-hidden="true">→</span></span>
     </button>

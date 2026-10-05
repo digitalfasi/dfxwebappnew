@@ -190,6 +190,19 @@ input[type="number"] {
   to { transform: scaleX(0); }
 }
 
+/* Dashboard KPI loading figure (RollingDigits): each reel is a 1-digit window
+   over a 0..9 column that ticks up one whole digit at a time (steps), each
+   reel at its own speed, so the figure reads like a counter scrambling. */
+.digit-reel { display: inline-block; height: 1.75rem; line-height: 1.75rem; overflow: hidden; }
+.digit-reel > span { display: flex; flex-direction: column; animation: digit-roll 1s steps(10, end) infinite; }
+@keyframes digit-roll {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(-10 * 1.75rem)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .digit-reel > span { animation: none; }
+}
+
 /* KPI / stat cards: a very soft rose circle clipped into the top-right corner,
    behind the text. Same detail as the Customer and Dashboard stat cards. */
 .kpi-corner { position: relative; isolation: isolate; overflow: hidden; }
