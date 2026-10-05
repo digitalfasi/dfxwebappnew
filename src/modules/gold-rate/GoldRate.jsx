@@ -401,6 +401,7 @@ export default function GoldRate() {
               pointR={3} strokeWidth={2.5}
               yLabelDx={8} yLabelSize={10} xLabelDy={18} xLabelSize={10}
               fmtY={fmtTrendY} fmtX={fmtTrendX}
+              fmtTip={(v) => `${formatINR(v)}/g`}
               ariaLabel="Gold rate trend"
               empty="Not enough history yet — publish on more days to see the trend."
             />
