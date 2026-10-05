@@ -572,6 +572,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // Business period (KPIs + Sales Trend chart share it)
   const [bizPeriod, setBizPeriod] = useState("today");
   const [bizCustom, setBizCustom] = useState({ from: "", to: "" });
+  const [bizEditing, setBizEditing] = useState(false); // Custom date picker open
   const [bizMetric, setBizMetric] = useState("sales");
   const [salesTrend, setSalesTrend] = useState(CACHE.biz.get("today") ?? null);
   // Whether the LAST attempt to load this panel failed, as opposed to the panel
@@ -603,6 +604,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // Scheme period (KPIs + Collections Trend chart share it)
   const [schemePeriod, setSchemePeriod] = useState("today");
   const [schemeCustom, setSchemeCustom] = useState({ from: "", to: "" });
+  const [schemeEditing, setSchemeEditing] = useState(false);
   const [schemeMetric, setSchemeMetric] = useState("collections");
   const [paySummary, setPaySummary] = useState(CACHE.scheme.get("today")?.pay ?? null);
   const [enrollSummary, setEnrollSummary] = useState(CACHE.scheme.get("today")?.enr ?? null);
@@ -938,7 +940,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             {/* Title + metric on one line (metric top-right), period tabs on
                 their own row, then clear air before the plot. */}
             <div className="mb-2.5 flex items-center justify-between gap-2">
-              <CardTitle className="text-xs font-bold">Business Trend</CardTitle>
+              <div className="flex min-w-0 items-baseline gap-2"><CardTitle className="text-xs font-bold">Business Trend</CardTitle>{bizPeriod === "custom" && bizCustom.from && bizCustom.to && <RangeLabel sel="custom" custom={bizCustom} onEdit={() => setBizEditing(true)} />}</div>
               <MetricSelect
                 value={bizMetric}
                 onChange={setBizMetric}
@@ -947,11 +949,12 @@ export default function Dashboard({ onNavigate, search = "" }) {
               />
             </div>
             <div className="mb-4 flex flex-wrap items-center gap-1.5">
-              <PeriodTabs value={bizPeriod} onChange={setBizPeriod} accent={BUSINESS_ACCENT} />
+              <PeriodTabs value={bizPeriod} onChange={(v) => { setBizPeriod(v); setBizEditing(v === "custom"); }} accent={BUSINESS_ACCENT} />
             </div>
-            {bizPeriod === "custom" && <CustomRange value={bizCustom} onApply={setBizCustom} accent={BUSINESS_ACCENT} />}
-            {bizPeriod === "custom" && (!bizCustom.from || !bizCustom.to)
-              ? <div className="flex h-48 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
+            {/* Custom dates are picked INSIDE the chart's own h-48 box, so the
+                card never grows when Custom is chosen. */}
+            {bizPeriod === "custom" && (bizEditing || !bizCustom.from || !bizCustom.to)
+              ? <div className="flex h-48 flex-col items-center justify-center gap-2 rounded-lg bg-canvas/40 px-2"><CustomRange value={bizCustom} onApply={(v) => { setBizCustom(v); setBizEditing(false); }} accent={BUSINESS_ACCENT} className="" /><span className="text-xs font-medium text-muted">Pick a date range and Apply</span></div>
               : <LineChart series={bizSeries} accent="#9f1d35" gradId="bizArea" fmtY={(v) => axisFmt(v, bizUnit)} fmtTip={(v) => tipFmt(v, bizUnit)} />}
           </Card>
 
@@ -1037,15 +1040,14 @@ export default function Dashboard({ onNavigate, search = "" }) {
           {/* Collections Trend */}
           <Card className="p-3.5">
             <div className="mb-2.5 flex items-center justify-between gap-2">
-              <CardTitle className="text-xs font-bold">Scheme Trend</CardTitle>
+              <div className="flex min-w-0 items-baseline gap-2"><CardTitle className="text-xs font-bold">Scheme Trend</CardTitle>{schemePeriod === "custom" && schemeCustom.from && schemeCustom.to && <RangeLabel sel="custom" custom={schemeCustom} onEdit={() => setSchemeEditing(true)} />}</div>
               <MetricSelect value={schemeMetric} onChange={setSchemeMetric} options={SCHEME_METRICS} accent={SCHEME_ACCENT} />
             </div>
             <div className="mb-4 flex flex-wrap items-center gap-1.5">
-              <PeriodTabs value={schemePeriod} onChange={setSchemePeriod} accent={SCHEME_ACCENT} />
+              <PeriodTabs value={schemePeriod} onChange={(v) => { setSchemePeriod(v); setSchemeEditing(v === "custom"); }} accent={SCHEME_ACCENT} />
             </div>
-            {schemePeriod === "custom" && <CustomRange value={schemeCustom} onApply={setSchemeCustom} accent={SCHEME_ACCENT} />}
-            {schemePeriod === "custom" && (!schemeCustom.from || !schemeCustom.to)
-              ? <div className="flex h-48 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
+            {schemePeriod === "custom" && (schemeEditing || !schemeCustom.from || !schemeCustom.to)
+              ? <div className="flex h-48 flex-col items-center justify-center gap-2 rounded-lg bg-canvas/40 px-2"><CustomRange value={schemeCustom} onApply={(v) => { setSchemeCustom(v); setSchemeEditing(false); }} accent={SCHEME_ACCENT} className="" /><span className="text-xs font-medium text-muted">Pick a date range and Apply</span></div>
               : <LineChart series={schemeSeries} accent={SCHEME_ACCENT} gradId="schemeArea" fmtY={(v) => axisFmt(v, schemeUnit)} fmtTip={(v) => tipFmt(v, schemeUnit)} />}
           </Card>
 
