@@ -1042,23 +1042,37 @@ export default function NewSale({ intent, clearIntent } = {}) {
           loaded bill uses, so the layout never jumps from one column to two
           halfway through the task. */}
       <div className={product ? "" : "grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]"}>
-      <Card data-motion="reveal" className="p-5 sm:p-6">
+      <Card data-motion="reveal" className="overflow-hidden p-0">
         {/* One box for both trades. The shop holds finished jewellery, which
             is found by HUID, and bullion, which is found by serial number -
             naming only the HUID told the counter the bar could not be sold
             here, when in fact typing its serial has always worked. */}
-        <SectionHead title="Find product" />
-        <div className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="grid gap-1.5 flex-1 min-w-[220px]">
-            <span className="text-xs font-bold">HUID, Item Code or Serial No. *</span>
-            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Type or scan: HUID or Item Code for jewellery, serial number for a gold bar" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
-          </label>
-          <Button size="sm" className="bg-accent hover:bg-accent-strong h-10 px-6" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
-          <Button size="sm" variant="outline" className="h-10 px-5" disabled={loading} onClick={() => setCameraOpen(true)} title="Scan the piece's barcode sticker with the camera. A USB or phone scanner works without this - just scan.">
-            <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10.5 8v8M14 8v8M17 8v8" /></svg>
-            Scan barcode
-          </Button>
-          <Button size="sm" variant="outline" className="h-10 px-5" onClick={openDrafts}>Unfinished bills</Button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-soft bg-gradient-to-r from-accent-soft/80 via-accent-soft/30 to-transparent px-5 py-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-white shadow-[0_6px_16px_-6px_rgba(159,29,53,0.6)]">
+              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-[15px] font-extrabold tracking-tight">Find product</h3>
+              <p className="text-[11px] text-muted">HUID or Item Code for jewellery · serial number for a gold bar</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" className="h-9 bg-surface px-3.5" disabled={loading} onClick={() => setCameraOpen(true)} title="Scan the piece's barcode sticker with the camera. A USB or phone scanner works without this - just scan.">
+              <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10.5 8v8M14 8v8M17 8v8" /></svg>
+              Scan barcode
+            </Button>
+            <Button size="sm" variant="outline" className="h-9 bg-surface px-3.5" onClick={openDrafts}>
+              <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></svg>
+              Unfinished bills
+            </Button>
+          </div>
+        </div>
+        <div className="px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
+        <label htmlFor="ns-find-code" className="text-xs font-bold">HUID, Item Code or Serial No. *</label>
+        <div className="mt-1.5 flex flex-col gap-2.5 sm:flex-row">
+          <SearchInput id="ns-find-code" className="min-w-0 flex-1" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Type or scan a HUID, Item Code or bar serial" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
+          <Button size="sm" className="h-10 shrink-0 bg-accent px-7 hover:bg-accent-strong" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
         </div>
         {cameraOpen && <CameraScanner onResult={onCameraResult} onClose={closeCamera} />}
         {/* Not a toast. A toast fades and this must not: until someone cancels
@@ -1174,9 +1188,9 @@ export default function NewSale({ intent, clearIntent } = {}) {
         )}
 
         {!product && !rawGold && !lookupError && !loading && (
-          <div className="mt-5 border-t border-line-soft pt-4">
+          <div className="mt-5 rounded-xl border border-line-soft bg-canvas/50 p-4">
             <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">How a bill is made</div>
-            <ol className="mt-2 space-y-1.5">
+            <ol className="mt-3 space-y-2.5">
               {[
                 "Find the piece by its HUID or Item Code, or a bar by its serial number.",
                 "Choose Online (live rate) or Offline (editable rate).",
@@ -1184,14 +1198,15 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 "Identify the buyer and redeem any schemes they hold.",
                 "State how they are paying, then create the bill.",
               ].map((step, i) => (
-                <li key={step} className="flex gap-2.5 text-xs text-muted">
-                  <span className="num mt-px grid h-4 w-4 shrink-0 place-items-center rounded border border-line-soft bg-canvas text-[9px] font-extrabold text-faint">{i + 1}</span>
+                <li key={step} className="flex items-start gap-3 text-xs leading-5 text-ink-soft">
+                  <span className="num grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] font-extrabold text-accent-strong ring-1 ring-accent-line">{i + 1}</span>
                   <span>{step}</span>
                 </li>
               ))}
             </ol>
           </div>
         )}
+        </div>
       </Card>
 
       {/* A bar's summary and its payment live HERE, in the column that stood
@@ -1278,8 +1293,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
       {/* Placeholder for the pinned summary: keeps the right column occupied so
           the page reads as a billing screen rather than an empty form. */}
       {!product && !rawGold && (
-        <div className="hidden rounded-2xl border border-dashed border-line bg-canvas/40 p-6 lg:block">
-          <div className="text-sm font-extrabold text-faint">Bill summary</div>
+        <div className="hidden overflow-hidden rounded-2xl border border-line bg-surface/70 lg:block">
+          <div className="h-1.5 bg-gradient-to-r from-accent via-accent-strong to-[#c9a84c] opacity-60" />
+          <div className="p-6">
+          <div className="text-sm font-extrabold text-ink-soft">Bill summary</div>
           <p className="mt-1 text-xs text-muted">Appears here once an item is loaded, and stays pinned while you work down the form.</p>
           <div className="mt-4 space-y-2.5" aria-hidden="true">
             {["Gold value", "Making charge", "Wastage", "GST", "Bill total"].map((label, i) => (
@@ -1288,6 +1305,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 <span className={`h-2 rounded-full bg-line-soft ${i === 4 ? "w-24" : "w-16"}`} />
               </div>
             ))}
+          </div>
           </div>
         </div>
       )}
@@ -1300,21 +1318,27 @@ export default function NewSale({ intent, clearIntent } = {}) {
           {/* LEFT: details + controls */}
           <div className="space-y-5 min-w-0">
             {/* Product */}
-            <Card className="p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <SectionHead step={1} title={product.name || "Not provided"} />
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
-                    <span className="num font-bold">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "Not provided"}`}</span>
-                    <span aria-hidden="true" className="text-line">|</span>
-                    <span>{[product.category, product.subcategory].filter(Boolean).join(" · ") || "Not provided"}</span>
+            <Card className="overflow-hidden p-0">
+              <div className="flex flex-wrap items-start justify-between gap-3 bg-gradient-to-r from-[#c9a84c]/15 via-accent-soft/40 to-transparent px-5 pb-4 pt-5">
+                <div className="flex min-w-0 items-start gap-3.5">
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-[#e6c766] to-[#b8902f] text-white shadow-[0_8px_18px_-8px_rgba(184,144,47,0.8)]">
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" /><path d="M11 3 8 9l4 12 4-12-3-6M2 9h20" /></svg>
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-faint">Step 1 · Item</div>
+                    <h3 className="truncate text-lg font-extrabold tracking-tight">{product.name || "Not provided"}</h3>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                      <span className="num rounded-md border border-line bg-surface px-2 py-0.5 font-bold text-ink-soft">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "Not provided"}`}</span>
+                      <span>{[product.category, product.subcategory].filter(Boolean).join(" · ") || "Not provided"}</span>
+                    </div>
                   </div>
                 </div>
                 <Badge tone={product.stockStatus === "IN_STOCK" ? "success" : "warning"}>{product.stockStatus === "IN_STOCK" ? "In stock" : (product.stockStatus || "—")}</Badge>
               </div>
               {/* One strip, hairline separated: the three facts that decide the
                   price sit on a single line instead of three stacked boxes. */}
-              <div className="mt-3.5 grid grid-cols-3 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 [&>*]:min-w-0">
+              <div className="px-5 pb-5">
+              <div className="grid grid-cols-3 divide-x divide-line-soft rounded-xl border border-line bg-surface [&>*]:min-w-0">
                 <SpecCell label="Purity" value={product.purity || "Not provided"} />
                 <SpecCell label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
                 <SpecCell label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
@@ -1326,11 +1350,12 @@ export default function NewSale({ intent, clearIntent } = {}) {
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line-soft pt-3">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Mode</span>
-                  <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white">{saleMode === "OFFLINE" ? "Offline" : "Online"}</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white"><span className={`h-1.5 w-1.5 rounded-full ${saleMode === "OFFLINE" ? "bg-white/60" : "animate-pulse bg-emerald-300"}`} />{saleMode === "OFFLINE" ? "Offline" : "Online"}</span>
                   <span className="text-[11px] text-muted">{saleMode === "OFFLINE" ? "Gold rate editable" : "Gold rate locked to live"}</span>
                 </div>
                 {/* Fixed by the piece, not switchable: HUID = Online, Item Code = Offline. */}
                 <span className="text-[11px] text-muted">{saleMode === "OFFLINE" ? "Item Code piece" : "HUID piece"}</span>
+              </div>
               </div>
             </Card>
 
@@ -1712,15 +1737,19 @@ export default function NewSale({ intent, clearIntent } = {}) {
               panel is kept short enough to fit instead — dense rows,
               one-line notes. */}
           <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
-            <Card className="p-5">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-extrabold">Bill summary</h3>
+            <Card className="overflow-hidden p-0">
+              <div className="flex items-center justify-between gap-2 bg-gradient-to-br from-[#3a0a14] via-[#5c0d1d] to-[#7d1528] px-5 py-4 text-white">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/60">Invoice preview</div>
+                  <h3 className="text-[15px] font-extrabold tracking-tight">Bill summary</h3>
+                </div>
                 <div className="flex items-center gap-2">
-                  {requoting && <span className="text-[11px] text-muted">…</span>}
-                  <span className="rounded-full border border-line bg-canvas/60 px-2.5 py-1 text-[10px] font-bold text-muted" title="GST is compulsory on every bill">GST {product.taxRatePercent || 3}%</span>
+                  {requoting && <span className="text-[11px] text-white/70">Updating…</span>}
+                  <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-bold text-white/90" title="GST is compulsory on every bill">GST {product.taxRatePercent || 3}%</span>
                 </div>
               </div>
-              <div className="mt-3 rounded-xl border border-line bg-canvas/40 p-3 text-[11px] leading-relaxed">
+              <div className="p-5">
+              <div className="rounded-xl border border-line bg-canvas/40 p-3 text-[11px] leading-relaxed">
                 <div className="font-bold text-ink">{product.name || "—"}</div>
                 <div className="text-muted">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "—"}`} · {product.purity || "—"} · {grams(product.netGoldWeightGrams)}</div>
                 <div className="mt-1 text-muted">
@@ -2014,7 +2043,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
               )}
 
               <div className="mt-5 flex flex-col gap-2">
-                <Button size="sm" className="bg-accent hover:bg-accent-strong w-full" disabled={!canCreate} onClick={handleCreateBill}>{creating ? "Working…" : schemeApplied ? "Create Bill & Redeem" : "Create Bill"}</Button>
+                <Button size="sm" className="h-11 w-full bg-accent text-sm shadow-[0_10px_22px_-10px_rgba(159,29,53,0.7)] hover:bg-accent-strong disabled:shadow-none" disabled={!canCreate} onClick={handleCreateBill}>{creating ? "Working…" : schemeApplied ? "Create Bill & Redeem" : "Create Bill"}</Button>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={handleQuotation} disabled={creating || requoting}>Quotation</Button>
                   <Button size="sm" variant="outline" className="flex-1" onClick={handleSaveDraft} disabled={creating || savingDraft}>{savingDraft ? "Saving…" : "Save draft"}</Button>
@@ -2034,6 +2063,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     : ""}
                 </p>
               )}
+              </div>
             </Card>
           </div>
 
@@ -2277,11 +2307,11 @@ const PnlCard = ({ label, amount, pct, sub, detail }) => {
 const SectionHead = ({ step, title, meta, action }) => (
   <div className="flex items-center gap-2.5">
     {step != null && (
-      <span className="num grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-accent-line bg-accent-soft text-[11px] font-extrabold text-accent-strong">
+      <span className="num grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent text-[12px] font-extrabold text-white shadow-[0_4px_10px_-4px_rgba(159,29,53,0.6)]">
         {step}
       </span>
     )}
-    <h3 className="text-sm font-extrabold">{title}</h3>
+    <h3 className="text-[15px] font-extrabold tracking-tight">{title}</h3>
     {meta ? <span className="ml-auto text-[11px] font-semibold text-muted">{meta}</span> : null}
     {action ? <span className={meta ? "" : "ml-auto"}>{action}</span> : null}
   </div>
@@ -2289,9 +2319,9 @@ const SectionHead = ({ step, title, meta, action }) => (
 
 /** One cell of the item spec strip: label over value, hairline separated. */
 const SpecCell = ({ label, value, mono, sub }) => (
-  <div className="min-w-0 flex-1 px-3.5 py-2.5">
+  <div className="min-w-0 flex-1 px-4 py-3">
     <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">{label}</div>
-    <div className={`mt-0.5 truncate text-sm font-extrabold text-ink ${mono ? "num" : ""}`}>{value}</div>
+    <div className={`mt-1 truncate text-base font-extrabold text-ink ${mono ? "num" : ""}`}>{value}</div>
     {sub ? <div className="truncate text-[10px] font-semibold text-muted">{sub}</div> : null}
   </div>
 );
@@ -2299,14 +2329,14 @@ const SpecCell = ({ label, value, mono, sub }) => (
 /** The one figure the whole screen exists to produce — given its own band so
     it stops competing with the charge rows above it. */
 const BillTotalBand = ({ label, value }) => (
-  <div className="mt-2 flex items-center justify-between gap-4 rounded-xl border border-accent-line bg-accent-soft px-3.5 py-2.5">
-    <span className="text-xs font-extrabold uppercase tracking-[0.06em] text-accent-strong">{label}</span>
-    <span className="num text-lg font-extrabold text-accent-strong">{value}</span>
+  <div className="mt-3 flex items-center justify-between gap-4 rounded-xl bg-gradient-to-r from-accent to-accent-strong px-4 py-3.5 text-white shadow-[0_10px_24px_-12px_rgba(159,29,53,0.8)]">
+    <span className="text-xs font-extrabold uppercase tracking-[0.1em] text-white/85">{label}</span>
+    <span className="num text-xl font-extrabold">{value}</span>
   </div>
 );
 
 const Row = ({ label, value, strong, divider, tone }) => (
-  <div className={`flex items-center justify-between gap-4 py-1 ${divider ? "mt-1 border-t border-line pt-2" : ""} ${strong ? "mt-1 border-t border-line pt-2" : ""}`}>
+  <div className={`flex items-center justify-between gap-4 py-1.5 ${divider ? "mt-1 border-t border-dashed border-line pt-2.5" : ""} ${strong ? "mt-1 border-t border-line pt-2.5" : ""}`}>
     <span className={`text-xs ${strong ? "font-extrabold text-ink" : "text-muted"}`}>{label}</span>
     <span className={`num text-sm ${strong ? "text-base font-extrabold text-accent-strong" : `font-semibold ${tone || ""}`}`}>{value}</span>
   </div>
