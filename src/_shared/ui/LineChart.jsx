@@ -113,8 +113,10 @@ export function LineChart({
         <g pointerEvents="none">
           <line x1={tip.cx} y1={yTop} x2={tip.cx} y2={yBot} stroke={accent} strokeOpacity="0.35" strokeWidth="1" strokeDasharray="3 3" />
           <circle cx={tip.cx} cy={tip.cy} r={pointR + 2.8} fill="white" stroke={accent} strokeWidth="2" />
-          <rect x={tip.tx} y={tip.ty} width={tip.w} height={tip.h} rx="7" fill="#1f1a17" fillOpacity="0.92" />
-          <text x={tip.tx + tip.w / 2} y={tip.ty + 14} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#d6d3d1">{tip.label}</text>
+          {/* Tooltip in the chart's own accent (burgundy on the dashboard). */}
+          <rect x={tip.tx} y={tip.ty + 1.5} width={tip.w} height={tip.h} rx="7" fill={accent} fillOpacity="0.25" />
+          <rect x={tip.tx} y={tip.ty} width={tip.w} height={tip.h} rx="7" fill={accent} />
+          <text x={tip.tx + tip.w / 2} y={tip.ty + 14} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#ffffff" fillOpacity="0.78">{tip.label}</text>
           <text x={tip.tx + tip.w / 2} y={tip.ty + 30} textAnchor="middle" fontSize="12" fontWeight="800" fill="#ffffff">{tip.value}</text>
         </g>
       )}
