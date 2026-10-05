@@ -8,7 +8,8 @@ import { badgeText } from "@/modules/inbox/inboxFormat";
  * it used to be a red dot hard-coded into the markup, lit for every user at all
  * times whether or not anything had happened. Nothing unread, no badge.
  *
- * Click opens a popover with the latest few; "See all" opens the full page.
+ * Click opens a popover with the latest UNREAD few - a read one leaves the
+ * popover at once; "See all" opens the full page, which keeps everything.
  * The count refreshes every minute, when the tab regains focus, and whenever
  * read state changes anywhere in the app.
  */
@@ -63,8 +64,8 @@ export default function NotificationBell({ onNavigate }) {
   const loadList = useCallback(async () => {
     setState((s) => (s === "ready" ? s : "loading"));
     try {
-      const r = await inboxService.list({ limit: PREVIEW });
-      setItems(r.items);
+      const r = await inboxService.list({ limit: PREVIEW, unread: true });
+      setItems(r.items.filter((i) => !i.read));
       setCount(r.unreadCount);
       setCapped(r.unreadCapped);
       setState("ready");
@@ -105,7 +106,7 @@ export default function NotificationBell({ onNavigate }) {
     setOpen(false);
     setPopups((list) => list.filter((x) => x.key !== item.key));
     if (!item.read) {
-      setItems((list) => list.map((i) => (i.key === item.key ? { ...i, read: true } : i)));
+      setItems((list) => list.filter((i) => i.key !== item.key));
       setCount((c) => Math.max(0, c - 1));
       inboxService.markRead([item.key]).catch(refreshCount);
     }
@@ -117,7 +118,7 @@ export default function NotificationBell({ onNavigate }) {
     setBusy(true);
     try {
       await inboxService.markAllRead();
-      setItems((list) => list.map((i) => ({ ...i, read: true })));
+      setItems([]);
       setCount(0);
       setCapped(false);
     } finally {
@@ -194,7 +195,7 @@ export default function NotificationBell({ onNavigate }) {
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
                 </div>
                 <div className="mt-2 text-sm font-bold">You’re all caught up</div>
-                <div className="text-xs text-muted">New requests, KYC, payments and tickets will show here.</div>
+                <div className="text-xs text-muted">New requests, KYC, payments and tickets will show here. Read ones stay in All notifications.</div>
               </div>
             )}
             {state === "ready" && items.length > 0 && (
@@ -204,7 +205,7 @@ export default function NotificationBell({ onNavigate }) {
             )}
           </div>
 
-          {state === "ready" && items.length > 0 && (
+          {state === "ready" && (
             <button type="button" onClick={seeAll} className="flex w-full items-center justify-center gap-1.5 border-t border-line px-4 py-3 text-xs font-extrabold text-accent-strong hover:bg-accent-soft/50">
               See all notifications
               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>

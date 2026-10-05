@@ -11,6 +11,66 @@ import {
   channelLabel, targetLabel, statusLabel,
 } from "@/modules/notifications/notificationService";
 import { schemeService } from "@/modules/plan/scheme/schemeService";
+import InboxRow from "@/modules/inbox/InboxRow";
+import { inboxService, INBOX_CHANGED } from "@/modules/inbox/inboxService";
+import { badgeText } from "@/modules/inbox/inboxFormat";
+
+// What the STORE receives (requests, payments, KYC, tickets) - the other side
+// of this page, which sends to customers. Read-only preview; the full list,
+// read state and actions live on the inbox page.
+function StoreInboxPanel({ onNavigate }) {
+  const [data, setData] = useState(null);
+  const load = useCallback(async () => {
+    try {
+      const r = await inboxService.list({ limit: 3 });
+      setData({ items: r.items, unread: r.unreadCount, capped: r.unreadCapped });
+    } catch {
+      setData({ items: [], unread: 0, capped: false, error: true });
+    }
+  }, []);
+  useEffect(() => {
+    load();
+    window.addEventListener(INBOX_CHANGED, load);
+    return () => window.removeEventListener(INBOX_CHANGED, load);
+  }, [load]);
+  const open = () => onNavigate?.("inbox");
+
+  return (
+    <Card data-motion="reveal" className="mb-6 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong">
+            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-extrabold">Store inbox</span>
+              {data?.unread > 0 && <span className="num rounded-full bg-danger-soft px-1.5 py-0.5 text-[10px] font-extrabold text-danger">{badgeText(data.unread, data.capped)} new</span>}
+            </div>
+            <p className="text-xs text-muted">Notifications your store receives - payments, requests, KYC and tickets.</p>
+          </div>
+        </div>
+        <button type="button" onClick={open} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-3 text-xs font-extrabold text-accent-strong hover:bg-accent-soft/60">
+          Open inbox
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </button>
+      </div>
+      {data === null && (
+        <div className="space-y-2 px-5 py-4" aria-busy="true">
+          {[0, 1].map((i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-canvas" />)}
+        </div>
+      )}
+      {data && data.items.length === 0 && (
+        <div className="px-5 py-5 text-center text-xs text-muted">{data.error ? "Couldn’t load the inbox." : "Nothing in the inbox yet."}</div>
+      )}
+      {data && data.items.length > 0 && (
+        <div className="divide-y divide-line-soft">
+          {data.items.map((item) => <InboxRow key={item.key} item={item} onOpen={open} compact />)}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 // Tabs map onto the backend's own status vocabulary rather than a parallel set
 // of display words, so a tab can never drift from the thing it filters.
@@ -31,7 +91,7 @@ const OFFERED_TARGETS = TARGETS.filter((t) => t.value !== "CUSTOMERS");
 
 const EMPTY_FORM = { title: "", message: "", channel: "IN_APP", targetType: "ALL", schemeId: "" };
 
-export default function Notifications() {
+export default function Notifications({ onNavigate }) {
   const scope = useRef(null);
   usePageMotion(scope);
   usePressFeedback(scope);
@@ -181,6 +241,9 @@ export default function Notifications() {
         </Button>
       </div>
 
+      <StoreInboxPanel onNavigate={onNavigate} />
+
+      <div className="mb-3 text-sm font-extrabold">Sent to customers</div>
       <div data-motion="toolbar" className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.map(t => (
           <button key={t.label} onClick={() => setActiveTab(t.label)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${activeTab === t.label ? "border-ink bg-ink text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{t.label}</button>
@@ -192,7 +255,7 @@ export default function Notifications() {
           <table className="w-full min-w-[860px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="px-6 py-3">Title</th><th className="py-3">Channel</th><th className="py-3">Audience</th><th className="py-3 text-right">Recipients</th><th className="py-3">Status</th><th className="py-3 text-right pr-6">Actions</th>
+                <th className="px-6 py-3">Title</th><th className="py-3">Channel</th><th className="py-3">Audience</th><th className="py-3 pr-8 text-right">Recipients</th><th className="py-3">Status</th><th className="py-3 text-right pr-6">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -210,7 +273,7 @@ export default function Notifications() {
                   <td className="py-3.5 text-muted text-xs font-medium max-w-[180px]">{targetLabel(n.targetType)}</td>
                   {/* Counted by the backend at send time. A dash before that:
                       "not sent yet" is not the same fact as "nobody". */}
-                  <td className="num py-3.5 text-right font-semibold">{n.recipientCount ?? "—"}</td>
+                  <td className="num py-3.5 pr-8 text-right font-semibold">{n.recipientCount ?? "—"}</td>
                   <td className="py-3.5"><Badge tone={STATUS_TONE[n.status] ?? "neutral"} dot>{statusLabel(n.status)}</Badge></td>
                   <td className="py-3.5 pr-6 text-right">
                     <div className="flex justify-end gap-1.5">
