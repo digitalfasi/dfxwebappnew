@@ -854,7 +854,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             {seesProfit && (
               <KpiCard title={`${bizPfx} Profit`} value={fmtProfit(profit)} loading={bizFirstLoad} danger={profit !== null && Number(profit) < 0} onClick={() => nav("sales-history")} />
             )}
-            <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} loading={coreLoading} danger onClick={() => nav("sales-history")} />
+            <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} loading={coreLoading} danger onClick={() => nav("payments", { tab: "business", dateFilter: "Overall" })} />
           </div>
 
           {/* Sales Trend */}

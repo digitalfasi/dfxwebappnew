@@ -4,6 +4,7 @@ import { Badge } from "@/_shared/ui/badge";
 import { Button } from "@/_shared/ui/button";
 import { SearchInput } from "@/_shared/ui/input";
 import { Select } from "@/_shared/ui/select";
+import { istToday } from "@/_shared/utils";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { paymentService } from "@/modules/payments/paymentService";
 import { billingService } from "@/modules/billing/billingService";
@@ -89,6 +90,25 @@ const UI_PERIOD_TO_BACKEND = {
   "Last Month": "last_month",
 };
 
+// "Overall" = every payment to date. The backend has no all-time named period,
+// so it is sent as a custom range from a floor date before any store existed
+// to today (IST) - the same date_from/date_to path Custom already uses.
+const OVERALL_FROM = "2000-01-01";
+
+// KPI request for a tab's filters: Overall / Custom as a date range, otherwise
+// a named period. null = Custom still waiting for both dates.
+function kpiOptions(f) {
+  if (f.dateFilter === "Overall") return { dateFrom: OVERALL_FROM, dateTo: istToday() };
+  if (f.dateFilter === "Custom") return f.range.from && f.range.to ? { dateFrom: f.range.from, dateTo: f.range.to } : null;
+  return { period: UI_PERIOD_TO_BACKEND[f.dateFilter] || "today" };
+}
+
+// KPI sublabel. Overall keeps its own name rather than the backend's
+// "2000-01-01 to …" range label.
+function kpiNote(f, kpi) {
+  return f.dateFilter === "Overall" ? "Overall" : (kpi?.label || periodPfxNote(f.dateFilter));
+}
+
 // Fallback KPI sublabel before the backend selected_period_label arrives.
 function periodPfxNote(f) {
   return f === "Custom" ? "Custom" : f;
@@ -151,7 +171,7 @@ function MethodBadge({ method }) {
   return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${s.bg} ${s.border} ${s.text}`}><span className="text-[11px]">{s.icon}</span>{method}</span>;
 }
 
-export default function Payments() {
+export default function Payments({ intent, clearIntent }) {
   const scope = useRef(null);
   usePressFeedback(scope);
   // Spec: Scheme Payments — currently selected
@@ -164,6 +184,15 @@ export default function Payments() {
   const [filters, setFilters] = useState({ business: { ...NEW_FILTERS }, scheme: { ...NEW_FILTERS } });
   const f = filters[tab];
   const patch = (p) => setFilters((prev) => ({ ...prev, [tab]: { ...prev[tab], ...p } }));
+  // One-shot landing from the Dashboard (e.g. Outstanding Amount -> Business
+  // tab on Overall). Applied once, then cleared so a later visit opens normally.
+  useEffect(() => {
+    if (!intent?.tab) return;
+    const t = intent.tab;
+    setTab(t);
+    if (intent.dateFilter) setFilters((prev) => ({ ...prev, [t]: { ...prev[t], dateFilter: intent.dateFilter } }));
+    clearIntent?.();
+  }, [intent, clearIntent]);
   const [selected, setSelected] = useState(null);
   const [settling, setSettling] = useState(null);
   const [settleErr, setSettleErr] = useState(null);
@@ -264,10 +293,7 @@ export default function Payments() {
   const bizFilters = filters.business;
   useEffect(() => {
     if (tab !== "business") return;
-    const isCustom = bizFilters.dateFilter === "Custom";
-    const opts = isCustom
-      ? (bizFilters.range.from && bizFilters.range.to ? { dateFrom: bizFilters.range.from, dateTo: bizFilters.range.to } : null)
-      : { period: UI_PERIOD_TO_BACKEND[bizFilters.dateFilter] || "today" };
+    const opts = kpiOptions(bizFilters);
     if (!opts) { setBizKpi(null); setBizKpiError(""); return; } // Custom awaiting both dates
     const key = JSON.stringify(opts);
     kpiReq.current = key;
@@ -286,10 +312,7 @@ export default function Payments() {
   const schemeFilters = filters.scheme;
   useEffect(() => {
     if (tab !== "scheme") return;
-    const isCustom = schemeFilters.dateFilter === "Custom";
-    const opts = isCustom
-      ? (schemeFilters.range.from && schemeFilters.range.to ? { dateFrom: schemeFilters.range.from, dateTo: schemeFilters.range.to } : null)
-      : { period: UI_PERIOD_TO_BACKEND[schemeFilters.dateFilter] || "today" };
+    const opts = kpiOptions(schemeFilters);
     if (!opts) { setSchemeKpi(null); setSchemeKpiError(""); return; } // Custom awaiting both dates
     const key = JSON.stringify(opts);
     schemeKpiReq.current = key;
@@ -379,13 +402,13 @@ export default function Payments() {
       <div className="mb-4 flex flex-wrap items-center gap-2" data-motion="toolbar">
         <SearchInput placeholder={searchPlaceholder} value={f.search} onChange={e => patch({ search: e.target.value })} className="min-w-[260px] flex-1" />
         <Select value={f.status} onValueChange={(v) => patch({ status: v })} options={tab === "business" ? BUSINESS_STATUS_FILTERS : (schemeView === "payments" ? SCHEME_PAYMENT_STATUS_FILTERS : SCHEME_STATUS_FILTERS)} variant="accent" className="w-40" />
-        {/* Date filters: Today / This Week / This Month / Last Month / Custom.
+        {/* Date filters: Today / This Week / This Month / Last Month / Overall / Custom.
             Scoped to the selected Payment type only. Hidden in the scheme
             Enrollments view — that view is current-state (not a dated list), so a
             period button there would filter nothing and only mislead. */}
         {dateFilterActive && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {["Today", "This Week", "This Month", "Last Month", "Custom"].map(p => (
+          {["Today", "This Week", "This Month", "Last Month", "Overall", "Custom"].map(p => (
             <button
               key={p}
               onClick={() => patch({ dateFilter: p })}
@@ -426,7 +449,7 @@ export default function Payments() {
           )}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {(() => {
-              const note = bizKpiLoading ? "Loading…" : (bizKpi?.label || periodPfxNote(bizFilters.dateFilter));
+              const note = bizKpiLoading ? "Loading…" : kpiNote(bizFilters, bizKpi);
               return (
                 <>
                   <Card className="p-4 kpi-corner">
@@ -464,7 +487,7 @@ export default function Payments() {
           )}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {(() => {
-              const note = schemeKpiLoading ? "Loading…" : (schemeKpi?.label || periodPfxNote(schemeFilters.dateFilter));
+              const note = schemeKpiLoading ? "Loading…" : kpiNote(schemeFilters, schemeKpi);
               return (
                 <>
                   <Card className="p-4 kpi-corner">
