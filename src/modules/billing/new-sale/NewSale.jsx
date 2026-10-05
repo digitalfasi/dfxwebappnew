@@ -1315,18 +1315,20 @@ export default function NewSale({ intent, clearIntent } = {}) {
 
       {product && saleMode && (
         <div className="mt-5 grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]" data-motion="reveal">
-          {/* LEFT: details + controls */}
-          <div className="space-y-5 min-w-0">
+          {/* LEFT: details + controls. Dense on purpose: Customer and Pricing
+              share a row on wide screens, charges sit three to a row, so the
+              whole bill fits in about one screen instead of a long scroll. */}
+          <div className="min-w-0 space-y-4">
             {/* Product */}
             <Card className="overflow-hidden p-0">
-              <div className="flex flex-wrap items-start justify-between gap-3 bg-gradient-to-r from-[#c9a84c]/15 via-accent-soft/40 to-transparent px-5 pb-4 pt-5">
-                <div className="flex min-w-0 items-start gap-3.5">
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-[#e6c766] to-[#b8902f] text-white shadow-[0_8px_18px_-8px_rgba(184,144,47,0.8)]">
-                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" /><path d="M11 3 8 9l4 12 4-12-3-6M2 9h20" /></svg>
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line">
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" /><path d="M11 3 8 9l4 12 4-12-3-6M2 9h20" /></svg>
                   </span>
                   <div className="min-w-0">
                     <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-faint">Step 1 · Item</div>
-                    <h3 className="truncate text-lg font-extrabold tracking-tight">{product.name || "Not provided"}</h3>
+                    <h3 className="truncate text-base font-extrabold tracking-tight">{product.name || "Not provided"}</h3>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                       <span className="num rounded-md border border-line bg-surface px-2 py-0.5 font-bold text-ink-soft">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "Not provided"}`}</span>
                       <span>{[product.category, product.subcategory].filter(Boolean).join(" · ") || "Not provided"}</span>
@@ -1337,8 +1339,8 @@ export default function NewSale({ intent, clearIntent } = {}) {
               </div>
               {/* One strip, hairline separated: the three facts that decide the
                   price sit on a single line instead of three stacked boxes. */}
-              <div className="px-5 pb-5">
-              <div className="grid grid-cols-3 divide-x divide-line-soft rounded-xl border border-line bg-surface [&>*]:min-w-0">
+              <div className="px-4 pb-4">
+              <div className="grid grid-cols-3 divide-x divide-line-soft rounded-xl border border-line bg-canvas/40 [&>*]:min-w-0">
                 <SpecCell label="Purity" value={product.purity || "Not provided"} />
                 <SpecCell label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
                 <SpecCell label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
@@ -1347,7 +1349,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
               {/* Mode belongs to the item: it decides whether THIS item's rate is
                   editable. As a card footer it stops being an unowned strip
                   floating between two cards. */}
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line-soft pt-3">
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Mode</span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white"><span className={`h-1.5 w-1.5 rounded-full ${saleMode === "OFFLINE" ? "bg-white/60" : "animate-pulse bg-emerald-300"}`} />{saleMode === "OFFLINE" ? "Offline" : "Online"}</span>
@@ -1359,8 +1361,9 @@ export default function NewSale({ intent, clearIntent } = {}) {
               </div>
             </Card>
 
+            <div className="grid items-start gap-4 xl:grid-cols-2">
             {/* Customer */}
-            <Card className="p-5 space-y-4">
+            <Card className="min-w-0 space-y-3.5 p-4">
               <SectionHead step={2} title="Customer" />
               <div className="flex gap-2">
                 {[["existing", "Existing customer"], ["walkin", "Walk-in"]].map(([m, label]) => (
@@ -1473,7 +1476,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
 
             {/* Purchase Cost and Purchase-Cost P/L are intentionally omitted from
                 this screen — the counter sees selling figures only. */}
-                <Card className="p-5 space-y-4">
+                <Card className="min-w-0 space-y-3.5 p-4">
                   <SectionHead step={3} title="Pricing" meta={requoting ? "Updating…" : undefined}
                     action={<ProfitToggle compact on={showProfit} onToggle={() => setShowProfit((v) => !v)} />} />
                   {/* Reference figures stay small: the field below is the one
@@ -1482,7 +1485,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       SpecCell strip is a bordered box, so no cell is ever
                       edge-flush - that only pulled the first label onto the
                       border while its neighbours stayed indented. */}
-                  <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1">
+                  <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1 xl:grid-cols-1 xl:divide-x-0 xl:divide-y">
                     {/* Named for what it IS, not for when it was taken. This tile
                         and the bill summary's Gold Value row are different money -
                         the metal at the published rate versus the metal at the
@@ -1519,7 +1522,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       mono
                     />
                   </div>
-                  <div className="rounded-2xl border border-accent-line bg-accent-soft p-4">
+                  <div className="rounded-2xl border border-accent-line bg-accent-soft p-3.5">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold uppercase tracking-[0.08em] text-accent-strong">
                         {quoteHasScheme ? "Customer pays now" : "Customer Price"}
@@ -1529,7 +1532,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     <MoneyInput
                       allowDecimal
                       placeholder="0"
-                      className="mt-2 h-14 bg-surface pl-10 text-center text-2xl font-extrabold tracking-tight"
+                      className="mt-2 h-12 bg-surface pl-10 text-center text-xl font-extrabold tracking-tight"
                       symbolClassName="text-lg font-extrabold text-ink"
                       value={
                         priceText != null
@@ -1607,11 +1610,12 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     />
                   )}
                 </Card>
+            </div>
 
                 {/* Editable rate + Gold Profit % + Making/Wastage + Discount */}
-                <Card className="p-5 space-y-4">
+                <Card className="space-y-3.5 p-4">
                   <SectionHead step={4} title="Rate & charges" />
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
                     <label className="grid min-w-0 gap-1.5">
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
                       <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
@@ -1657,7 +1661,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       <Input type="number" step="0.01" min="0" value={wastageVal} onChange={(e) => setWastageVal(e.target.value)} />
                       <span className="text-[11px] text-muted">= {money(product.wastageAmount)}</span>
                     </label>
-                    <label className="grid gap-1.5 sm:col-span-2">
+                    <label className="grid content-start gap-1.5 sm:col-span-1 xl:col-span-1">
                       {/* The unit matters now: a discount comes off the taxable
                           value, so the bill falls by the discount plus the GST
                           that is no longer due on it. */}
@@ -1686,7 +1690,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         </span>
                       )}
                     </label>
-                    <label className="grid gap-1.5 sm:col-span-2">
+                    <label className="grid content-start gap-1.5 sm:col-span-1 xl:col-span-2">
                       <span className="text-xs font-bold">Exchange Value (₹) <span className="font-normal text-muted">— the customer&apos;s old gold</span></span>
                       <Input
                         type="number" step="0.01" min="0" inputMode="decimal"
@@ -1707,9 +1711,9 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 </Card>
 
             {/* Payment */}
-            <Card className="p-5 space-y-4">
+            <Card className="space-y-3.5 p-4">
               <SectionHead step={5} title="Payment" meta={paymentChosen ? undefined : "Required"} />
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
                 <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Method *</span>
                   <Select value={payMethod} onValueChange={setPayMethod} placeholder="Select method" options={PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABEL[m] }))} />
                 </label>
@@ -1738,14 +1742,11 @@ export default function NewSale({ intent, clearIntent } = {}) {
               one-line notes. */}
           <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
             <Card className="overflow-hidden p-0">
-              <div className="flex items-center justify-between gap-2 bg-gradient-to-br from-[#3a0a14] via-[#5c0d1d] to-[#7d1528] px-5 py-4 text-white">
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/60">Invoice preview</div>
-                  <h3 className="text-[15px] font-extrabold tracking-tight">Bill summary</h3>
-                </div>
+              <div className="flex items-center justify-between gap-2 border-b border-line-soft border-t-[3px] border-t-accent px-5 py-3.5">
+                <h3 className="text-[15px] font-extrabold tracking-tight text-accent-strong">Bill summary</h3>
                 <div className="flex items-center gap-2">
-                  {requoting && <span className="text-[11px] text-white/70">Updating…</span>}
-                  <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-bold text-white/90" title="GST is compulsory on every bill">GST {product.taxRatePercent || 3}%</span>
+                  {requoting && <span className="text-[11px] text-muted">Updating…</span>}
+                  <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 text-[10px] font-bold text-accent-strong" title="GST is compulsory on every bill">GST {product.taxRatePercent || 3}%</span>
                 </div>
               </div>
               <div className="p-5">
@@ -2043,7 +2044,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
               )}
 
               <div className="mt-5 flex flex-col gap-2">
-                <Button size="sm" className="h-11 w-full bg-accent text-sm shadow-[0_10px_22px_-10px_rgba(159,29,53,0.7)] hover:bg-accent-strong disabled:shadow-none" disabled={!canCreate} onClick={handleCreateBill}>{creating ? "Working…" : schemeApplied ? "Create Bill & Redeem" : "Create Bill"}</Button>
+                <Button size="sm" className="h-11 w-full bg-accent text-sm hover:bg-accent-strong" disabled={!canCreate} onClick={handleCreateBill}>{creating ? "Working…" : schemeApplied ? "Create Bill & Redeem" : "Create Bill"}</Button>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={handleQuotation} disabled={creating || requoting}>Quotation</Button>
                   <Button size="sm" variant="outline" className="flex-1" onClick={handleSaveDraft} disabled={creating || savingDraft}>{savingDraft ? "Saving…" : "Save draft"}</Button>
@@ -2329,7 +2330,7 @@ const SpecCell = ({ label, value, mono, sub }) => (
 /** The one figure the whole screen exists to produce — given its own band so
     it stops competing with the charge rows above it. */
 const BillTotalBand = ({ label, value }) => (
-  <div className="mt-3 flex items-center justify-between gap-4 rounded-xl bg-gradient-to-r from-accent to-accent-strong px-4 py-3.5 text-white shadow-[0_10px_24px_-12px_rgba(159,29,53,0.8)]">
+  <div className="mt-3 flex items-center justify-between gap-4 rounded-xl bg-accent px-4 py-3.5 text-white">
     <span className="text-xs font-extrabold uppercase tracking-[0.1em] text-white/85">{label}</span>
     <span className="num text-xl font-extrabold">{value}</span>
   </div>
