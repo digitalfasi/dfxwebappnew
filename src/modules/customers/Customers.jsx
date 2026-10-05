@@ -519,12 +519,12 @@ export default function Customers({ intent, clearIntent } = {}) {
         // the four shares add up to a fraction of 100%.
         const typeCounts = summary?.types ?? null;
         const typeComp = [
-          // One burgundy family, deep to light - same colour in the stacked
-          // bar, the dot and the row bar for each type.
-          { label: "Walk-in", key: "Walk-in", color: "#5c0d1d" },
+          // One brand burgundy for every type; the stacked bar separates
+          // types with a thin gap, the labels and counts say which is which.
+          { label: "Walk-in", key: "Walk-in", color: "#9f1d35" },
           { label: "Scheme", key: "Scheme Customer", color: "#9f1d35" },
-          { label: "Hybrid", key: "Hybrid", color: "#c9506a" },
-          { label: "New", key: "New", color: "#e399a8" },
+          { label: "Hybrid", key: "Hybrid", color: "#9f1d35" },
+          { label: "New", key: "New", color: "#9f1d35" },
         ].map((t) => ({ ...t, count: typeCounts ? typeCounts[t.key] ?? 0 : null }));
         // Backend counts when available; the page-derived numbers only as a
         // fallback (and then they are what they are — this page's rows).
@@ -574,7 +574,7 @@ export default function Customers({ intent, clearIntent } = {}) {
                 <div className="text-[11px] text-muted">Share of {totalCustomers.toLocaleString("en-IN")} customers</div>
               </div>
               {/* Single stacked bar — the whole base at a glance. */}
-              <div className="mt-3 flex h-2 gap-[2px] overflow-hidden rounded-full bg-line-soft">
+              <div className="mt-3 flex h-2 gap-[3px] overflow-hidden rounded-full bg-line-soft">
                 {typeComp.map(({ label, count, color }) => (
                   count > 0 ? <div key={label} style={{ width: `${pct(count)}%`, background: color }} title={`${label}: ${count}`} /> : null
                 ))}
