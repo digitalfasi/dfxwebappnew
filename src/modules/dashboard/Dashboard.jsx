@@ -395,7 +395,7 @@ function KpiCard({ title, value, growth, growthOf, danger, onClick, loading = fa
       className="group relative isolate flex flex-col overflow-hidden rounded-xl border border-line bg-surface p-4 text-left transition-all duration-150 hover:border-accent-line hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
       <div className="pointer-events-none absolute -right-5 -top-5 -z-10 h-16 w-16 rounded-full bg-accent opacity-[0.07]" aria-hidden="true" />
       <div className="flex items-center justify-between gap-2">
-        <div className="line-clamp-2 min-h-[1.9em] text-[10px] font-bold uppercase tracking-[0.06em] text-muted">{title}</div>
+        <div title={title} className="line-clamp-2 h-[2.7em] text-[10px] font-bold uppercase leading-[1.35] tracking-[0.06em] text-muted">{title}</div>
         {g && <span className={`text-[11px] font-bold ${up ? "text-accent-strong" : "text-danger"}`}>{g}</span>}
       </div>
       {/* A figure still on the wire is not a figure of "—". The em dash is
@@ -899,7 +899,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-white">
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0" /></svg>
             </span>
-            <div><h3 className="text-sm font-extrabold text-ink">Store Business</h3><p className="text-[10px] font-medium text-muted">Product sales, inventory &amp; billing overview</p>{periodWindowLabel(bizPeriod, bizCustom) && <p className="text-[10px] font-semibold text-accent-strong">{periodWindowLabel(bizPeriod, bizCustom)}</p>}</div>
+            <div><h3 className="text-sm font-extrabold text-ink">Store Business</h3><p className="text-[10px] font-medium text-muted">Product sales, inventory &amp; billing overview</p><p className="min-h-[15px] text-[10px] font-semibold text-accent-strong">{periodWindowLabel(bizPeriod, bizCustom) || "Custom range - pick dates"}</p></div>
           </div>
 
           {/* Say it out loud. These figures used to come back as a confident
@@ -1007,7 +1007,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <span className="grid h-9 w-9 place-items-center rounded-lg text-white" style={{ backgroundColor: SCHEME_ACCENT }}>
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
             </span>
-            <div><h3 className="text-sm font-extrabold text-ink">Schemes</h3><p className="text-[10px] font-medium text-muted">Scheme collections, enrollments &amp; performance</p>{periodWindowLabel(schemePeriod, schemeCustom) && <p className="text-[10px] font-semibold text-accent-strong">{periodWindowLabel(schemePeriod, schemeCustom)}</p>}</div>
+            <div><h3 className="text-sm font-extrabold text-ink">Schemes</h3><p className="text-[10px] font-medium text-muted">Scheme collections, enrollments &amp; performance</p><p className="min-h-[15px] text-[10px] font-semibold text-accent-strong">{periodWindowLabel(schemePeriod, schemeCustom) || "Custom range - pick dates"}</p></div>
           </div>
 
           {(schemeFailed || coreFailed) && (
