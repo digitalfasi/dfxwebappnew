@@ -220,6 +220,22 @@ function analyticsQuery(sel, custom) {
 function analyticsKey(sel, custom) {
   return sel === "custom" ? `c:${custom.from}:${custom.to}` : sel;
 }
+/* Card subtitle. An applied Custom range doubles as the "change dates"
+   control, since the picker no longer sits above the chart. */
+function RangeLabel({ sel, custom, onEdit }) {
+  const text = analyticsLabel(sel, custom);
+  if (sel === "custom" && custom.from && custom.to) {
+    return (
+      <button type="button" onClick={onEdit} title="Change dates"
+        className="inline-flex items-center gap-1 text-[10px] font-bold text-faint underline decoration-dotted underline-offset-2 hover:text-ink">
+        {text}
+        <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+      </button>
+    );
+  }
+  return <span className="text-[10px] font-bold text-faint">{text}</span>;
+}
+
 function analyticsLabel(sel, custom) {
   if (sel === "this_year") return String(new Date().getFullYear());
   if (sel === "last_year") return String(new Date().getFullYear() - 1);
@@ -277,6 +293,14 @@ const INVOICE_TONE = { Paid: "success", Partial: "warning", Pending: "danger", R
 const ENROLL_TONE = { Active: "success", Completed: "success", Closed: "neutral", Cancelled: "danger", Redeemed: "info" };
 
 /** Axis tick formatter per metric unit. */
+/* Full figure for the trend hover tooltip (the axis uses the compact form). */
+function tipFmt(v, unit) {
+  const n = Number(v) || 0;
+  if (unit === "grams") return `${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} g`;
+  if (unit === "count") return n.toLocaleString("en-IN");
+  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+}
+
 function axisFmt(v, unit) {
   const n = Number(v) || 0;
   if (unit === "grams") return `${Math.round(n)}g`;
@@ -316,11 +340,11 @@ function MetricSelect({ value, onChange, options, accent }) {
     </span>
   );
 }
-function CustomRange({ value, onApply, accent }) {
+function CustomRange({ value, onApply, accent, className = "mb-2" }) {
   const [from, setFrom] = useState(value.from);
   const [to, setTo] = useState(value.to);
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-canvas p-2">
+    <div className={`${className} flex flex-wrap items-center justify-center gap-2 rounded-lg border border-line bg-canvas p-2`}>
       <label className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2">
         <span className="text-[9px] font-bold uppercase text-faint">From</span>
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-[7rem] bg-transparent text-[11px] text-muted outline-none" />
@@ -586,9 +610,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // Historical analytics (own period, default this_year)
   const [catPeriod, setCatPeriod] = useState("this_year");
   const [catCustom, setCatCustom] = useState({ from: "", to: "" });
+  const [catEditing, setCatEditing] = useState(false); // Custom date picker open
   const [salesCats, setSalesCats] = useState(null);
   const [popPeriod, setPopPeriod] = useState("this_year");
   const [popCustom, setPopCustom] = useState({ from: "", to: "" });
+  const [popEditing, setPopEditing] = useState(false); // Custom date picker open
   const [popSchemes, setPopSchemes] = useState(null);
 
   usePageMotion(scope, [loading]);
@@ -924,18 +950,19 @@ export default function Dashboard({ onNavigate, search = "" }) {
             {bizPeriod === "custom" && <CustomRange value={bizCustom} onApply={setBizCustom} accent={BUSINESS_ACCENT} />}
             {bizPeriod === "custom" && (!bizCustom.from || !bizCustom.to)
               ? <div className="flex h-48 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
-              : <LineChart series={bizSeries} accent="#9f1d35" gradId="bizArea" fmtY={(v) => axisFmt(v, bizUnit)} />}
+              : <LineChart series={bizSeries} accent="#9f1d35" gradId="bizArea" fmtY={(v) => axisFmt(v, bizUnit)} fmtTip={(v) => tipFmt(v, bizUnit)} />}
           </Card>
 
           {/* Top Selling Categories */}
           <Card className="p-3.5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-baseline gap-2"><CardTitle className="text-xs font-bold">Top Selling Categories</CardTitle><span className="text-[10px] font-bold text-faint">{analyticsLabel(catPeriod, catCustom)}</span></div>
-              <PeriodTabs value={catPeriod} onChange={setCatPeriod} accent={BUSINESS_ACCENT} tabs={ANALYTICS_TABS} />
+              <div className="flex items-baseline gap-2"><CardTitle className="text-xs font-bold">Top Selling Categories</CardTitle><RangeLabel sel={catPeriod} custom={catCustom} onEdit={() => setCatEditing(true)} /></div>
+              <PeriodTabs value={catPeriod} onChange={(v) => { setCatPeriod(v); setCatEditing(v === "custom"); }} accent={BUSINESS_ACCENT} tabs={ANALYTICS_TABS} />
             </div>
-            {catPeriod === "custom" && <CustomRange value={catCustom} onApply={setCatCustom} accent={BUSINESS_ACCENT} />}
-            {catPeriod === "custom" && (!catCustom.from || !catCustom.to)
-              ? <div className="flex min-h-[150px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">Pick a date range and Apply</div>
+            {/* Custom dates are picked INSIDE the chart area (same 150px box), so
+                choosing Custom never makes this card taller than the others. */}
+            {catPeriod === "custom" && (catEditing || !catCustom.from || !catCustom.to)
+              ? <div className="flex min-h-[150px] flex-col items-center justify-center gap-2 rounded-lg bg-canvas/40 px-2"><CustomRange value={catCustom} onApply={(v) => { setCatCustom(v); setCatEditing(false); }} accent={BUSINESS_ACCENT} className="" /><span className="text-xs font-medium text-muted">Pick a date range and Apply</span></div>
               : catDonut.length === 0
               ? <div className="flex min-h-[150px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">No category sales in this period</div>
               : <Donut items={catDonut} centerValue={fmtCompact(catDonut.reduce((a, b) => a + b.value, 0))} centerLabel={"TOTAL SALES"} />}
@@ -1017,18 +1044,19 @@ export default function Dashboard({ onNavigate, search = "" }) {
             {schemePeriod === "custom" && <CustomRange value={schemeCustom} onApply={setSchemeCustom} accent={SCHEME_ACCENT} />}
             {schemePeriod === "custom" && (!schemeCustom.from || !schemeCustom.to)
               ? <div className="flex h-48 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
-              : <LineChart series={schemeSeries} accent={SCHEME_ACCENT} gradId="schemeArea" fmtY={(v) => axisFmt(v, schemeUnit)} />}
+              : <LineChart series={schemeSeries} accent={SCHEME_ACCENT} gradId="schemeArea" fmtY={(v) => axisFmt(v, schemeUnit)} fmtTip={(v) => tipFmt(v, schemeUnit)} />}
           </Card>
 
           {/* Popular Schemes */}
           <Card className="p-3.5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-baseline gap-2"><CardTitle className="text-xs font-bold">Popular Schemes</CardTitle><span className="text-[10px] font-bold text-faint">{analyticsLabel(popPeriod, popCustom)}</span></div>
-              <PeriodTabs value={popPeriod} onChange={setPopPeriod} accent={SCHEME_ACCENT} tabs={ANALYTICS_TABS} />
+              <div className="flex items-baseline gap-2"><CardTitle className="text-xs font-bold">Popular Schemes</CardTitle><RangeLabel sel={popPeriod} custom={popCustom} onEdit={() => setPopEditing(true)} /></div>
+              <PeriodTabs value={popPeriod} onChange={(v) => { setPopPeriod(v); setPopEditing(v === "custom"); }} accent={SCHEME_ACCENT} tabs={ANALYTICS_TABS} />
             </div>
-            {popPeriod === "custom" && <CustomRange value={popCustom} onApply={setPopCustom} accent={SCHEME_ACCENT} />}
-            {popPeriod === "custom" && (!popCustom.from || !popCustom.to)
-              ? <div className="flex min-h-[150px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">Pick a date range and Apply</div>
+            {/* Custom dates are picked INSIDE the chart area (same 150px box), so
+                choosing Custom never makes this card taller than the others. */}
+            {popPeriod === "custom" && (popEditing || !popCustom.from || !popCustom.to)
+              ? <div className="flex min-h-[150px] flex-col items-center justify-center gap-2 rounded-lg bg-canvas/40 px-2"><CustomRange value={popCustom} onApply={(v) => { setPopCustom(v); setPopEditing(false); }} accent={SCHEME_ACCENT} className="" /><span className="text-xs font-medium text-muted">Pick a date range and Apply</span></div>
               : popDonut.length === 0
               ? <div className="flex min-h-[150px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">No scheme collections in this period</div>
               : <Donut items={popDonut} centerValue={fmtCompact(popDonut.reduce((a, b) => a + b.value, 0))} centerLabel={"COLLECTED"} />}

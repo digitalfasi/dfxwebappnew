@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 /**
  * Shared line/area chart with real Y ticks + X labels and gridlines. `series`
  * is [{x, y}] oldest→newest. Uniform scaling (no preserveAspectRatio="none")
@@ -5,6 +7,8 @@
  *
  *   scale="zero" — plot 0 → max (dashboard trends).
  *   scale="fit"  — frame min → max with 12% headroom (gold-rate trend).
+ *
+ * fmtTip (opt-in): hover / tap a point to see its label and full value.
  *
  * fmtY/fmtX format the tick labels; all geometry/label sizing is prop-driven
  * so a caller can reproduce its exact prior look. Extracted from the near
@@ -32,7 +36,9 @@ export function LineChart({
   xLabelSize = 9,
   ariaLabel = "Trend chart",
   empty = "No data in this period",
+  fmtTip,
 }) {
+  const [hover, setHover] = useState(null);
   const pts = (series ?? []).filter((p) => p && Number.isFinite(Number(p.y)));
   const maxRaw = pts.length ? Math.max(...pts.map((p) => Number(p.y) || 0)) : 0;
   // A single point is data, not the absence of it. "Today" returns exactly one
@@ -65,8 +71,33 @@ export function LineChart({
   // so the two never collide.
   const last = pts.length - 1;
   const xTicks = pts.map((p, i) => ({ i, x: p.x })).filter((t) => t.i === last || (t.i % step === 0 && last - t.i >= step));
+  // Pointer -> nearest point. The svg scales uniformly (xMidYMid meet), so map
+  // the client x back into viewBox units before picking the index.
+  const pick = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const s = Math.min(r.width / W, r.height / H) || 1;
+    const vx = (e.clientX - r.left - (r.width - W * s) / 2) / s;
+    const i = pts.length === 1 ? 0 : Math.round(((vx - x0) / (x1 - x0)) * (pts.length - 1));
+    setHover(Math.max(0, Math.min(pts.length - 1, i)));
+  };
+  const tip = fmtTip && hover != null && pts[hover] ? (() => {
+    const p = pts[hover];
+    const label = String(fmtX(p.x)), value = String(fmtTip(Number(p.y)));
+    const w = Math.max(label.length * 5.6, value.length * 7.2) + 20, h = 38;
+    const cx = px(hover), cy = py(p.y);
+    // Above the point when it fits; otherwise beside it (left if there is
+    // room, else right) so the box never sits on top of the line.
+    if (cy - h - 10 >= yTop - 8) return { cx, cy, tx: Math.max(x0, Math.min(x1 - w, cx - w / 2)), ty: cy - h - 10, w, h, label, value };
+    const tx = cx - w - 12 >= x0 ? cx - w - 12 : Math.min(cx + 12, x1 - w);
+    const ty = Math.max(yTop - 8, Math.min(yBot - h, cy - h / 2));
+    return { cx, cy, tx, ty, w, h, label, value };
+  })() : null;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className={`${className} w-full`} role="img" aria-label={ariaLabel}>
+    <svg viewBox={`0 0 ${W} ${H}`} className={`${className} w-full`} role="img" aria-label={ariaLabel}
+      style={fmtTip ? { touchAction: "pan-y" } : undefined}
+      onPointerMove={fmtTip ? pick : undefined}
+      onPointerDown={fmtTip ? pick : undefined}
+      onPointerLeave={fmtTip ? (e) => { if (e.pointerType === "mouse") setHover(null); } : undefined}>
       <defs><linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={accent} stopOpacity="0.18" /><stop offset="100%" stopColor={accent} stopOpacity="0" /></linearGradient></defs>
       {yTicks.map((t, i) => (
         <g key={i}>
@@ -78,6 +109,15 @@ export function LineChart({
       <path d={line} fill="none" stroke={accent} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" data-motion="draw" />
       {pts.map((p, i) => <circle key={i} cx={px(i)} cy={py(p.y)} r={pointR} fill={accent} />)}
       {/* End labels anchor inward so "Oct 2026" at the right edge is not clipped. */}
+      {tip && (
+        <g pointerEvents="none">
+          <line x1={tip.cx} y1={yTop} x2={tip.cx} y2={yBot} stroke={accent} strokeOpacity="0.35" strokeWidth="1" strokeDasharray="3 3" />
+          <circle cx={tip.cx} cy={tip.cy} r={pointR + 2.8} fill="white" stroke={accent} strokeWidth="2" />
+          <rect x={tip.tx} y={tip.ty} width={tip.w} height={tip.h} rx="7" fill="#1f1a17" fillOpacity="0.92" />
+          <text x={tip.tx + tip.w / 2} y={tip.ty + 14} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#d6d3d1">{tip.label}</text>
+          <text x={tip.tx + tip.w / 2} y={tip.ty + 30} textAnchor="middle" fontSize="12" fontWeight="800" fill="#ffffff">{tip.value}</text>
+        </g>
+      )}
       {xTicks.map((t) => <text key={t.i} x={px(t.i)} y={yBot + xLabelDy} textAnchor={pts.length > 1 && t.i === 0 ? "start" : pts.length > 1 && t.i === pts.length - 1 ? "end" : "middle"} className="fill-muted" fontSize={xLabelSize} fontWeight="600">{fmtX(t.x)}</text>)}
     </svg>
   );
