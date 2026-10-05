@@ -93,7 +93,8 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
 
         {/* Desktop: the live rate rides in the header's empty middle, so page
             content starts right under the bar. Phones/tablets keep MobileRate. */}
-        {!showSearch && <HeaderRate bullion={bullion} />}
+        {!showSearch && <HeaderRate bullion={bullion} size={2} className="hidden lg:flex xl:hidden" />}
+        {!showSearch && <HeaderRate bullion={bullion} size={4} className="hidden xl:flex" />}
 
         <div className={`flex shrink-0 items-center gap-2.5 ${showSearch ? "" : "ml-auto"}`}>
           {action}
@@ -166,12 +167,18 @@ export function PageAction({ children }) {
   return <Button size="sm" className="hidden sm:inline-flex">{children}</Button>;
 }
 
-/* Two purities at a time, swapping to the next pair every 3s on a local
-   timer (presentation only). Shared by the header and the phone strip. */
-function useRatePairs(bullion) {
+/* `size` purities at a time, swapping to the next group every 3s on a local
+   timer (presentation only). Shared by the header and the phone strip. With
+   `wrap`, the last group borrows from the start so the slots never go empty
+   (6 rates in groups of 4: 24K-14K, then 9K/Silver/24K/22K). */
+function useRatePairs(bullion, size = 2, wrap = false) {
   const rows = QUOTES.filter(([, key]) => bullion?.[key] != null);
   const pairs = [];
-  for (let k = 0; k < rows.length; k += 2) pairs.push(rows.slice(k, k + 2));
+  if (wrap && rows.length > size) {
+    for (let k = 0; k < rows.length; k += size) pairs.push(Array.from({ length: size }, (_, j) => rows[(k + j) % rows.length]));
+  } else {
+    for (let k = 0; k < rows.length; k += size) pairs.push(rows.slice(k, k + size));
+  }
   const [i, setI] = useState(0);
   const n = pairs.length;
   useEffect(() => {
@@ -184,21 +191,24 @@ function useRatePairs(bullion) {
 
 const rupees = (v) => `₹${Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
-/* Desktop (lg+) live rate inside the header. Same `bullion` payload and the
-   same pair rotation as MobileRate - no request of its own. */
-function HeaderRate({ bullion }) {
-  const { i, pair, stale } = useRatePairs(bullion);
+/* Desktop live rate inside the header. Same `bullion` payload and the same 3s
+   rotation as MobileRate - no request of its own. Fills the header's free
+   width. Four rates per view at xl (1280px+); at lg (1024-1279) four would
+   crowd the bell/account controls, so that width gets two. The breakpoint is
+   plain CSS - each size renders its own copy and only one is ever visible. */
+function HeaderRate({ bullion, size, className }) {
+  const { i, pair, stale } = useRatePairs(bullion, size, true);
   return (
-    <div className="hidden min-w-0 flex-1 lg:flex lg:pl-4">
-      <div className="flex h-11 min-w-0 items-center gap-4 rounded-full border border-accent-line bg-[#fbf1f1] pl-4 pr-1.5 shadow-[0_6px_18px_-14px_rgba(159,29,53,0.35)]">
+    <div className={`min-w-0 flex-1 lg:pl-4 lg:pr-2 ${className}`}>
+      <div className="flex h-11 min-w-0 flex-1 items-center gap-4 rounded-full border border-accent-line bg-[#fbf1f1] pl-4 pr-1.5 shadow-[0_6px_18px_-14px_rgba(159,29,53,0.35)]">
         <span className="flex shrink-0 items-center gap-2 text-[11px] font-extrabold text-accent-strong">
           <span className={`h-1.5 w-1.5 rounded-full ${stale ? "bg-muted" : "bg-accent shadow-[0_0_0_3px_rgba(159,29,53,0.15)]"}`} />
           <span className="whitespace-nowrap">{stale ? "Last published rate" : "Live Gold Rates"}</span>
           {stale && <span className="whitespace-nowrap font-semibold text-muted">{fmtDateShort(bullion.effective_date)}</span>}
         </span>
-        <div key={i} className="flex h-8 min-w-0 items-center rounded-full border border-accent-line/60 bg-surface px-1" style={{ animation: "fadein 350ms ease both" }}>
+        <div key={`${size}-${i}`} className="flex h-8 min-w-0 flex-1 items-center rounded-full border border-accent-line/60 bg-surface px-1" style={{ animation: "fadein 350ms ease both" }}>
           {pair.length ? pair.map((q, c) => (
-            <div key={q[0]} className={`flex items-baseline gap-2 px-3.5 ${c ? "border-l border-line-soft" : ""}`}>
+            <div key={q[0]} className={`flex min-w-0 flex-1 items-baseline justify-center gap-2 px-3 ${c ? "border-l border-line-soft" : ""}`}>
               <span className="text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-accent-strong">{q[0]}</span>
               <span className="num whitespace-nowrap text-[17px] font-extrabold tabular-nums text-ink">{rupees(bullion[q[1]])}</span>
             </div>
