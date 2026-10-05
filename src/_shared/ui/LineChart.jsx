@@ -61,7 +61,10 @@ export function LineChart({
     : `${line} L${px(pts.length - 1).toFixed(1)},${yBot} L${x0},${yBot} Z`;
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ v: min + f * span, y: yBot - f * (yBot - yTop) }));
   const step = Math.max(1, Math.ceil(pts.length / 6));
-  const xTicks = pts.map((p, i) => ({ i, x: p.x })).filter((t) => t.i % step === 0 || t.i === pts.length - 1);
+  // The last label always shows; a regular tick too close before it is dropped
+  // so the two never collide.
+  const last = pts.length - 1;
+  const xTicks = pts.map((p, i) => ({ i, x: p.x })).filter((t) => t.i === last || (t.i % step === 0 && last - t.i >= step));
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className={`${className} w-full`} role="img" aria-label={ariaLabel}>
       <defs><linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={accent} stopOpacity="0.18" /><stop offset="100%" stopColor={accent} stopOpacity="0" /></linearGradient></defs>
@@ -74,7 +77,8 @@ export function LineChart({
       <path d={area} fill={`url(#${gradId})`} />
       <path d={line} fill="none" stroke={accent} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" data-motion="draw" />
       {pts.map((p, i) => <circle key={i} cx={px(i)} cy={py(p.y)} r={pointR} fill={accent} />)}
-      {xTicks.map((t) => <text key={t.i} x={px(t.i)} y={yBot + xLabelDy} textAnchor="middle" className="fill-muted" fontSize={xLabelSize} fontWeight="600">{fmtX(t.x)}</text>)}
+      {/* End labels anchor inward so "Oct 2026" at the right edge is not clipped. */}
+      {xTicks.map((t) => <text key={t.i} x={px(t.i)} y={yBot + xLabelDy} textAnchor={pts.length > 1 && t.i === 0 ? "start" : pts.length > 1 && t.i === pts.length - 1 ? "end" : "middle"} className="fill-muted" fontSize={xLabelSize} fontWeight="600">{fmtX(t.x)}</text>)}
     </svg>
   );
 }

@@ -156,6 +156,55 @@ function rangeQuery(sel, custom) {
   }
   return buildQuery({ period: sel });
 }
+/* Every bucket the backend's trend reports would use for this window, oldest
+   first, so a quiet day/month plots as 0 instead of vanishing (This Year with
+   sales only in Sep and Oct used to draw a 2-point Sep -> Oct line).
+   Mirrors reports/service.py exactly: same window per period (ending today,
+   IST), month buckets "Sep 2026" when the span is over 31 days, otherwise day
+   buckets "05 Oct". null = window unknown (custom awaiting dates). */
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function trendBuckets(sel, custom) {
+  const t = istToday();
+  let from = t, to = t;
+  if (sel === "custom") {
+    if (!custom.from || !custom.to) return null;
+    from = custom.from; to = custom.to;
+  } else if (sel === "this_week") {
+    const d = new Date(`${t}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    from = d.toISOString().slice(0, 10);
+  } else if (sel === "this_month") {
+    from = `${t.slice(0, 8)}01`;
+  } else if (sel === "this_year") {
+    from = `${t.slice(0, 5)}01-01`;
+  } else if (sel !== "today") {
+    return null;
+  }
+  const d0 = new Date(`${from}T00:00:00Z`), d1 = new Date(`${to}T00:00:00Z`);
+  if (!(d0 <= d1)) return null;
+  const out = [];
+  if ((d1 - d0) / 86400000 > 31) {
+    for (let y = d0.getUTCFullYear(), m = d0.getUTCMonth(); y < d1.getUTCFullYear() || (y === d1.getUTCFullYear() && m <= d1.getUTCMonth()); m === 11 ? (y++, m = 0) : m++) {
+      out.push(`${MON[m]} ${y}`);
+    }
+  } else {
+    for (const d = new Date(d0); d <= d1; d.setUTCDate(d.getUTCDate() + 1)) {
+      out.push(`${String(d.getUTCDate()).padStart(2, "0")} ${MON[d.getUTCMonth()]}`);
+    }
+  }
+  return out;
+}
+/* Lay a sparse series over the full bucket list (missing = 0). Display only:
+   the KPI totals never read this. If any returned label is not a bucket we
+   expected, the series is drawn exactly as returned rather than risk hiding
+   a real figure. */
+function fillTrend(series, buckets) {
+  if (!buckets || !series.length) return series;
+  const want = new Set(buckets);
+  if (series.some((p) => !want.has(p.x))) return series;
+  const got = new Map(series.map((p) => [p.x, p.y]));
+  return buckets.map((x) => ({ x, y: got.get(x) ?? 0 }));
+}
 function rangeKey(sel, custom) {
   return sel === "custom" ? `c:${custom.from}:${custom.to}` : sel;
 }
@@ -723,10 +772,10 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const bizSales = salesTrend ? salesTrend.reduce((s, p) => s + (Number(p.total_amount) || 0), 0) : null;
   const goldSold = salesTrend ? salesTrend.reduce((s, p) => s + (Number(p.gold_weight_grams) || 0), 0) : null;
   const profit = salesTrend ? salesTrend.reduce((s, p) => s + (Number(p.profit) || 0), 0) : null;
-  const bizSeries = (salesTrend ?? []).map((p) => ({
+  const bizSeries = fillTrend((salesTrend ?? []).map((p) => ({
     x: p.period_label,
     y: Number(bizMetric === "sales" ? p.total_amount : bizMetric === "profit" ? p.profit : p.gold_weight_grams) || 0,
-  }));
+  })), trendBuckets(bizPeriod, bizCustom));
   const bizUnit = bizMetric === "gold" ? "grams" : "inr";
 
   // Skeletons are for a card with NOTHING to show. Once a figure is on screen
@@ -740,10 +789,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
   const newEnroll = enrollSummary ? enrollSummary.new_enrollments_in_range : null;
   const newMaturity = enrollSummary ? (enrollSummary.daily_trend ?? []).reduce((s, p) => s + (Number(p.maturity_amount) || 0), 0) : null;
   const schemeFirstLoad = schemeLoading && !enrollSummary && !paySummary;
-  const schemeSeries =
+  const schemeSeries = fillTrend(
     schemeMetric === "collections" ? (paySummary?.monthly_trend ?? []).map((p) => ({ x: p.period_label, y: Number(p.total_amount) || 0 }))
     : schemeMetric === "maturity" ? (enrollSummary?.daily_trend ?? []).map((p) => ({ x: p.period_label, y: Number(p.maturity_amount) || 0 }))
-    : (enrollSummary?.daily_trend ?? []).map((p) => ({ x: p.period_label, y: Number(p.new_enrollments) || 0 }));
+    : (enrollSummary?.daily_trend ?? []).map((p) => ({ x: p.period_label, y: Number(p.new_enrollments) || 0 })),
+    trendBuckets(schemePeriod, schemeCustom));
   const schemeUnit = schemeMetric === "enrollments" ? "count" : "inr";
 
   const catDonut = (salesCats?.categories ?? []).filter((c) => c.total_sales > 0)
@@ -873,7 +923,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             </div>
             {bizPeriod === "custom" && <CustomRange value={bizCustom} onApply={setBizCustom} accent={BUSINESS_ACCENT} />}
             {bizPeriod === "custom" && (!bizCustom.from || !bizCustom.to)
-              ? <div className="flex h-40 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
+              ? <div className="flex h-48 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
               : <LineChart series={bizSeries} accent="#9f1d35" gradId="bizArea" fmtY={(v) => axisFmt(v, bizUnit)} />}
           </Card>
 
@@ -885,9 +935,9 @@ export default function Dashboard({ onNavigate, search = "" }) {
             </div>
             {catPeriod === "custom" && <CustomRange value={catCustom} onApply={setCatCustom} accent={BUSINESS_ACCENT} />}
             {catPeriod === "custom" && (!catCustom.from || !catCustom.to)
-              ? <div className="flex min-h-[128px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">Pick a date range and Apply</div>
+              ? <div className="flex min-h-[150px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">Pick a date range and Apply</div>
               : catDonut.length === 0
-              ? <div className="flex min-h-[128px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">No category sales in this period</div>
+              ? <div className="flex min-h-[150px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">No category sales in this period</div>
               : <Donut items={catDonut} centerValue={fmtCompact(catDonut.reduce((a, b) => a + b.value, 0))} centerLabel={"TOTAL SALES"} />}
           </Card>
 
@@ -966,7 +1016,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             </div>
             {schemePeriod === "custom" && <CustomRange value={schemeCustom} onApply={setSchemeCustom} accent={SCHEME_ACCENT} />}
             {schemePeriod === "custom" && (!schemeCustom.from || !schemeCustom.to)
-              ? <div className="flex h-40 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
+              ? <div className="flex h-48 items-center justify-center text-xs font-medium text-faint">Pick a date range and Apply</div>
               : <LineChart series={schemeSeries} accent={SCHEME_ACCENT} gradId="schemeArea" fmtY={(v) => axisFmt(v, schemeUnit)} />}
           </Card>
 
@@ -978,9 +1028,9 @@ export default function Dashboard({ onNavigate, search = "" }) {
             </div>
             {popPeriod === "custom" && <CustomRange value={popCustom} onApply={setPopCustom} accent={SCHEME_ACCENT} />}
             {popPeriod === "custom" && (!popCustom.from || !popCustom.to)
-              ? <div className="flex min-h-[128px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">Pick a date range and Apply</div>
+              ? <div className="flex min-h-[150px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">Pick a date range and Apply</div>
               : popDonut.length === 0
-              ? <div className="flex min-h-[128px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">No scheme collections in this period</div>
+              ? <div className="flex min-h-[150px] items-center justify-center rounded-lg bg-canvas/40 text-xs font-medium text-muted">No scheme collections in this period</div>
               : <Donut items={popDonut} centerValue={fmtCompact(popDonut.reduce((a, b) => a + b.value, 0))} centerLabel={"COLLECTED"} />}
           </Card>
 
