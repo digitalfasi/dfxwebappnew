@@ -935,17 +935,19 @@ export default function Dashboard({ onNavigate, search = "" }) {
 
           {/* Sales Trend */}
           <Card className="p-3.5">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            {/* Title + metric on one line (metric top-right), period tabs on
+                their own row, then clear air before the plot. */}
+            <div className="mb-2.5 flex items-center justify-between gap-2">
               <CardTitle className="text-xs font-bold">Business Trend</CardTitle>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <MetricSelect
-                  value={bizMetric}
-                  onChange={setBizMetric}
-                  options={BIZ_METRICS.filter((m) => seesProfit || !m.adminOnly)}
-                  accent={BUSINESS_ACCENT}
-                />
-                <PeriodTabs value={bizPeriod} onChange={setBizPeriod} accent={BUSINESS_ACCENT} />
-              </div>
+              <MetricSelect
+                value={bizMetric}
+                onChange={setBizMetric}
+                options={BIZ_METRICS.filter((m) => seesProfit || !m.adminOnly)}
+                accent={BUSINESS_ACCENT}
+              />
+            </div>
+            <div className="mb-4 flex flex-wrap items-center gap-1.5">
+              <PeriodTabs value={bizPeriod} onChange={setBizPeriod} accent={BUSINESS_ACCENT} />
             </div>
             {bizPeriod === "custom" && <CustomRange value={bizCustom} onApply={setBizCustom} accent={BUSINESS_ACCENT} />}
             {bizPeriod === "custom" && (!bizCustom.from || !bizCustom.to)
@@ -1034,12 +1036,12 @@ export default function Dashboard({ onNavigate, search = "" }) {
 
           {/* Collections Trend */}
           <Card className="p-3.5">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="mb-2.5 flex items-center justify-between gap-2">
               <CardTitle className="text-xs font-bold">Scheme Trend</CardTitle>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <MetricSelect value={schemeMetric} onChange={setSchemeMetric} options={SCHEME_METRICS} accent={SCHEME_ACCENT} />
-                <PeriodTabs value={schemePeriod} onChange={setSchemePeriod} accent={SCHEME_ACCENT} />
-              </div>
+              <MetricSelect value={schemeMetric} onChange={setSchemeMetric} options={SCHEME_METRICS} accent={SCHEME_ACCENT} />
+            </div>
+            <div className="mb-4 flex flex-wrap items-center gap-1.5">
+              <PeriodTabs value={schemePeriod} onChange={setSchemePeriod} accent={SCHEME_ACCENT} />
             </div>
             {schemePeriod === "custom" && <CustomRange value={schemeCustom} onApply={setSchemeCustom} accent={SCHEME_ACCENT} />}
             {schemePeriod === "custom" && (!schemeCustom.from || !schemeCustom.to)
