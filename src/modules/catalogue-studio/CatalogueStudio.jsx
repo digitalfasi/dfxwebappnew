@@ -73,6 +73,16 @@ export default function CatalogueStudio() {
     const file = e.target.files?.[0];
     e.target.value = ""; // lets the same file be picked again after a change
     if (!file) return;
+    // Same rule the server enforces. Checked here so an iPhone HEIC photo or
+    // a 15 MB original is refused with a reason instead of failing at save.
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast("This photo type can't be used. Please pick a JPG, PNG or WebP image.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast(`This photo is ${(file.size / 1048576).toFixed(1)} MB. Please use one under 10 MB.`);
+      return;
+    }
     const url = URL.createObjectURL(file);
     setForm(f => ({ ...f, image: url, imageFile: file }));
     setPreview(url);
@@ -143,6 +153,10 @@ export default function CatalogueStudio() {
       } else {
         target = await catalogueService.createProduct(payload);
       }
+      // The image failure used to be toasted and then instantly replaced by
+      // "Product updated", so staff saw success while the old photo stayed.
+      // Keep the reason (e.g. HEIC or over 10 MB) and show it last.
+      let imageError = null;
       if (form.imageFile && target?.id) {
         // A new upload is added to the gallery, not swapped in, so it must be
         // made primary explicitly or the old photo keeps showing.
@@ -150,7 +164,7 @@ export default function CatalogueStudio() {
           const img = await catalogueService.uploadImage(target.id, form.imageFile);
           if (img?.id) await catalogueService.setPrimaryImage(target.id, img.id);
         }
-        catch { toast(editId ? "Product saved, image upload failed" : "Product created, image upload failed"); }
+        catch (imgErr) { imageError = imgErr?.message || "Image upload failed"; }
       }
       const wasEdit = !!editId;
       setEditId(null);
@@ -159,7 +173,9 @@ export default function CatalogueStudio() {
       setErrors({});
       setView("catalogue");
       await load();
-      toast(wasEdit ? "Product updated" : "Product created");
+      toast(imageError
+        ? `${wasEdit ? "Product saved" : "Product created"}, but the photo was NOT changed: ${imageError}`
+        : (wasEdit ? "Product updated" : "Product created"));
     } catch (err) {
       toast(err?.message || (editId ? "Could not update product" : "Could not create product"));
     } finally {
@@ -181,8 +197,8 @@ export default function CatalogueStudio() {
             <Card className="p-5">
               <h3 className="font-bold">Product Image</h3>
               <div className="mt-4">
-                {preview ? <img src={preview} alt="preview" className="h-64 w-full rounded-xl object-cover border border-line" /> : <label className="flex h-64 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 text-sm text-muted hover:border-accent"><input type="file" accept="image/*" className="hidden" onChange={handleImage} /><span className="font-bold">Upload Image</span><span className="text-xs">Click to select</span></label>}
-                {preview && <label className="mt-3 inline-flex cursor-pointer rounded-full border border-line bg-white px-4 py-1.5 text-xs font-bold hover:bg-canvas"><input type="file" accept="image/*" className="hidden" onChange={handleImage} />Change Image</label>}
+                {preview ? <img src={preview} alt="preview" className="h-64 w-full rounded-xl object-cover border border-line" /> : <label className="flex h-64 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-canvas/40 text-sm text-muted hover:border-accent"><input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImage} /><span className="font-bold">Upload Image</span><span className="text-xs">Click to select</span></label>}
+                {preview && <label className="mt-3 inline-flex cursor-pointer rounded-full border border-line bg-white px-4 py-1.5 text-xs font-bold hover:bg-canvas"><input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImage} />Change Image</label>}
               </div>
               <div className="mt-4 rounded-xl border border-line-soft bg-canvas/60 p-3 text-xs leading-relaxed text-muted">
                 {editId ? "A new image replaces the one customers see when you save" : "Image is added when the product is saved"}<br />Original photo is kept as uploaded<br />No cropping or resizing
