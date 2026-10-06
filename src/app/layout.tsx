@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import NumberWheelGuard from "@/_shared/NumberWheelGuard";
 
@@ -13,7 +14,10 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Reading the request makes every page render per request, which is what lets
+  // Next stamp the CSP nonce from src/proxy.ts on its inline scripts.
+  await headers();
   return (
     <html lang="en">
       <head>
