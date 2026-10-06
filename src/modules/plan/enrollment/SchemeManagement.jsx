@@ -25,6 +25,29 @@ import { isWalletScheme, isFreeAmountScheme, NOT_APPLICABLE, SCHEME_TYPE, DIGI_M
 // under "Closed". A filter named "Cancelled" matched nothing a close produced.
 const FILTERS = ["All", "Active", "Overdue", "Completed", "Closed", "Redeemed"];
 const isClosedStatus = (s) => s === "Closed" || s === "Cancelled";
+
+// Same month arithmetic as the backend's _add_months: same day-of-month,
+// clamped to the month's last day (31 Jan + 1 month = 28/29 Feb).
+function addMonthsIso(iso, n) {
+  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1 + n, 1));
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  t.setUTCDate(Math.min(d, last));
+  return t.toISOString().slice(0, 10);
+}
+
+// Display only. A late customer's stored next_due_date stays on the missed
+// instalment until he pays, so in October it still reads 29 Sept. Show that
+// date as "missed", and separately the first instalment date after today.
+// Null once every remaining instalment is already in the past.
+function upcomingDueDate(joined, monthsPaid, totalMonths, today) {
+  if (!joined) return null;
+  for (let k = (monthsPaid || 0) + 1; k < (totalMonths || 0); k += 1) {
+    const due = addMonthsIso(joined, k);
+    if (due > today) return due;
+  }
+  return null;
+}
 const ROWS_PER_PAGE = 20;
 const isOverdue = (r) => (r.overdueDays || 0) > 0;
 const TABS = ["Enrollment Details", "Passbook & Payments", "Remarks"];
@@ -848,7 +871,14 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
                       )}
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-medium">{fmtDate(manage.joined)}</td></tr>
                       <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-medium">{isWalletScheme(manage.schemeType) ? <span className="font-bold text-accent-strong">No maturity date</span> : fmtDate(manage.maturity)}</td></tr>
-                      <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-medium">{isClosed ? "Nil" : fmtDate(manage.nextDue)}</td></tr>
+                      {!isClosed && manage.nextDue && String(manage.nextDue).slice(0, 10) < istToday() ? (
+                        <>
+                          <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Missed Due</td><td className="px-4 py-2.5 font-bold text-danger">{fmtDate(manage.nextDue)}{manage.overdueDays > 0 ? ` · ${manage.overdueDays} days late` : ""}</td></tr>
+                          <tr><td className="px-4 py-2.5 font-semibold text-muted">Upcoming Due</td><td className="px-4 py-2.5 font-medium">{(() => { const up = upcomingDueDate(manage.joined, manage.paid, manage.total, istToday()); return up ? fmtDate(up) : NOT_APPLICABLE; })()}</td></tr>
+                        </>
+                      ) : (
+                        <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-medium">{isClosed ? "Nil" : fmtDate(manage.nextDue)}</td></tr>
+                      )}
                     </tbody>
                   </table>
                   <p className="px-4 py-2 text-xs text-muted">Amounts and dates are fixed when the customer enrolls and can't be edited here.</p>
