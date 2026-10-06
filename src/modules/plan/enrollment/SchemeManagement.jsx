@@ -11,6 +11,8 @@ import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { passbookService } from "@/_shared/passbookService";
 import { paymentService } from "@/modules/payments/paymentService";
 import { isWalletScheme, isFreeAmountScheme, NOT_APPLICABLE, SCHEME_TYPE, DIGI_MIN, DIGI_MAX } from "@/modules/plan/scheme/schemeCapabilities";
+import { useAuth } from "@/_shared/AuthContext";
+import { isShopAdmin } from "@/_shared/moduleAccess";
 
 // Scheme Management — operational customer/enrollment module. Consolidates the
 // former Enrollments + Collections screens. All figures (paid, outstanding,
@@ -275,6 +277,8 @@ function KpiCard({ label, value, hint, danger }) {
 
 export default function SchemeManagement({ intent, clearIntent } = {}) {
   const scope = useRef(null);
+  // Closing an enrollment is the Admin's (server-enforced since 2026-10-06).
+  const canClose = isShopAdmin(useAuth().backendRole);
   usePressFeedback(scope);
   const [filter, setFilter] = useState("All");
   const [period, setPeriod] = useState(DEFAULT_PERIOD);
@@ -990,7 +994,7 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
                     </div>
                   )}
 
-                  {!isClosed && (
+                  {!isClosed && canClose && (
                     <div className="mt-6 rounded-xl border border-danger/40 bg-danger/5 p-4">
                       <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-danger">Close scheme</div>
                       <p className="mt-1 text-xs text-muted">Stops future contributions. The paid-in balance is preserved and stays redeemable — closing never refunds or forfeits. Cannot be reopened.</p>

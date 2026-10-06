@@ -9,6 +9,8 @@ import { formatINR, money } from "@/_shared/utils";
 import { isFreeAmountScheme } from "@/modules/plan/scheme/schemeCapabilities";
 import { schemeService, SCHEME_TYPES } from "@/modules/plan/scheme/schemeService";
 import { planHeadline } from "@/modules/plan/scheme/schemeCapabilities";
+import { useAuth } from "@/_shared/AuthContext";
+import { isShopAdmin } from "@/_shared/moduleAccess";
 
 // Business limits, mirrored from app/modules/plan/scheme/schema.py. Every
 // scheme runs 12 months. Monthly Gold Saving is sold at the five instalments
@@ -60,6 +62,8 @@ const bonusTextToPct = (text) => {
 export default function Schemes() {
   const scope = useRef(null);
   usePressFeedback(scope);
+  // Staff see the schemes; only an Admin creates, edits or retires one.
+  const canEdit = isShopAdmin(useAuth().backendRole);
   const [schemes, setSchemes] = useState([]);
   const [loading, setLoading] = useState(true);
   usePageMotion(scope, [loading]);
@@ -283,10 +287,12 @@ export default function Schemes() {
             Installment plans, maturity benefits, and enrollment tiers for your store.
           </p>
         </div>
-        <Button size="sm" onClick={openCreate}>
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-          New scheme
-        </Button>
+        {canEdit && (
+          <Button size="sm" onClick={openCreate}>
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            New scheme
+          </Button>
+        )}
       </div>
 
       {loading && <div className="mb-6 py-14 text-center text-sm font-bold text-muted">Loading…</div>}
@@ -336,7 +342,7 @@ export default function Schemes() {
             {/* Edit and the lifecycle toggle share the row; Delete sits apart
                 as an icon so it can never be hit while reaching for
                 Deactivate — they look similar but only one is reversible. */}
-            <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
+            {canEdit && <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
               <Button variant="outline" size="sm" className="flex-1" disabled={busyId === s.id} onClick={() => openEdit(s)}>Edit</Button>
               {s.status === "Active" ? (
                 <Button variant="outline" size="sm" className="flex-1 text-danger hover:border-danger" disabled={busyId === s.id} onClick={() => setConfirming(s)}>
@@ -363,7 +369,7 @@ export default function Schemes() {
                   <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /><path d="M10 11v5M14 11v5" />
                 </svg>
               </button>
-            </div>
+            </div>}
           </Card>
         ))}
       </div>

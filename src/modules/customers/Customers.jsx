@@ -14,6 +14,7 @@ import { schemeService } from "@/modules/plan/scheme/schemeService";
 import { goldRateService } from "@/modules/gold-rate/goldRateService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
 import { useAuth } from "@/_shared/AuthContext";
+import { isShopAdmin } from "@/_shared/moduleAccess";
 
 // UAT-only test-customer deletion is exposed only for the designated UAT tenant
 // (NEXT_PUBLIC_UAT_TENANT_ID matched against the signed-in user's tenant). This
@@ -123,7 +124,10 @@ export default function Customers({ intent, clearIntent } = {}) {
   const [kycError, setKycError] = useState("");
   const [kycBusy, setKycBusy] = useState(false);
   // UAT-only test-customer deletion.
-  const { tenantId } = useAuth();
+  const { tenantId, backendRole } = useAuth();
+  // Staff look customers up; adding, editing, enrolling and KYC decisions are
+  // the Admin's (server-enforced since the 2026-10-06 security assessment).
+  const canEdit = isShopAdmin(backendRole);
   const uatDeleteEnabled = !!UAT_TENANT_ID && tenantId === UAT_TENANT_ID;
   const [deleting, setDeleting] = useState(null); // customer pending permanent delete
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -246,6 +250,7 @@ export default function Customers({ intent, clearIntent } = {}) {
     // filtered to the customers waiting for verification.
     if (intent?.kyc && KYC_FILTERS.includes(intent.kyc)) { setKycFilter(intent.kyc); clearIntent?.(); return; }
     if (intent !== "add-customer") return;
+    if (!canEdit) { clearIntent?.(); return; }
     openAddCustomer();
     clearIntent?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -504,10 +509,12 @@ export default function Customers({ intent, clearIntent } = {}) {
         </div>
         {/* The scheme list is fetched when the form opens, so the picker is
             already populated by the time the admin scrolls to it. */}
-        <Button size="sm" onClick={openAddCustomer}>
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-          Add customer
-        </Button>
+        {canEdit && (
+          <Button size="sm" onClick={openAddCustomer}>
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            Add customer
+          </Button>
+        )}
       </div>
 
       {(() => {
@@ -663,9 +670,11 @@ export default function Customers({ intent, clearIntent } = {}) {
                       <button onClick={() => openCustomer(c)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent-line hover:bg-accent-soft hover:text-accent" aria-label={`View ${c.name}`} title="View 360">
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" /><circle cx="12" cy="12" r="3" /></svg>
                       </button>
-                      <button onClick={() => openEdit(c)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent-line hover:bg-accent-soft hover:text-accent" aria-label={`Edit ${c.name}`}>
-                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
-                      </button>
+                      {canEdit && (
+                        <button onClick={() => openEdit(c)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-accent-line hover:bg-accent-soft hover:text-accent" aria-label={`Edit ${c.name}`}>
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+                        </button>
+                      )}
                       {uatDeleteEnabled && (
                         <button onClick={() => setDeleting(c)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:border-danger hover:bg-danger/10 hover:text-danger" aria-label={`Delete test customer ${c.name}`} title="Delete Test Customer (UAT)">
                           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M10 11v6M14 11v6" /></svg>
@@ -998,8 +1007,14 @@ export default function Customers({ intent, clearIntent } = {}) {
             </div>
             <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
               <Button variant="outline" size="sm" onClick={closeReview}>Close</Button>
-              <Button size="sm" variant="danger" disabled={kycBusy || !kycRecord} onClick={rejectReview}>{kycBusy ? "Working…" : "Reject"}</Button>
-              <Button size="sm" disabled={kycBusy || !kycRecord || kycRecord?.status === "Verified"} onClick={approveReview}>{kycBusy ? "Working…" : "Approve"}</Button>
+              {canEdit ? (
+                <>
+                  <Button size="sm" variant="danger" disabled={kycBusy || !kycRecord} onClick={rejectReview}>{kycBusy ? "Working…" : "Reject"}</Button>
+                  <Button size="sm" disabled={kycBusy || !kycRecord || kycRecord?.status === "Verified"} onClick={approveReview}>{kycBusy ? "Working…" : "Approve"}</Button>
+                </>
+              ) : (
+                <span className="self-center text-xs text-muted">Only an Admin can approve or reject KYC.</span>
+              )}
             </div>
           </div>
         </div>
@@ -1147,7 +1162,7 @@ export default function Customers({ intent, clearIntent } = {}) {
                 <section>
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-extrabold uppercase tracking-widest text-ink">Scheme Information</h4>
-                    <button onClick={openEnroll} className="rounded-lg border border-accent-line bg-accent-soft px-2.5 py-1 text-[11px] font-bold text-accent-strong hover:bg-accent-line">+ Add scheme</button>
+                    {canEdit && <button onClick={openEnroll} className="rounded-lg border border-accent-line bg-accent-soft px-2.5 py-1 text-[11px] font-bold text-accent-strong hover:bg-accent-line">+ Add scheme</button>}
                   </div>
                   {selected.schemes.length ? (
                     <div className="mt-3 grid gap-3">
@@ -1196,9 +1211,11 @@ export default function Customers({ intent, clearIntent } = {}) {
                 </section>
               </div>
             </div>
-            <div className="border-t border-line p-4 flex gap-2">
-              <Button size="sm" className="flex-1" variant="outline" onClick={() => openEdit(selected)}>Edit profile</Button>
-            </div>
+            {canEdit && (
+              <div className="border-t border-line p-4 flex gap-2">
+                <Button size="sm" className="flex-1" variant="outline" onClick={() => openEdit(selected)}>Edit profile</Button>
+              </div>
+            )}
           </div>
         </div>
       )}

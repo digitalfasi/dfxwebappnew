@@ -878,7 +878,8 @@ export default function Dashboard({ onNavigate, search = "" }) {
                   <span className="min-w-0 text-[15px] font-extrabold leading-tight text-ink">{mod.title}</span>
                 </div>
                 <div className={`grid grid-cols-2 gap-2.5 lg:gap-3 ${mod.actions.length > 2 ? "lg:grid-cols-4" : "lg:grid-cols-2"}`}>
-                  {mod.actions.map((a) => (
+                  {/* New Enrollment adds a customer - Admin only since 2026-10-06. */}
+                  {mod.actions.filter((a) => seesProfit || a.intent !== "add-customer").map((a) => (
                     <button key={a.title} type="button" onClick={() => nav(a.page, a.intent)}
                       className={`${tile} ${a.wide ? "col-span-2 min-h-[60px] items-center gap-3 px-3 py-2.5" : "min-h-[84px] flex-col items-start justify-between p-3"}`}>
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line transition-colors group-[:hover]:bg-white group-[:hover]:text-accent group-[:hover]:ring-accent/30 group-active:bg-white group-active:text-accent group-active:ring-accent/30">{ico(a.icon)}</span>

@@ -11,6 +11,8 @@ import { goldRateService } from "@/modules/gold-rate/goldRateService";
 import { liveRateService } from "@/modules/gold-rate/liveRateService";
 import { LineChart } from "@/_shared/ui/LineChart";
 import { purityLabel } from "@/_shared/purity";
+import { useAuth } from "@/_shared/AuthContext";
+import { isShopAdmin } from "@/_shared/moduleAccess";
 
 // Purity options for the trend dropdown. `key` is the backend rate COLUMN and
 // is never a purity value — do not feed these keys to _shared/purity.js, and do
@@ -36,6 +38,8 @@ const fmtTrendX = (iso) => { try { return new Date(iso).toLocaleDateString("en-I
 
 export default function GoldRate() {
   const scope = useRef(null);
+  // Staff read the rate; only an Admin overrides it.
+  const canEdit = isShopAdmin(useAuth().backendRole);
   usePressFeedback(scope);
   // Six manually-entered rates (strings for the inputs). Empty stays empty —
   // never fabricated. rate_24k is the only backend-required figure.
@@ -58,7 +62,7 @@ export default function GoldRate() {
   const [todaySource, setTodaySource] = useState(null);
   const [todayUpdated, setTodayUpdated] = useState(null);
   const [overriding, setOverriding] = useState(false);
-  const manualMode = overriding || todaySource === "MANUAL";
+  const manualMode = canEdit && (overriding || todaySource === "MANUAL");
   // DFX Collector Engine: live rates scraped from KJPL + MJDTA (server-side).
   const [live, setLive] = useState(null);
   const [liveLoading, setLiveLoading] = useState(false);
@@ -293,8 +297,8 @@ export default function GoldRate() {
             <>
               <CardHeader>
                 <div>
-                  <CardTitle>Today&apos;s rate is automatic</CardTitle>
-                  <CardDescription>Updated from the live market every 5 minutes — nothing to save or publish.</CardDescription>
+                  <CardTitle>{todaySource === "MANUAL" ? "Today's rate is set by your shop" : "Today's rate is automatic"}</CardTitle>
+                  <CardDescription>{todaySource === "MANUAL" ? "Your Admin set today's rate by hand." : "Updated from the live market every 5 minutes — nothing to save or publish."}</CardDescription>
                 </div>
               </CardHeader>
               <CardContent>
@@ -302,7 +306,7 @@ export default function GoldRate() {
                   todaySource === "CARRIED" ? "border-accent-line bg-[#fbf1f1] text-ink-soft" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
                   <span className={`inline-flex items-center gap-1.5 font-bold ${todaySource === "CARRIED" ? "text-accent-strong" : ""}`}>
                     <span className={`h-2 w-2 rounded-full ${todaySource === "CARRIED" ? "bg-accent" : "animate-pulse bg-emerald-500"}`} />
-                    {todaySource === "CARRIED" ? "Market closed — last live rate carried forward" : todaySource ? "Live" : "Waiting for the first live rate"}
+                    {todaySource === "CARRIED" ? "Market closed — last live rate carried forward" : todaySource === "MANUAL" ? "Set by your shop" : todaySource ? "Live" : "Waiting for the first live rate"}
                   </span>
                   {todayUpdated && <span className="text-[12px] opacity-80">Last updated {new Date(todayUpdated).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</span>}
                   {todaySource === "CARRIED" && <span className="text-[12px] opacity-80">Live updates resume when the market opens (Mon–Fri, 9:05 AM)</span>}
@@ -315,9 +319,9 @@ export default function GoldRate() {
                     </div>
                   ))}
                 </div>
-                <p className="mt-3 text-xs text-muted">Billing and the storefront use this rate. Want your own rate today? Override it — the live feed will leave it alone until you switch back.</p>
+                <p className="mt-3 text-xs text-muted">Billing and the storefront use this rate.{canEdit ? " Want your own rate today? Override it — the live feed will leave it alone until you switch back." : " Only an Admin can change it."}</p>
                 <div className="mt-4 flex flex-wrap items-center gap-2.5">
-                  <Button size="sm" variant="outline" disabled={loading} onClick={() => { dirty.current.clear(); setOverriding(true); }}>Override today&apos;s rate</Button>
+                  {canEdit && <Button size="sm" variant="outline" disabled={loading} onClick={() => { dirty.current.clear(); setOverriding(true); }}>Override today&apos;s rate</Button>}
                   {liveErr ? <span className="text-[11px] text-red-500">Live source: {liveErr}</span> : null}
                 </div>
               </CardContent>

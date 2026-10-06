@@ -72,6 +72,14 @@ export const PAGE_MODULE = {
 
 const PRIVILEGED = new Set(["Admin", "SuperAdmin"]);
 
+/** May this user change business definitions or approve? Staff are view-only
+ *  on rates, schemes, catalogue, customers and KYC (server enforces it since
+ *  the 2026-10-06 security assessment); screens use this to stop offering
+ *  buttons the server would refuse. */
+export function isShopAdmin(role) {
+  return PRIVILEGED.has(role);
+}
+
 /** A legacy "billing" grant still expands to the three granular areas, exactly
  *  as require_admin_or_staff_module does server-side. */
 const BILLING_UMBRELLA_CHILDREN = ["billing_inventory", "billing_new_sale", "billing_sales_history"];

@@ -9,6 +9,8 @@ import { toast } from "@/_shared/toast";
 import { catalogueService } from "@/modules/catalogue-studio/catalogueService";
 import { money as formatINR } from "@/_shared/utils";
 import { PURITY_VALUES, PURITY_OPTIONS, purityLabel } from "@/_shared/purity";
+import { useAuth } from "@/_shared/AuthContext";
+import { isShopAdmin } from "@/_shared/moduleAccess";
 
 const CAT_QUICK = ["Chains", "Bangles", "Necklaces", "Rings", "Pendants", "Earrings"];
 // The one purity vocabulary, shared with billing (PURITY_KARATS), now sourced
@@ -21,6 +23,8 @@ const TAG_QUICK = ["Bestseller", "New Arrival", "Trending", "Exclusive", "Festiv
 
 export default function CatalogueStudio() {
   const scope = useRef(null);
+  // Staff browse the catalogue; adding and editing products is the Admin's.
+  const canEdit = isShopAdmin(useAuth().backendRole);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -297,7 +301,7 @@ export default function CatalogueStudio() {
         <h2 className="text-2xl font-extrabold tracking-tight">Catalogue Studio</h2>
         <p className="mt-1 max-w-[60ch] text-sm text-muted">Add a <span className="font-semibold text-ink">new product</span>, or select an <span className="font-semibold text-ink">existing product</span> below to edit its details and images.</p>
         <div className="mt-3 flex gap-2">
-          <Button size="sm" onClick={startCreate}>Add New Product</Button>
+          {canEdit && <Button size="sm" onClick={startCreate}>Add New Product</Button>}
         </div>
       </div>
 
@@ -324,7 +328,7 @@ export default function CatalogueStudio() {
       ) : (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {filtered.map(p => (
-          <Card key={p.id} onClick={() => openEdit(p)} className="cursor-pointer overflow-hidden p-0 flex flex-col transition-shadow hover:shadow-card" title={`Edit ${p.name}`}>
+          <Card key={p.id} onClick={canEdit ? () => openEdit(p) : undefined} className={`overflow-hidden p-0 flex flex-col ${canEdit ? "cursor-pointer transition-shadow hover:shadow-card" : ""}`} title={canEdit ? `Edit ${p.name}` : p.name}>
             <div className="relative">
               {p.img ? (
                 <img src={p.img} alt={p.name} className="h-48 w-full object-cover" />
@@ -344,9 +348,11 @@ export default function CatalogueStudio() {
                 <div><span className="text-muted">Weight</span><div className="font-bold">{p.weight !== "" && p.weight != null ? `${p.weight} g` : "—"}</div></div>
               </div>
               <div className="mt-2 font-extrabold text-ink">{p.price != null ? formatINR(p.price) : "—"}</div>
-              <div className="mt-3 pt-3 border-t border-line-soft">
-                <Button size="sm" variant="outline" className="w-full" onClick={(e) => { e.stopPropagation(); openEdit(p); }}>Edit</Button>
-              </div>
+              {canEdit && (
+                <div className="mt-3 pt-3 border-t border-line-soft">
+                  <Button size="sm" variant="outline" className="w-full" onClick={(e) => { e.stopPropagation(); openEdit(p); }}>Edit</Button>
+                </div>
+              )}
             </div>
           </Card>
         ))}
