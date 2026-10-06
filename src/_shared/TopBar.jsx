@@ -3,7 +3,6 @@ import { Button } from "@/_shared/ui/button";
 import { SearchInput } from "@/_shared/ui/input";
 import { fmtDateShort } from "@/_shared/utils";
 import { useAuth } from "@/_shared/AuthContext";
-import { BUILD_SHA } from "@/_shared/utils";
 import NotificationBell from "@/_shared/NotificationBell";
 
 // Most-asked first: the counter reads 24K / 22K before anything else.
@@ -121,13 +120,11 @@ export default function TopBar({ title, crumb, onMenu, action, onNavigate, onLog
                 </span>
                 <span className="hidden text-left leading-tight md:block">
                   <span className="block max-w-[11rem] truncate text-[12.5px] font-extrabold text-ink">{user?.name || "Signed in"}</span>
-                  {/* Role, and the build this browser is running. The sidebar
-                      carries the build too, but that footer is lg-only and so
-                      is hidden exactly when someone has devtools open beside
-                      the app - which is precisely when the question is asked.
-                      Here it survives every viewport. */}
+                  {/* Role only. The build tag read "dev" on the live server
+                      (the image is built without git), which looked like a
+                      test site to shop staff. */}
                   <span className="block text-[9.5px] font-bold uppercase tracking-[0.09em] text-faint">
-                    {roleText(user)} <span className="font-mono normal-case tracking-normal opacity-70">{BUILD_SHA}</span>
+                    {roleText(user)}
                   </span>
                 </span>
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-muted" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

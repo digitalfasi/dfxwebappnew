@@ -846,12 +846,12 @@ export default function SchemeManagement({ intent, clearIntent } = {}) {
                       {!redeemsAsMoney && (
                         <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Current Gold Balance</td><td className="px-4 py-2.5 font-bold text-accent-strong">{grams(goldBalance)}</td></tr>
                       )}
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-mono text-xs">{fmtDate(manage.joined)}</td></tr>
-                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-mono text-xs">{isWalletScheme(manage.schemeType) ? <span className="font-sans font-bold text-accent-strong">No maturity date</span> : fmtDate(manage.maturity)}</td></tr>
-                      <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-mono text-xs">{isClosed ? "Nil" : fmtDate(manage.nextDue)}</td></tr>
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Joined</td><td className="px-4 py-2.5 font-medium">{fmtDate(manage.joined)}</td></tr>
+                      <tr className="border-b border-line-soft"><td className="px-4 py-2.5 font-semibold text-muted">Maturity</td><td className="px-4 py-2.5 font-medium">{isWalletScheme(manage.schemeType) ? <span className="font-bold text-accent-strong">No maturity date</span> : fmtDate(manage.maturity)}</td></tr>
+                      <tr><td className="px-4 py-2.5 font-semibold text-muted">Next Due</td><td className="px-4 py-2.5 font-medium">{isClosed ? "Nil" : fmtDate(manage.nextDue)}</td></tr>
                     </tbody>
                   </table>
-                  <p className="px-4 py-2 text-xs text-muted">Financial and schedule fields are fixed at enrollment and backend-authoritative.</p>
+                  <p className="px-4 py-2 text-xs text-muted">Amounts and dates are fixed when the customer enrolls and can't be edited here.</p>
                 </div>
               )}
 
