@@ -1766,7 +1766,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
               checked while the page itself looks scrolled to the end. The
               panel is kept short enough to fit instead — dense rows,
               one-line notes. */}
-          <div className="min-w-0 lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start" data-motion="reveal">
+          {/* Spans the lookup row only while the lookup is shown. Spanning an
+              empty row kept its 20px gap, and the sticky summary slid down
+              into it - 20px off the left column at top and bottom. */}
+          <div className={`min-w-0 lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:self-start ${showFind ? "lg:row-span-2" : ""}`} data-motion="reveal">
             <Card className="overflow-hidden p-0">
               <div className="flex items-center justify-between gap-2 border-b border-line-soft border-t-[3px] border-t-accent px-5 py-3.5">
                 <h3 className="text-[15px] font-extrabold tracking-tight text-accent-strong">Bill summary</h3>
