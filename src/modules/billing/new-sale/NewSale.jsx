@@ -461,6 +461,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
   // Product. With a bill already open it never replaces the piece on its own:
   // the code is put in the box and the cashier confirms with Find Product.
   const [cameraOpen, setCameraOpen] = useState(false);
+  // Once an item is on the bill the lookup folds away (the item card has a
+  // "Change item" button). Display only - nothing about the lookup changes.
+  const [findOpen, setFindOpen] = useState(false);
+  useEffect(() => { setFindOpen(false); }, [product]);
   const onScanned = useCallback((raw) => {
     const v = String(raw || "").trim().toUpperCase();
     if (!v) return;
@@ -1031,12 +1035,25 @@ export default function NewSale({ intent, clearIntent } = {}) {
   })();
   const goldValueLabel = `Gold Value${sellingRate ? ` (${netGrams.toFixed(3)} g \u00d7 ${money(sellingRate)})` : ""}`;
 
+  // The lookup stays out of the way while a bill is open, and comes back by
+  // itself whenever it has something to say: a code scanned in for a
+  // different piece (it waits there for Find Product), a failed lookup, or a
+  // sale that could not be voided.
+  const upCode = (x) => String(x || "").trim().toUpperCase();
+  const scannedOther = !!(product && upCode(code) && ![product.productCode, product.huid].map(upCode).includes(upCode(code)));
+  const billOpen = !!(product && saleMode);
+  const showFind = !billOpen || findOpen || scannedOther || !!lookupError || !!voidFailure || cameraOpen;
+
   return (
     <div ref={scope} className="mx-auto max-w-[1240px] pb-32 lg:pb-14">
-      <div data-motion="page-head" className="mb-6">
-        <h2 className="text-2xl font-extrabold tracking-tight">New Sale</h2>
-        <p className="mt-1 text-sm text-muted">Find the item, choose the buyer, set the price and create the bill.</p>
-      </div>
+      {/* The page title is for the empty screen. Once a bill is open it
+          only pushes the bill down - Pricing ended up below the fold. */}
+      {!billOpen && (
+        <div data-motion="page-head" className="mb-6">
+          <h2 className="text-2xl font-extrabold tracking-tight">New Sale</h2>
+          <p className="mt-1 text-sm text-muted">Find the item, choose the buyer, set the price and create the bill.</p>
+        </div>
+      )}
 
       {/* One grid for the whole bill. Lookup sits at the top of the LEFT column
           - it is how Step 1's item got there - and the Bill summary owns the
@@ -1045,7 +1062,8 @@ export default function NewSale({ intent, clearIntent } = {}) {
           never jumps halfway through the task. On a phone everything stacks in
           the same order as before: lookup, steps, summary. */}
       <div className={product && saleMode ? "grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]" : ""}>
-      <div className={product && saleMode ? "min-w-0 lg:col-start-1 lg:row-start-1" : product ? "" : "grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]"}>
+      <div className={billOpen ? (showFind ? "min-w-0 lg:col-start-1 lg:row-start-1" : "hidden") : product ? "" : "grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]"}>
+      {showFind && (
       <Card data-motion="reveal" className="min-w-0 overflow-hidden p-0">
         {/* One box for both trades. The shop holds finished jewellery, which
             is found by HUID, and bullion, which is found by serial number -
@@ -1064,6 +1082,9 @@ export default function NewSale({ intent, clearIntent } = {}) {
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
+            {billOpen && findOpen && (
+              <Button size="sm" variant="ghost" className="h-9 px-3" onClick={() => { setFindOpen(false); setCode(product.huid || product.productCode || ""); }}>Keep current item</Button>
+            )}
             <Button size="sm" variant="outline" className="h-9 bg-surface px-3.5" disabled={loading} onClick={() => setCameraOpen(true)} title="Scan the piece's barcode sticker with the camera. A USB or phone scanner works without this - just scan.">
               <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10.5 8v8M14 8v8M17 8v8" /></svg>
               Scan barcode
@@ -1214,6 +1235,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
         )}
         </div>
       </Card>
+      )}
 
       {/* A bar's summary and its payment live HERE, in the column that stood
           empty and white while the whole short trade was stacked down the left
@@ -1324,61 +1346,57 @@ export default function NewSale({ intent, clearIntent } = {}) {
           {/* LEFT: details + controls. Dense on purpose: Customer and Pricing
               share a row on wide screens, charges sit three to a row, so the
               whole bill fits in about one screen instead of a long scroll. */}
-          <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-2" data-motion="reveal">
-            {/* Product */}
-            <Card className="overflow-hidden p-0">
-              <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-4">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line">
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" /><path d="M11 3 8 9l4 12 4-12-3-6M2 9h20" /></svg>
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-faint">Step 1 · Item</div>
-                    <h3 className="truncate text-base font-extrabold tracking-tight">{product.name || "Not provided"}</h3>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-                      <span className="num rounded-md border border-line bg-surface px-2 py-0.5 font-bold text-ink-soft">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "Not provided"}`}</span>
-                      <span>{[product.category, product.subcategory].filter(Boolean).join(" · ") || "Not provided"}</span>
-                    </div>
+          {/* Stretches to the summary's height on desktop, and the last card
+              (Payment) takes up any difference, so both columns end on one
+              line instead of the summary hanging below the form. */}
+          <div className={`min-w-0 space-y-4 lg:col-start-1 lg:flex lg:flex-col lg:self-stretch ${showFind ? "lg:row-start-2" : "lg:row-start-1"}`} data-motion="reveal">
+            {/* Item. One compact card: what it is, then the four facts that
+                set its price as a single row of chips. The old three-box strip
+                plus a separate Mode footer took a third of the screen to say
+                five words. */}
+            <Card className="p-4">
+              <div className="flex items-start gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" /><path d="M11 3 8 9l4 12 4-12-3-6M2 9h20" /></svg>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                    <h3 className="min-w-0 truncate text-base font-extrabold tracking-tight">{product.name || "Not provided"}</h3>
+                    <Badge tone={product.stockStatus === "IN_STOCK" ? "success" : "warning"}>{product.stockStatus === "IN_STOCK" ? "In stock" : (product.stockStatus || "—")}</Badge>
                   </div>
+                  <div className="mt-0.5 truncate text-xs text-muted">{[product.category, product.subcategory].filter(Boolean).join(" · ") || "Not provided"}</div>
                 </div>
-                <Badge tone={product.stockStatus === "IN_STOCK" ? "success" : "warning"}>{product.stockStatus === "IN_STOCK" ? "In stock" : (product.stockStatus || "—")}</Badge>
+                <Button size="sm" variant="outline" className="h-8 shrink-0 bg-surface px-3 text-xs" onClick={() => setFindOpen(true)} title="Look up a different piece">
+                  Change item
+                </Button>
               </div>
-              {/* One strip, hairline separated: the three facts that decide the
-                  price sit on a single line instead of three stacked boxes. */}
-              <div className="px-4 pb-4">
-              <div className="grid grid-cols-3 divide-x divide-line-soft rounded-xl border border-line bg-canvas/40 [&>*]:min-w-0">
-                <SpecCell label="Purity" value={product.purity || "Not provided"} />
-                <SpecCell label="Net weight" value={grams(product.netGoldWeightGrams)} mono />
-                <SpecCell label={`${product.purity || ""} rate/g`.trim()} value={product.goldRateApplied != null ? money(product.goldRateApplied) : "—"} mono />
-              </div>
-
-              {/* Mode belongs to the item: it decides whether THIS item's rate is
-                  editable. As a card footer it stops being an unowned strip
-                  floating between two cards. */}
-              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Mode</span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white"><span className={`h-1.5 w-1.5 rounded-full ${saleMode === "OFFLINE" ? "bg-white/60" : "animate-pulse bg-emerald-300"}`} />{saleMode === "OFFLINE" ? "Offline" : "Online"}</span>
-                  <span className="text-[11px] text-muted">{saleMode === "OFFLINE" ? "Gold rate editable" : "Gold rate locked to live"}</span>
-                </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="num rounded-lg border border-line bg-canvas/50 px-2.5 py-1 font-bold text-ink-soft">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "Not provided"}`}</span>
+                <span className="rounded-lg border border-line bg-canvas/50 px-2.5 py-1"><span className="text-muted">Purity </span><b className="text-ink">{product.purity || "—"}</b></span>
+                <span className="rounded-lg border border-line bg-canvas/50 px-2.5 py-1"><span className="text-muted">Net </span><b className="num text-ink">{grams(product.netGoldWeightGrams)}</b></span>
+                <span className="rounded-lg border border-line bg-canvas/50 px-2.5 py-1"><span className="text-muted">{`${product.purity || ""} rate `.trimStart()}</span><b className="num text-ink">{product.goldRateApplied != null ? `${money(product.goldRateApplied)}/g` : "—"}</b></span>
                 {/* Fixed by the piece, not switchable: HUID = Online, Item Code = Offline. */}
-                <span className="text-[11px] text-muted">{saleMode === "OFFLINE" ? "Item Code piece" : "HUID piece"}</span>
-              </div>
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1 font-bold text-white" title={saleMode === "OFFLINE" ? "Item Code piece - gold rate editable" : "HUID piece - gold rate locked to live"}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${saleMode === "OFFLINE" ? "bg-white/60" : "animate-pulse bg-emerald-300"}`} />
+                  {saleMode === "OFFLINE" ? "Offline · rate editable" : "Online · live rate"}
+                </span>
               </div>
             </Card>
 
-            {/* Side by side the two cards share one height. Customer's spare
-                height goes to a panel - the empty state, or the results list -
-                never to a blank band, and the note sits at the bottom. */}
-            <div className="grid items-stretch gap-4 2xl:grid-cols-2">
+            {/* Customer and Pricing are full-width rows. Squeezed side by side
+                each was half a card of small print and the pair read as a wall
+                of things to fill in; as rows, each says one thing at a glance. */}
+            <div className="space-y-4">
             {/* Customer */}
-            <Card className="flex min-w-0 flex-col gap-3.5 p-4">
-              <SectionHead step={2} title="Customer" />
-              <div className="flex gap-2">
-                {[["existing", "Existing customer"], ["walkin", "Walk-in"]].map(([m, label]) => (
-                  <button key={m} type="button" onClick={() => setCustomerMode(m)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-colors ${customerMode === m ? "border-accent bg-accent-soft text-accent-strong" : "border-line text-ink-soft hover:bg-canvas"}`}>{label}</button>
-                ))}
-              </div>
+            <Card className="min-w-0 space-y-3 p-4">
+              <SectionHead step={2} title="Customer" action={
+                <div role="tablist" aria-label="Buyer type" className="inline-flex rounded-full border border-line bg-canvas/60 p-0.5">
+                  {[["existing", "Existing customer"], ["walkin", "Walk-in"]].map(([m, label]) => (
+                    <button key={m} type="button" role="tab" aria-selected={customerMode === m} onClick={() => setCustomerMode(m)}
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${customerMode === m ? "bg-surface text-accent-strong shadow-sm ring-1 ring-accent-line" : "text-muted hover:text-ink"}`}>{label}</button>
+                  ))}
+                </div>
+              } />
 
               {customerMode === "existing" ? (
                 selectedCustomer ? (
@@ -1453,25 +1471,14 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     </div>
                   </>
                 ) : (
-                  <div className="flex flex-1 flex-col gap-3">
+                  <div className="space-y-2">
                     <SearchInput placeholder="Search by name, phone or code" value={custQuery} onChange={(e) => setCustQuery(e.target.value)} />
-                    {/* Nothing typed yet: say what goes here instead of an
-                        empty box. */}
-                    {!custQuery.trim() && (
-                      <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 py-6 text-center">
-                        <span className="grid h-10 w-10 place-items-center rounded-full bg-accent-soft text-accent-strong ring-1 ring-accent-line">
-                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5a6.5 6.5 0 0 1 3 5.5" /></svg>
-                        </span>
-                        <div className="text-sm font-bold text-ink-soft">No buyer selected</div>
-                        <p className="max-w-[30ch] text-[11px] leading-snug text-muted">Search by name, phone or customer code. Their redeemable schemes appear here once chosen.</p>
-                      </div>
-                    )}
                     {custQuery.trim() && (
-                      <div className="max-h-56 min-h-[88px] flex-1 overflow-y-auto rounded-xl border border-line bg-canvas/30">
+                      <div className="max-h-56 overflow-y-auto rounded-xl border border-line">
                         {custSearching && <div className="px-4 py-3 text-xs text-muted">Searching…</div>}
                         {!custSearching && custResults.length === 0 && <div className="px-4 py-3 text-xs text-muted">No matching customers.</div>}
                         {!custSearching && custResults.map((c) => (
-                          <button key={c.id} type="button" onClick={() => selectCustomer(c)} className="flex w-full items-center justify-between border-b border-line-soft bg-surface px-4 py-2.5 text-left hover:bg-accent-soft/40">
+                          <button key={c.id} type="button" onClick={() => selectCustomer(c)} className="flex w-full items-center justify-between border-b border-line-soft px-4 py-2.5 text-left last:border-0 hover:bg-accent-soft/40">
                             <span className="text-sm font-semibold">{c.name}</span>
                             <span className="text-xs text-muted">{c.phone && c.phone !== "—" ? c.phone : c.code || ""}</span>
                           </button>
@@ -1481,10 +1488,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                   </div>
                 )
               ) : (
-                // Side by side only while the card spans the column. Beside
-                // Pricing (2xl) it is half as wide, and two fields cut the
-                // placeholder and the phone digits short.
-                <div className="grid gap-3.5 sm:grid-cols-2 2xl:grid-cols-1">
+                <div className="grid gap-3.5 sm:grid-cols-2">
                   <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Name *</span><Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Walk-in buyer name" /></label>
                   {/* Optional, but if it is filled it must be a real mobile
                       number - the bill carries it and the store calls it back. */}
@@ -1495,16 +1499,12 @@ export default function NewSale({ intent, clearIntent } = {}) {
                   </label>
                 </div>
               )}
-              {/* The empty state above already says this for an unsearched
-                  existing customer. */}
-              {!(customerMode === "existing" && !selectedCustomer && !custQuery.trim()) && (
-              <p className="mt-auto flex items-start gap-2 rounded-xl border border-line-soft bg-canvas/50 px-3 py-2.5 text-[11px] leading-snug text-muted">
+              <p className="flex items-start gap-1.5 text-[11px] leading-snug text-muted">
                 <svg viewBox="0 0 24 24" className="mt-px h-3.5 w-3.5 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
                 {customerMode === "existing"
                   ? "A buyer is required for the bill. Their redeemable schemes appear here once chosen."
                   : "Walk-in buyers need a name and a 10-digit phone. Schemes apply to existing customers only."}
               </p>
-              )}
             </Card>
 
             {/* Purchase Cost and Purchase-Cost P/L are intentionally omitted from
@@ -1525,8 +1525,11 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       Both views sit in the same grid cell and the hidden one is
                       only invisible, so the strip is always as tall as the
                       taller view at every width. */}
-                  <div className="grid">
-                    <div aria-hidden={!showProfit} className={`[grid-area:1/1] grid grid-cols-2 divide-x divide-line-soft rounded-xl border px-1 2xl:grid-cols-1 2xl:divide-x-0 2xl:divide-y ${VERDICT[billVerdict].line} ${showProfit ? "" : "invisible"}`}>
+                  {/* The price box is the one thing to type, so on a wide row
+                      it leads and the reference figures sit beside it. */}
+                  <div className="grid gap-3.5 md:grid-cols-2">
+                  <div className="grid md:order-2">
+                    <div aria-hidden={!showProfit} className={`[grid-area:1/1] grid grid-cols-2 divide-x divide-line-soft rounded-xl border px-1 md:grid-cols-1 md:divide-x-0 md:divide-y ${VERDICT[billVerdict].line} ${showProfit ? "" : "invisible"}`}>
                         <SpecCell
                           label="This bill"
                           value={VERDICT[billVerdict].word}
@@ -1549,7 +1552,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                           <SpecCell label={quoteHasScheme ? "Bill total" : "Selling price"} value={schemeSelected && !quoteHasScheme ? "—" : money(sellingPrice)} mono />
                         )}
                     </div>
-                    <div aria-hidden={showProfit} className={`[grid-area:1/1] grid grid-cols-2 divide-x divide-line-soft rounded-xl border px-1 2xl:grid-cols-1 2xl:divide-x-0 2xl:divide-y border-line-soft bg-canvas/60 ${showProfit ? "invisible" : ""}`}>
+                    <div aria-hidden={showProfit} className={`[grid-area:1/1] grid grid-cols-2 divide-x divide-line-soft rounded-xl border px-1 md:grid-cols-1 md:divide-x-0 md:divide-y border-line-soft bg-canvas/60 ${showProfit ? "invisible" : ""}`}>
                     {/* Named for what it IS, not for when it was taken. This tile
                         and the bill summary's Gold Value row are different money -
                         the metal at the published rate versus the metal at the
@@ -1587,7 +1590,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     />
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-accent-line bg-accent-soft p-3.5">
+                  <div className="rounded-2xl border border-accent-line bg-accent-soft p-3.5 md:order-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold uppercase tracking-[0.08em] text-accent-strong">
                         {quoteHasScheme ? "Customer pays now" : "Customer Price"}
@@ -1630,6 +1633,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         </p>
                       </>
                     )}
+                  </div>
                   </div>
                 </Card>
             </div>
@@ -1733,7 +1737,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 </Card>
 
             {/* Payment */}
-            <Card className="space-y-3.5 p-4">
+            <Card className="space-y-3.5 p-4 lg:flex-1">
               <SectionHead step={5} title="Payment" meta={paymentChosen ? undefined : "Required"} />
               <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
                 <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Method *</span>
