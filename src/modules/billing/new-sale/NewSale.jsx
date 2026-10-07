@@ -1420,13 +1420,18 @@ export default function NewSale({ intent, clearIntent } = {}) {
             <div className="space-y-4">
             {/* Customer */}
             <Card className="min-w-0 space-y-3 p-4">
+              {/* One search box for every buyer. A match is picked from the
+                  suggestions; anyone not on file is added from the last row as
+                  a walk-in buyer - the same two buyer modes underneath, with
+                  the same required fields, only without a switch to choose. */}
               <SectionHead step={2} title="Customer" action={
-                <div role="tablist" aria-label="Buyer type" className="inline-flex rounded-full border border-line bg-canvas/60 p-0.5">
-                  {[["existing", "Existing customer"], ["walkin", "Walk-in"]].map(([m, label]) => (
-                    <button key={m} type="button" role="tab" aria-selected={customerMode === m} onClick={() => setCustomerMode(m)}
-                      className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${customerMode === m ? "bg-surface text-accent-strong shadow-sm ring-1 ring-accent-line" : "text-muted hover:text-ink"}`}>{label}</button>
-                  ))}
-                </div>
+                customerMode === "walkin" ? (
+                  <button type="button" onClick={() => setCustomerMode("existing")}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-bold text-ink-soft transition-colors hover:border-accent-line hover:text-accent-strong">
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    Search customers
+                  </button>
+                ) : null
               } />
 
               {customerMode === "existing" ? (
@@ -1503,17 +1508,34 @@ export default function NewSale({ intent, clearIntent } = {}) {
                   </>
                 ) : (
                   <div className="space-y-2">
-                    <SearchInput placeholder="Search by name, phone or code" value={custQuery} onChange={(e) => setCustQuery(e.target.value)} />
+                    <SearchInput placeholder="Type the buyer's name, phone or customer code" value={custQuery} onChange={(e) => setCustQuery(e.target.value)} />
                     {custQuery.trim() && (
-                      <div className="max-h-56 overflow-y-auto rounded-xl border border-line">
-                        {custSearching && <div className="px-4 py-3 text-xs text-muted">Searching…</div>}
-                        {!custSearching && custResults.length === 0 && <div className="px-4 py-3 text-xs text-muted">No matching customers.</div>}
-                        {!custSearching && custResults.map((c) => (
-                          <button key={c.id} type="button" onClick={() => selectCustomer(c)} className="flex w-full items-center justify-between border-b border-line-soft px-4 py-2.5 text-left last:border-0 hover:bg-accent-soft/40">
-                            <span className="text-sm font-semibold">{c.name}</span>
-                            <span className="text-xs text-muted">{c.phone && c.phone !== "—" ? c.phone : c.code || ""}</span>
-                          </button>
-                        ))}
+                      <div className="overflow-hidden rounded-xl border border-line">
+                        <div className="max-h-56 overflow-y-auto">
+                          {custSearching && <div className="px-4 py-3 text-xs text-muted">Searching…</div>}
+                          {!custSearching && custResults.length === 0 && <div className="px-4 py-3 text-xs text-muted">No customer on file matches “{custQuery.trim()}”.</div>}
+                          {!custSearching && custResults.map((c) => (
+                            <button key={c.id} type="button" onClick={() => selectCustomer(c)} className="flex w-full items-center justify-between border-b border-line-soft px-4 py-2.5 text-left last:border-0 hover:bg-accent-soft/40">
+                              <span className="text-sm font-semibold">{c.name}</span>
+                              <span className="text-xs text-muted">{c.phone && c.phone !== "—" ? c.phone : c.code || ""}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {/* Not on file: carry what was typed into the walk-in
+                            fields - digits to Phone, anything else to Name. */}
+                        <button type="button"
+                          onClick={() => {
+                            const q = custQuery.trim();
+                            const digits = q.replace(/\D/g, "");
+                            if (/^[\d\s+()-]+$/.test(q) && digits.length >= 6) setWalkinPhone(digits.slice(-10));
+                            else setWalkinName(q);
+                            setCustQuery("");
+                            setCustomerMode("walkin");
+                          }}
+                          className="flex w-full items-center gap-2 border-t border-line bg-canvas/50 px-4 py-2.5 text-left text-sm font-semibold text-accent-strong hover:bg-accent-soft/50">
+                          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent text-[13px] font-bold leading-none text-white" aria-hidden="true">+</span>
+                          <span className="min-w-0 truncate">Add walk-in buyer “{custQuery.trim()}”</span>
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1533,8 +1555,8 @@ export default function NewSale({ intent, clearIntent } = {}) {
               <p className="flex items-start gap-1.5 text-[11px] leading-snug text-muted">
                 <svg viewBox="0 0 24 24" className="mt-px h-3.5 w-3.5 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
                 {customerMode === "existing"
-                  ? "A buyer is required for the bill. Their redeemable schemes appear here once chosen."
-                  : "Walk-in buyers need a name and a 10-digit phone. Schemes apply to existing customers only."}
+                  ? "Pick a customer to see their redeemable schemes, or add a walk-in buyer from the list."
+                  : "Walk-in buyers need a name and a 10-digit phone. Schemes apply to customers on file only."}
               </p>
             </Card>
 
