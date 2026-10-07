@@ -466,36 +466,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
   const [findOpen, setFindOpen] = useState(false);
   useEffect(() => { setFindOpen(false); }, [product]);
 
-  // The summary moves WITH the form - its top edge stays level with the left
-  // column's - until its bottom (Safe Price, Create Bill) reaches the foot of
-  // the screen, and pins there. So nothing in it is ever out of reach, there
-  // is no second scrollbar inside the card, and the two columns' top edges
-  // match whether profit is shown or hidden. (Pinning at the top instead left
-  // it 16px below the left column whenever it was short enough to fit.)
-  const summaryRef = useRef(null);
-  const [summaryTop, setSummaryTop] = useState(16);
-  useEffect(() => {
-    const el = summaryRef.current;
-    if (!el) return;
-    let scroller = el.parentElement;
-    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
-    const measure = () => {
-      const view = scroller ? scroller.clientHeight : window.innerHeight;
-      // Never more than where the grid starts, or the summary would be
-      // pushed down before anything has scrolled.
-      let gridEl = el.parentElement;
-      while (gridEl && getComputedStyle(gridEl).display !== "grid") gridEl = gridEl.parentElement;
-      const grid = (gridEl || el.parentElement).getBoundingClientRect().top;
-      const start = scroller ? grid - scroller.getBoundingClientRect().top + scroller.scrollTop : grid + window.scrollY;
-      setSummaryTop(Math.min(start, view - el.offsetHeight - 16));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    if (scroller) ro.observe(scroller);
-    window.addEventListener("resize", measure);
-    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
-  }, [product, saleMode]);
   const onScanned = useCallback((raw) => {
     const v = String(raw || "").trim().toUpperCase();
     if (!v) return;
@@ -1799,11 +1769,14 @@ export default function NewSale({ intent, clearIntent } = {}) {
               checked while the page itself looks scrolled to the end. The
               panel is kept short enough to fit instead — dense rows,
               one-line notes. */}
-          {/* Spans the lookup row only while the lookup is shown. Spanning an
-              empty row kept its 20px gap, and the sticky summary slid down
-              into it - 20px off the left column at top and bottom. */}
-          <div ref={summaryRef} style={{ top: summaryTop }} className={`min-w-0 lg:sticky lg:col-start-2 lg:row-start-1 lg:self-start ${showFind ? "lg:row-span-2" : ""}`} data-motion="reveal">
-            <Card className="overflow-hidden p-0">
+          {/* The summary shares the form's row and height on desktop, so the
+              two columns' top and bottom edges always line up. It is not
+              pinned: a pinned panel moves differently from the form beside it,
+              which is what kept knocking the edges out of line. Its actions sit
+              at its foot, level with the end of the last step (Payment). It
+              spans the lookup row only while the lookup is shown. */}
+          <div className={`min-w-0 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col ${showFind ? "lg:row-span-2" : ""}`} data-motion="reveal">
+            <Card className="overflow-hidden p-0 lg:flex lg:flex-1 lg:flex-col">
               <div className="flex items-center justify-between gap-2 border-b border-line-soft border-t-[3px] border-t-accent px-5 py-3">
                 <h3 className="text-[15px] font-extrabold tracking-tight text-accent-strong">Bill summary</h3>
                 <div className="flex items-center gap-2">
@@ -1811,7 +1784,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                   <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 text-[10px] font-bold text-accent-strong" title="GST is compulsory on every bill">GST {product.taxRatePercent || 3}%</span>
                 </div>
               </div>
-              <div className="px-5 py-4">
+              <div className="px-5 py-4 lg:flex lg:flex-1 lg:flex-col">
               <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5 text-[11px] leading-snug">
                 <div className="font-bold text-ink">{product.name || "—"}</div>
                 <div className="text-muted">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "—"}`} · {product.purity || "—"} · {grams(product.netGoldWeightGrams)}</div>
@@ -2105,7 +2078,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 </div>
               )}
 
-              <div className="mt-4 flex flex-col gap-2">
+              <div className="mt-4 flex flex-col gap-2 lg:mt-auto lg:pt-4">
                 <Button size="sm" className="h-11 w-full bg-accent text-sm hover:bg-accent-strong" disabled={!canCreate} onClick={handleCreateBill}>{creating ? "Working…" : schemeApplied ? "Create Bill & Redeem" : "Create Bill"}</Button>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={handleQuotation} disabled={creating || requoting}>Quotation</Button>
