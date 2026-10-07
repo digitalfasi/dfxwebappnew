@@ -179,7 +179,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
   const [publishedRate, setPublishedRate] = useState(null);
   // Staff may raise a bill but not approve a loss on it - the backend refuses
   // the flag from a Staff token, so the control is not offered to one either.
-  const { backendRole } = useAuth();
+  const { backendRole, user: authUser, tenantId } = useAuth();
   const canApproveBelowCost = backendRole === "Admin" || backendRole === "SuperAdmin";
 
   // Customer
@@ -828,6 +828,78 @@ export default function NewSale({ intent, clearIntent } = {}) {
     customerIdentified && paymentChosen && !partialInvalid && !anyLineOverBalance &&
     !redeemOverGold && !rateOutOfBand && !exchangeInvalid;
 
+  // ---------------------------------------------------------------------------
+  // A bill in progress survives leaving the page. Only "Save draft" used to keep
+  // anything, so a cashier who opened another tab mid-bill came back to an
+  // empty screen and an empty Unfinished bills list. What was typed is now kept
+  // in THIS browser tab (sessionStorage - nothing is sent to the server, no
+  // stock is held) and offered back at the top of Unfinished bills. Tagged with
+  // the signed-in user so a different login in the same tab never sees it.
+  // ---------------------------------------------------------------------------
+  const STASH_KEY = "dfx.newsale.inprogress";
+  const stashOwner = `${tenantId || ""}:${authUser?.id || authUser?.email || ""}`;
+  const readStash = () => {
+    try {
+      const v = JSON.parse(sessionStorage.getItem(STASH_KEY) || "null");
+      return v && v.owner === stashOwner && v.code ? v : null;
+    } catch { return null; }
+  };
+  const writeStash = (v) => { try { if (v) sessionStorage.setItem(STASH_KEY, JSON.stringify(v)); } catch { /* storage off */ } };
+  const clearStash = () => { try { sessionStorage.removeItem(STASH_KEY); } catch { /* storage off */ } setLocalDraft(null); };
+  const [localDraft, setLocalDraft] = useState(null);
+  useEffect(() => { setLocalDraft(readStash()); }, [stashOwner]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Latest screen state, read on the way out. Nothing once the bill is created
+  // or waiting on an OTP - those are real sales, not unfinished ones.
+  const snapRef = useRef(null);
+  snapRef.current = product && productCode && saleMode && !invoice && !otp
+    ? {
+        owner: stashOwner, code: productCode, name: product.name || "", savedAt: Date.now(),
+        customerMode, selectedCustomer, walkinName, walkinPhone,
+        makingVal, wastageVal, rate: saleMode === "OFFLINE" ? rate : "", exchangeText,
+        payMethod, payStatus, payRef, partialAmount,
+      }
+    : null;
+  useEffect(() => {
+    const keep = () => writeStash(snapRef.current);
+    window.addEventListener("pagehide", keep);
+    return () => { window.removeEventListener("pagehide", keep); keep(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Continue: put the buyer and payment back, look the piece up again (so it
+  // is priced at TODAY's rate and stock), then lay the typed charges over it.
+  const restoreRef = useRef(null);
+  const continueLocalDraft = () => {
+    const v = localDraft;
+    if (!v) return;
+    setDraftsOpen(false);
+    restoreRef.current = v;
+    setCode(v.code);
+    setCustomerMode(v.customerMode || "existing");
+    if (v.customerMode === "existing" && v.selectedCustomer?.id) selectCustomer(v.selectedCustomer);
+    setWalkinName(v.walkinName || ""); setWalkinPhone(v.walkinPhone || "");
+    setPayMethod(v.payMethod || ""); setPayStatus(v.payStatus || "");
+    setPayRef(v.payRef || ""); setPartialAmount(v.partialAmount || "");
+    handleFind(v.code);
+  };
+  useEffect(() => {
+    const v = restoreRef.current;
+    if (!v || !product || !saleMode || product.productCode !== v.code) return;
+    restoreRef.current = null;
+    if (v.makingVal !== "" && v.makingVal != null) setMakingVal(v.makingVal);
+    if (v.wastageVal !== "" && v.wastageVal != null) setWastageVal(v.wastageVal);
+    if (v.rate && saleMode === "OFFLINE") setRate(v.rate);
+    setExchangeText(v.exchangeText || "");
+    clearStash();
+  }, [product, saleMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back from an open bill to the lookup. The bill is not thrown away: it is
+  // kept as the unfinished one, ready to continue.
+  const backToFind = () => {
+    const v = snapRef.current;
+    resetAll();
+    if (v) { writeStash(v); setLocalDraft(v); toast(`${v.code} kept in Unfinished bills`); }
+  };
+
   const resetAll = () => {
     setProduct(null); setProductCode(""); setCode("");
     setRate(""); setMakingVal(""); setWastageVal(""); setDiscountText(null); setExchangeText(""); setGst(true); setShowProfit(false);
@@ -837,6 +909,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
     clearCustomer(); setCustQuery(""); setCustResults([]); setWalkinName(""); setWalkinPhone("");
     setPayMethod("CASH"); setPayStatus("PAID"); setPartialAmount(""); setPayRef("");
     setLookupError(""); setOtp(null);
+    clearStash();
   };
 
   const handleCreateBill = async () => {
@@ -1136,6 +1209,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
             <Button size="sm" variant="outline" className="h-9 bg-surface px-3.5" onClick={openDrafts}>
               <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></svg>
               Unfinished bills
+              {localDraft && <span className="ml-1.5 h-2 w-2 rounded-full bg-accent" aria-label="1 bill in progress" />}
             </Button>
           </div>
         </div>
@@ -1145,6 +1219,18 @@ export default function NewSale({ intent, clearIntent } = {}) {
           <SearchInput id="ns-find-code" className="min-w-0 flex-1" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Type or scan a code" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
           <Button size="sm" className="h-10 shrink-0 bg-accent px-7 hover:bg-accent-strong" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
         </div>
+        {localDraft && !product && !rawGold && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent-line bg-accent-soft/50 px-3.5 py-2.5">
+            <p className="min-w-0 text-xs text-ink">
+              <b>Bill in progress</b> — {localDraft.name ? `${localDraft.name} · ` : ""}<span className="num font-semibold">{localDraft.code}</span>
+              {localDraft.customerMode === "existing" && localDraft.selectedCustomer?.name ? ` for ${localDraft.selectedCustomer.name}` : localDraft.walkinName ? ` for ${localDraft.walkinName}` : ""}
+            </p>
+            <div className="flex shrink-0 gap-2">
+              <Button size="sm" variant="ghost" className="h-8 px-3 text-xs" onClick={clearStash}>Discard</Button>
+              <Button size="sm" className="h-8 bg-accent px-3.5 text-xs hover:bg-accent-strong" disabled={loading} onClick={continueLocalDraft}>Continue</Button>
+            </div>
+          </div>
+        )}
         {cameraOpen && <CameraScanner onResult={onCameraResult} onClose={closeCamera} />}
         {/* Not a toast. A toast fades and this must not: until someone cancels
           that invoice there is a sale on the books for a piece the customer
@@ -1400,6 +1486,13 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 five words. */}
             <Card className="p-4">
               <div className="flex items-start gap-3">
+                {/* Back to the lookup. The page title is hidden once a bill is
+                    open, so this is the way out - and it keeps the bill as the
+                    unfinished one rather than throwing it away. */}
+                <button type="button" onClick={backToFind} aria-label="Back to Find product" title="Back to Find product - this bill is kept in Unfinished bills"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-line bg-surface text-ink transition-colors hover:border-accent-line hover:bg-accent-soft hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                  <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+                </button>
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line">
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" /><path d="M11 3 8 9l4 12 4-12-3-6M2 9h20" /></svg>
                 </span>
@@ -2235,13 +2328,31 @@ export default function NewSale({ intent, clearIntent } = {}) {
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <div>
                 <h3 className="text-base font-extrabold">Unfinished bills</h3>
-                <p className="mt-0.5 text-xs text-muted">Saved before billing. Nothing here is a sale yet.</p>
+                <p className="mt-0.5 text-xs text-muted">Bills left before billing. Nothing here is a sale yet.</p>
               </div>
               <button onClick={() => setDraftsOpen(false)} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
             </div>
             <div className="max-h-[55vh] overflow-y-auto px-5 py-4">
               {drafts === null && <p className="py-8 text-center text-sm font-bold text-muted">Loading…</p>}
-              {drafts !== null && drafts.length === 0 && (
+              {localDraft && (
+                <div className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2 truncate text-sm font-bold">
+                      <span className="num">{localDraft.code}</span>
+                      <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-strong">In progress</span>
+                    </p>
+                    <p className="truncate text-xs text-muted">
+                      {(localDraft.customerMode === "existing" ? localDraft.selectedCustomer?.name : localDraft.walkinName) || "No buyer yet"}
+                      {" · left on this tab, not saved"}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={continueLocalDraft}>Continue</Button>
+                    <Button size="sm" variant="outline" className="text-danger" onClick={clearStash}>Discard</Button>
+                  </div>
+                </div>
+              )}
+              {drafts !== null && drafts.length === 0 && !localDraft && (
                 <p className="py-8 text-center text-sm text-muted">No unfinished bills.</p>
               )}
               {(drafts || []).map((d) => (

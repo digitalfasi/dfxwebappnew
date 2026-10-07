@@ -1994,12 +1994,12 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
         <CardContent className="overflow-x-auto px-0 pb-0">
           {/* Fixed column widths: the Name cell truncates instead of pushing
               into Category, and the full value stays available on hover. */}
-          <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
+          <table className="w-full min-w-[1200px] table-fixed border-collapse text-sm">
             <colgroup>
               <col className="w-[130px]" /><col className="w-[155px]" /><col className="w-[150px]" />
               <col className="w-[70px]" /><col className="w-[95px]" />
               <col className="w-[110px]" />{isAdmin && <col className="w-[60px]" />}<col className="w-[105px]" />
-              <col className="w-[75px]" /><col className="w-[160px]" />
+              <col className="w-[85px]" /><col className="w-[240px]" />
             </colgroup>
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left align-middle text-[11px] font-bold uppercase tracking-[0.06em] text-muted">

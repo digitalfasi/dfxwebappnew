@@ -526,8 +526,7 @@ export default function Customers({ intent, clearIntent } = {}) {
         // the four shares add up to a fraction of 100%.
         const typeCounts = summary?.types ?? null;
         const typeComp = [
-          // One brand burgundy for every type; the stacked bar separates
-          // types with a thin gap, the labels and counts say which is which.
+          // One brand burgundy for every type; each type has its own bar.
           { label: "Walk-in", key: "Walk-in", color: "#9f1d35" },
           { label: "Scheme", key: "Scheme Customer", color: "#9f1d35" },
           { label: "Hybrid", key: "Hybrid", color: "#9f1d35" },
@@ -580,13 +579,7 @@ export default function Customers({ intent, clearIntent } = {}) {
                 <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Customer Types</div>
                 <div className="text-[11px] text-muted">Share of {totalCustomers.toLocaleString("en-IN")} customers</div>
               </div>
-              {/* Single stacked bar — the whole base at a glance. */}
-              <div className="mt-3 flex h-2 gap-[3px] overflow-hidden rounded-full bg-line-soft">
-                {typeComp.map(({ label, count, color }) => (
-                  count > 0 ? <div key={label} style={{ width: `${pct(count)}%`, background: color }} title={`${label}: ${count}`} /> : null
-                ))}
-              </div>
-              <div className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
                 {typeComp.map(({ label, count, color }) => (
                   <div key={label}>
                     <div className="flex items-baseline justify-between gap-2">

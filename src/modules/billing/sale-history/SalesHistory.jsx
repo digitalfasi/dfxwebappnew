@@ -75,7 +75,7 @@ function chargeLabel(type, value) {
 export default function SalesHistory() {
   const scope = useRef(null);
   const [query, setQuery] = useState("");
-  const [period, setPeriod] = useState("this_month");
+  const [period, setPeriod] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [fCat, setFCat] = useState("All Categories");
@@ -154,7 +154,7 @@ export default function SalesHistory() {
   const catOptions = useMemo(() => [...new Set(bills.map(b => b.category).filter(Boolean))].sort(), [bills]);
   const subOptions = useMemo(() => [...new Set(bills.map(b => b.subcategory).filter(Boolean))].sort(), [bills]);
   // Purity options must NOT depend on what this page happened to load. The list
-  // is period-limited (default This Month, 100 rows), so deriving options purely
+  // is period-limited (100 rows), so deriving options purely
   // from `bills` hid purities that were genuinely sold in other periods (e.g. 24K
   // never appearing). Canonical karats always offered; extras appended.
   const purityOptions = useMemo(() => {

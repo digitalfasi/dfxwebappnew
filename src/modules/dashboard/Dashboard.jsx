@@ -1035,7 +1035,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
                 Named for what it is; free-amount plans contribute nothing to it
                 because nobody has promised a figure to mature. */}
             <KpiCard title={`Maturity Value of ${schemePfx} New Plans`} value={fmtCurrency(newMaturity)} loading={schemeFirstLoad} onClick={() => nav("scheme-management", { period: schemePeriod, from: schemeCustom.from, to: schemeCustom.to })} />
-            <KpiCard title="Pending Dues" value={fmtCurrency(pendingDues)} loading={coreLoading} danger onClick={() => nav("payments")} />
+            <KpiCard title="Pending Dues" value={fmtCurrency(pendingDues)} loading={coreLoading} danger onClick={() => nav("payments", { tab: "scheme", dateFilter: "Overall" })} />
           </div>
 
           {/* Collections Trend */}

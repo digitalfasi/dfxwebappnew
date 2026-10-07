@@ -51,7 +51,7 @@ function Section({ step, title, hint, children, cols = "sm:grid-cols-2" }) {
 
 function Field({ label, hint, error, children, className = "" }) {
   return (
-    <label className={`grid content-start gap-1.5 ${className}`}>
+    <label className={`grid min-w-0 grid-cols-1 content-start gap-1.5 ${className}`}>
       <span className="text-xs font-bold">{label}</span>
       {children}
       {error ? <span className="text-[11px] font-semibold text-danger">{error}</span> : hint ? <span className="text-[11px] text-muted">{hint}</span> : null}
@@ -279,7 +279,7 @@ export default function PricingSettings() {
           </div>
 
           {/* Row 2: every cost and charge on one line. */}
-          <Section step="2" title="Costs, wastage & GST" hint="Added on top of the making value so every bill first covers what the piece cost you." cols="sm:grid-cols-2 lg:grid-cols-5">
+          <Section step="2" title="Costs, wastage & GST" hint="Added on top of the making value so every bill first covers what the piece cost you." cols="sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
             <Field label="Running cost" hint={moved === "running" ? `Break-even is now Tunch + ${fmtPct(running)}.` : "Rent, wages, power."}>
               <PctInput value={f.runningCost} onChange={setRunning} ariaLabel="Running cost %" />
             </Field>
