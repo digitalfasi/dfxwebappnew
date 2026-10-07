@@ -1038,11 +1038,15 @@ export default function NewSale({ intent, clearIntent } = {}) {
         <p className="mt-1 max-w-[64ch] text-sm text-muted">Enter the item&rsquo;s HUID or Item Code, or the serial number of a gold bar, then set the rate and charges, identify the buyer and confirm. Every amount is calculated by the backend.</p>
       </div>
 
-      {/* Lookup, and — until an item is loaded — the same two-column skeleton the
-          loaded bill uses, so the layout never jumps from one column to two
-          halfway through the task. */}
-      <div className={product ? "" : "grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]"}>
-      <Card data-motion="reveal" className="overflow-hidden p-0">
+      {/* One grid for the whole bill. Lookup sits at the top of the LEFT column
+          - it is how Step 1's item got there - and the Bill summary owns the
+          right column alone, top to bottom. Before an item is loaded the same
+          two columns hold the lookup and the summary placeholder, so the layout
+          never jumps halfway through the task. On a phone everything stacks in
+          the same order as before: lookup, steps, summary. */}
+      <div className={product && saleMode ? "grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]" : ""}>
+      <div className={product && saleMode ? "min-w-0 lg:col-start-1 lg:row-start-1" : product ? "" : "grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]"}>
+      <Card data-motion="reveal" className="min-w-0 overflow-hidden p-0">
         {/* One box for both trades. The shop holds finished jewellery, which
             is found by HUID, and bullion, which is found by serial number -
             naming only the HUID told the counter the bar could not be sold
@@ -1071,7 +1075,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
         <div className="px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
         <label htmlFor="ns-find-code" className="text-xs font-bold">HUID, Item Code or Serial No. *</label>
         <div className="mt-1.5 flex flex-col gap-2.5 sm:flex-row">
-          <SearchInput id="ns-find-code" className="min-w-0 flex-1" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Type or scan a HUID, Item Code or bar serial" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
+          <SearchInput id="ns-find-code" className="min-w-0 flex-1" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Type or scan a code" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
           <Button size="sm" className="h-10 shrink-0 bg-accent px-7 hover:bg-accent-strong" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
         </div>
         {cameraOpen && <CameraScanner onResult={onCameraResult} onClose={closeCamera} />}
@@ -1314,11 +1318,11 @@ export default function NewSale({ intent, clearIntent } = {}) {
       {/* No mode picker: the piece's identifier sets the mode on lookup. */}
 
       {product && saleMode && (
-        <div className="mt-5 grid items-start gap-5 lg:grid-cols-[1.35fr_1fr]" data-motion="reveal">
+        <div className="contents">
           {/* LEFT: details + controls. Dense on purpose: Customer and Pricing
               share a row on wide screens, charges sit three to a row, so the
               whole bill fits in about one screen instead of a long scroll. */}
-          <div className="min-w-0 space-y-4">
+          <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-2" data-motion="reveal">
             {/* Product */}
             <Card className="overflow-hidden p-0">
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-4">
@@ -1361,7 +1365,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
               </div>
             </Card>
 
-            <div className="grid items-stretch gap-4 xl:grid-cols-2">
+            <div className="grid items-stretch gap-4 2xl:grid-cols-2">
             {/* Customer. Stretches to the Pricing card beside it; the note is
                 pinned to the bottom so the spare height never reads as empty. */}
             <Card className="flex min-w-0 flex-col gap-3.5 p-4">
@@ -1445,10 +1449,22 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     </div>
                   </>
                 ) : (
-                  <div>
+                  <div className="flex flex-1 flex-col gap-3">
                     <SearchInput placeholder="Search by name, phone or code" value={custQuery} onChange={(e) => setCustQuery(e.target.value)} />
+                    {/* Nothing typed yet: say what goes here, in the space the
+                        card already has beside Pricing, instead of leaving it
+                        blank. */}
+                    {!custQuery.trim() && (
+                      <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 py-6 text-center">
+                        <span className="grid h-10 w-10 place-items-center rounded-full bg-accent-soft text-accent-strong ring-1 ring-accent-line">
+                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5a6.5 6.5 0 0 1 3 5.5" /></svg>
+                        </span>
+                        <div className="text-sm font-bold text-ink-soft">No buyer selected</div>
+                        <p className="max-w-[30ch] text-[11px] leading-snug text-muted">Search by name, phone or customer code. Their redeemable schemes appear here once chosen.</p>
+                      </div>
+                    )}
                     {custQuery.trim() && (
-                      <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-line">
+                      <div className="max-h-56 overflow-y-auto rounded-xl border border-line">
                         {custSearching && <div className="px-4 py-3 text-xs text-muted">Searching…</div>}
                         {!custSearching && custResults.length === 0 && <div className="px-4 py-3 text-xs text-muted">No matching customers.</div>}
                         {!custSearching && custResults.map((c) => (
@@ -1462,7 +1478,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
                   </div>
                 )
               ) : (
-                <div className="grid gap-4 sm:grid-cols-2">
+                // Side by side only while the card spans the column. Beside
+                // Pricing (2xl) it is half as wide, and two fields cut the
+                // placeholder and the phone digits short.
+                <div className="grid gap-3.5 sm:grid-cols-2 2xl:grid-cols-1">
                   <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Name *</span><Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Walk-in buyer name" /></label>
                   {/* Optional, but if it is filled it must be a real mobile
                       number - the bill carries it and the store calls it back. */}
@@ -1473,12 +1492,16 @@ export default function NewSale({ intent, clearIntent } = {}) {
                   </label>
                 </div>
               )}
+              {/* The empty state above already says this for an unsearched
+                  existing customer. */}
+              {!(customerMode === "existing" && !selectedCustomer && !custQuery.trim()) && (
               <p className="mt-auto flex items-start gap-2 rounded-xl border border-line-soft bg-canvas/50 px-3 py-2.5 text-[11px] leading-snug text-muted">
                 <svg viewBox="0 0 24 24" className="mt-px h-3.5 w-3.5 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
                 {customerMode === "existing"
                   ? "A buyer is required for the bill. Their redeemable schemes appear here once chosen."
                   : "Walk-in buyers need a name and a 10-digit phone. Schemes apply to existing customers only."}
               </p>
+              )}
             </Card>
 
             {/* Purchase Cost and Purchase-Cost P/L are intentionally omitted from
@@ -1492,7 +1515,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       SpecCell strip is a bordered box, so no cell is ever
                       edge-flush - that only pulled the first label onto the
                       border while its neighbours stayed indented. */}
-                  <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1 xl:grid-cols-1 xl:divide-x-0 xl:divide-y">
+                  <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1 2xl:grid-cols-1 2xl:divide-x-0 2xl:divide-y">
                     {/* Named for what it IS, not for when it was taken. This tile
                         and the bill summary's Gold Value row are different money -
                         the metal at the published rate versus the metal at the
@@ -1747,7 +1770,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
               checked while the page itself looks scrolled to the end. The
               panel is kept short enough to fit instead — dense rows,
               one-line notes. */}
-          <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+          <div className="min-w-0 lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start" data-motion="reveal">
             <Card className="overflow-hidden p-0">
               <div className="flex items-center justify-between gap-2 border-b border-line-soft border-t-[3px] border-t-accent px-5 py-3.5">
                 <h3 className="text-[15px] font-extrabold tracking-tight text-accent-strong">Bill summary</h3>
@@ -2096,6 +2119,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
           </div>
         </div>
       )}
+      </div>
 
       {otp && (
         <OtpDialog
