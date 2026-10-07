@@ -466,28 +466,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
   const [findOpen, setFindOpen] = useState(false);
   useEffect(() => { setFindOpen(false); }, [product]);
 
-  // The summary block travels inside its card 16px from the top of the
-  // screen. When it is taller than the screen its offset goes negative by the
-  // overflow, so its foot (Safe Price, Create Bill) is always reachable.
-  const summaryRef = useRef(null);
-  const [summaryTop, setSummaryTop] = useState(16);
-  useEffect(() => {
-    const el = summaryRef.current;
-    if (!el) return;
-    let scroller = el.parentElement;
-    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
-    const measure = () => {
-      const view = scroller ? scroller.clientHeight : window.innerHeight;
-      setSummaryTop(Math.min(16, view - el.offsetHeight - 16));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    if (scroller) ro.observe(scroller);
-    window.addEventListener("resize", measure);
-    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
-  }, [product, saleMode]);
-
   const onScanned = useCallback((raw) => {
     const v = String(raw || "").trim().toUpperCase();
     if (!v) return;
@@ -1798,21 +1776,15 @@ export default function NewSale({ intent, clearIntent } = {}) {
               at its foot, level with the end of the last step (Payment). It
               spans the lookup row only while the lookup is shown. */}
           <div className={`min-w-0 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:self-stretch ${showFind ? "lg:row-span-2" : ""}`} data-motion="reveal">
-            {/* The CARD fills the row (edges level with the form); its CONTENT
-                is one block that travels inside it, staying on screen as the
-                form scrolls, so the spare height is only ever off-screen - never
-                a gap between Safe Price and Create Bill. No overflow-hidden on
-                the card: it would stop the block from travelling. */}
-            <Card className="border-t-[3px] border-t-accent p-0 lg:flex-1">
-              <div ref={summaryRef} style={{ top: summaryTop }} className="lg:sticky">
-              <div className="flex items-center justify-between gap-2 border-b border-line-soft px-5 py-3">
+            <Card className="overflow-hidden p-0 lg:flex lg:flex-1 lg:flex-col">
+              <div className="flex items-center justify-between gap-2 border-b border-line-soft border-t-[3px] border-t-accent px-5 py-3">
                 <h3 className="text-[15px] font-extrabold tracking-tight text-accent-strong">Bill summary</h3>
                 <div className="flex items-center gap-2">
                   {requoting && <span className="text-[11px] text-muted">Updating…</span>}
                   <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 text-[10px] font-bold text-accent-strong" title="GST is compulsory on every bill">GST {product.taxRatePercent || 3}%</span>
                 </div>
               </div>
-              <div className="px-5 py-4">
+              <div className="px-5 py-4 lg:flex lg:flex-1 lg:flex-col">
               <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5 text-[11px] leading-snug">
                 <div className="font-bold text-ink">{product.name || "—"}</div>
                 <div className="text-muted">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "—"}`} · {product.purity || "—"} · {grams(product.netGoldWeightGrams)}</div>
@@ -2106,7 +2078,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 </div>
               )}
 
-              <div className="mt-4 flex flex-col gap-2">
+              <div className="mt-4 flex flex-col gap-2 lg:mt-auto lg:pt-4">
                 <Button size="sm" className="h-11 w-full bg-accent text-sm hover:bg-accent-strong" disabled={!canCreate} onClick={handleCreateBill}>{creating ? "Working…" : schemeApplied ? "Create Bill & Redeem" : "Create Bill"}</Button>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={handleQuotation} disabled={creating || requoting}>Quotation</Button>
@@ -2127,7 +2099,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     : ""}
                 </p>
               )}
-              </div>
               </div>
             </Card>
           </div>
