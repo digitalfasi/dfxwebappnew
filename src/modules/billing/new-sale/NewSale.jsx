@@ -1035,7 +1035,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
     <div ref={scope} className="mx-auto max-w-[1240px] pb-32 lg:pb-14">
       <div data-motion="page-head" className="mb-6">
         <h2 className="text-2xl font-extrabold tracking-tight">New Sale</h2>
-        <p className="mt-1 max-w-[64ch] text-sm text-muted">Enter the item&rsquo;s HUID or Item Code, or the serial number of a gold bar, then set the rate and charges, identify the buyer and confirm. Every amount is calculated by the backend.</p>
+        <p className="mt-1 text-sm text-muted">Find the item, choose the buyer, set the price and create the bill.</p>
       </div>
 
       {/* One grid for the whole bill. Lookup sits at the top of the LEFT column
@@ -1051,8 +1051,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
             is found by HUID, and bullion, which is found by serial number -
             naming only the HUID told the counter the bar could not be sold
             here, when in fact typing its serial has always worked. */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-soft bg-gradient-to-r from-accent-soft/80 via-accent-soft/30 to-transparent px-5 py-4 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-soft bg-gradient-to-r from-accent-soft/80 via-accent-soft/30 to-transparent px-5 py-4 sm:flex-nowrap sm:px-6">
+          {/* Title shrinks (its hint wraps) so the two buttons stay on the
+              title's line in the narrower left column. */}
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-white shadow-[0_6px_16px_-6px_rgba(159,29,53,0.6)]">
               <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
             </span>
@@ -1061,7 +1063,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
               <p className="text-[11px] text-muted">HUID or Item Code for jewellery · serial number for a gold bar</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2">
             <Button size="sm" variant="outline" className="h-9 bg-surface px-3.5" disabled={loading} onClick={() => setCameraOpen(true)} title="Scan the piece's barcode sticker with the camera. A USB or phone scanner works without this - just scan.">
               <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10.5 8v8M14 8v8M17 8v8" /></svg>
               Scan barcode
@@ -1365,9 +1367,11 @@ export default function NewSale({ intent, clearIntent } = {}) {
               </div>
             </Card>
 
-            <div className="grid items-stretch gap-4 2xl:grid-cols-2">
-            {/* Customer. Stretches to the Pricing card beside it; the note is
-                pinned to the bottom so the spare height never reads as empty. */}
+            {/* items-start: each card is as tall as its own content. Stretching
+                Customer to Pricing left a blank band under a short search
+                result, and grew with Pricing whenever profit was shown. */}
+            <div className="grid items-start gap-4 2xl:grid-cols-2">
+            {/* Customer */}
             <Card className="flex min-w-0 flex-col gap-3.5 p-4">
               <SectionHead step={2} title="Customer" />
               <div className="flex gap-2">
@@ -1451,11 +1455,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 ) : (
                   <div className="flex flex-1 flex-col gap-3">
                     <SearchInput placeholder="Search by name, phone or code" value={custQuery} onChange={(e) => setCustQuery(e.target.value)} />
-                    {/* Nothing typed yet: say what goes here, in the space the
-                        card already has beside Pricing, instead of leaving it
-                        blank. */}
+                    {/* Nothing typed yet: say what goes here instead of an
+                        empty box. */}
                     {!custQuery.trim() && (
-                      <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 py-6 text-center">
+                      <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 py-6 text-center">
                         <span className="grid h-10 w-10 place-items-center rounded-full bg-accent-soft text-accent-strong ring-1 ring-accent-line">
                           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5a6.5 6.5 0 0 1 3 5.5" /></svg>
                         </span>
@@ -1515,7 +1518,38 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       SpecCell strip is a bordered box, so no cell is ever
                       edge-flush - that only pulled the first label onto the
                       border while its neighbours stayed indented. */}
-                  <div className="grid grid-cols-2 divide-x divide-line-soft rounded-xl border border-line-soft bg-canvas/60 px-1 2xl:grid-cols-1 2xl:divide-x-0 2xl:divide-y">
+                  {/* The eye flips THIS strip between the price figures and the
+                      profit figures, so showing profit never grows the card or
+                      pushes anything below it (it used to add a verdict strip
+                      and a margin card, and the whole Pricing card jumped).
+                      Both views sit in the same grid cell and the hidden one is
+                      only invisible, so the strip is always as tall as the
+                      taller view at every width. */}
+                  <div className="grid">
+                    <div aria-hidden={!showProfit} className={`[grid-area:1/1] grid grid-cols-2 divide-x divide-line-soft rounded-xl border px-1 2xl:grid-cols-1 2xl:divide-x-0 2xl:divide-y ${VERDICT[billVerdict].line} ${showProfit ? "" : "invisible"}`}>
+                        <SpecCell
+                          label="This bill"
+                          value={VERDICT[billVerdict].word}
+                          tone={VERDICT[billVerdict].text}
+                          sub={bands && impliedMakingPct != null
+                            ? `${round2(impliedMakingPct)}% making · list ${round2(listPct)}% · break-even ${round2(breakEvenPct)}%`
+                            : VERDICT[billVerdict].note}
+                        />
+                        {/* Rupees only for a privileged caller - the backend
+                            sends the word to everyone, the figure to Admin. */}
+                        {product.currentGoldValuePnl != null ? (
+                          <SpecCell
+                            label="Margin over metal"
+                            value={`${product.currentGoldValuePnl < 0 ? "-" : ""}${money(Math.abs(product.currentGoldValuePnl))}`}
+                            tone={product.currentGoldValuePnl < 0 ? "text-danger" : product.currentGoldValuePnl > 0 ? "text-emerald-700" : ""}
+                            sub={`over the metal${product.currentGoldValueMarginPct != null ? ` · ${Math.abs(product.currentGoldValueMarginPct).toFixed(2)}%` : ""} · before GST`}
+                            mono
+                          />
+                        ) : (
+                          <SpecCell label={quoteHasScheme ? "Bill total" : "Selling price"} value={schemeSelected && !quoteHasScheme ? "—" : money(sellingPrice)} mono />
+                        )}
+                    </div>
+                    <div aria-hidden={showProfit} className={`[grid-area:1/1] grid grid-cols-2 divide-x divide-line-soft rounded-xl border px-1 2xl:grid-cols-1 2xl:divide-x-0 2xl:divide-y border-line-soft bg-canvas/60 ${showProfit ? "invisible" : ""}`}>
                     {/* Named for what it IS, not for when it was taken. This tile
                         and the bill summary's Gold Value row are different money -
                         the metal at the published rate versus the metal at the
@@ -1551,6 +1585,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       }
                       mono
                     />
+                    </div>
                   </div>
                   <div className="rounded-2xl border border-accent-line bg-accent-soft p-3.5">
                     <div className="flex items-center justify-between">
@@ -1588,27 +1623,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       </p>
                     ) : (
                       <>
-                        {/* A typed total IS a making charge - the counter is
-                            steering the one margin the bill has, from the other
-                            end. Showing the percentage it works out to is what
-                            stops a price being agreed that quietly sits under
-                            break-even: the cost floor below only catches a bill
-                            that goes under what the PIECE cost, and 11% sits
-                            above that because it carries running cost too. */}
-                        {showProfit && impliedMakingPct != null && (
-                          <div className={`mt-2 flex items-baseline justify-between gap-3 rounded-xl border px-3 py-2 ${VERDICT[billVerdict].line}`}>
-                            <span className={`text-[11px] font-bold uppercase tracking-[0.07em] ${VERDICT[billVerdict].text}`}>
-                              {VERDICT[billVerdict].word}
-                            </span>
-                            <span className={`num text-[11px] font-semibold tabular-nums ${VERDICT[billVerdict].text}`}>
-                              {/* Both floors, each by its right name. This read
-                                  "11% break-even" welded, which on this piece is
-                                  the PROFIT floor - break-even is 8% - so the
-                                  strip named the wrong line, and welded it. */}
-                              {bands ? `${round2(impliedMakingPct)}% making · list ${round2(listPct)}% · break-even ${round2(breakEvenPct)}%` : ""}
-                            </span>
-                          </div>
-                        )}
                         <p className="mt-1.5 text-[11px] text-muted">
                           {schemeSelected
                             ? "After the scheme credit. Change it and the making charge adjusts."
@@ -1617,28 +1631,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       </>
                     )}
                   </div>
-                  {/* Staff get the word, never the figure. The backend sends
-                      the rupees only to a privileged caller and the label to
-                      everyone, so the absent number IS the signal here. */}
-                  {showProfit && product.currentGoldValuePnl == null && product.profitLabel && (
-                    <PnlWordCard label="This bill" verdict={product.profitLabel} />
-                  )}
-                  {showProfit && product.currentGoldValuePnl != null && (
-                    <PnlCard
-                      /* NOT the gold profit. This is the WHOLE bill measured
-                         against the metal, so it carries making, wastage and
-                         stone as well as the gold margin. Calling it "Gold
-                         Value Profit" put it beside a "Gold Profit %" field
-                         reading 10 while this said 13.05, which reads as the
-                         bill contradicting itself when both are right:
-                         22,081.22 gold + 6,624.37 making + 100 stone. The name
-                         and the suffix now say which figure this is. */
-                      label="Margin over metal"
-                      amount={product.currentGoldValuePnl}
-                      pct={product.currentGoldValueMarginPct}
-                      sub="before GST"
-                    />
-                  )}
                 </Card>
             </div>
 
@@ -1646,7 +1638,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 <Card className="space-y-3.5 p-4">
                   <SectionHead step={4} title="Rate & charges" />
                   <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-                    <label className="grid min-w-0 gap-1.5">
+                    <label className="grid min-w-0 content-start gap-1.5">
                       <span className="text-xs font-bold">{product.purity ? `${product.purity} ` : ""}Sale Rate/g (₹) *</span>
                       <Input type="number" step="0.01" min="0" value={rate} onChange={(e) => setRate(e.target.value)} disabled={saleMode === "ONLINE"} className={saleMode === "ONLINE" ? "opacity-60" : ""} />
                       {/* The backend refuses a rate more than 15% either side of
@@ -1659,7 +1651,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                             : `Published ${publishedRate != null ? money(publishedRate) : "—"} (before GST)${rateBand != null ? ` · allowed ${money(rateBand.low)} – ${money(rateBand.high)}` : ""}.`}
                       </span>
                     </label>
-                    <label className="grid min-w-0 gap-1.5">
+                    <label className="grid min-w-0 content-start gap-1.5">
                       <span className="text-xs font-bold">Making Charge {chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}</span>
                       <Input type="number" step="0.01" min="0" value={makingVal} onChange={(e) => onMakingInput(e.target.value)} />
                       <span className="text-[11px] text-muted">= {money(product.makingChargeAmount)}{schemeSelected ? " — on the un-covered grams only" : ""}</span>
@@ -1686,12 +1678,12 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         </span>
                       )}
                     </label>
-                    <label className="grid min-w-0 gap-1.5">
+                    <label className="grid min-w-0 content-start gap-1.5">
                       <span className="text-xs font-bold">Wastage {chargePct(product.wastageType, wastageVal || product.wastageValue)}</span>
                       <Input type="number" step="0.01" min="0" value={wastageVal} onChange={(e) => setWastageVal(e.target.value)} />
                       <span className="text-[11px] text-muted">= {money(product.wastageAmount)}</span>
                     </label>
-                    <label className="grid content-start gap-1.5 sm:col-span-1 xl:col-span-1">
+                    <label className="grid min-w-0 content-start gap-1.5 sm:col-span-1 xl:col-span-1">
                       {/* The unit matters now: a discount comes off the taxable
                           value, so the bill falls by the discount plus the GST
                           that is no longer due on it. */}
@@ -1720,7 +1712,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         </span>
                       )}
                     </label>
-                    <label className="grid content-start gap-1.5 sm:col-span-1 xl:col-span-2">
+                    <label className="grid min-w-0 content-start gap-1.5 sm:col-span-1 xl:col-span-2">
                       <span className="text-xs font-bold">Exchange Value (₹) <span className="font-normal text-muted">— the customer&apos;s old gold</span></span>
                       <Input
                         type="number" step="0.01" min="0" inputMode="decimal"
@@ -1744,19 +1736,19 @@ export default function NewSale({ intent, clearIntent } = {}) {
             <Card className="space-y-3.5 p-4">
               <SectionHead step={5} title="Payment" meta={paymentChosen ? undefined : "Required"} />
               <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-                <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Method *</span>
+                <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Method *</span>
                   <Select value={payMethod} onValueChange={setPayMethod} placeholder="Select method" options={PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABEL[m] }))} />
                 </label>
-                <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Status *</span>
+                <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Status *</span>
                   <Select value={payStatus} onValueChange={setPayStatus} placeholder="Select status" options={PAYMENT_STATUSES.map((s) => ({ value: s, label: PAYMENT_STATUS_LABEL[s] }))} />
                 </label>
                 {payStatus === "PARTIAL" && (
-                  <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Paid now (₹) *</span>
+                  <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Paid now (₹) *</span>
                     <Input type="number" step="0.01" value={partialAmount} onChange={(e) => setPartialAmount(e.target.value)} error={partialInvalid ? "Must be > 0 and < remaining" : undefined} />
                     {partialInvalid && <span className="text-[11px] font-semibold text-danger">Between {money(0)} and {money(remaining)}</span>}
                   </label>
                 )}
-                <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Reference No.</span><Input value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="Optional" /></label>
+                <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Reference No.</span><Input value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="Optional" /></label>
               </div>
               {!paymentChosen && <p className="text-[11px] font-semibold text-accent-strong">Choose a method and a status — nothing is treated as collected until you do.</p>}
               {schemeApplied && <p className="text-[11px] text-muted">Payment applies to the amount remaining after scheme redemption ({money(remaining)}).</p>}
@@ -2294,47 +2286,6 @@ function OtpDialog({ otp, onClose, onDone }) {
   );
 }
 
-/** The verdict, in the one wording the whole screen uses. Break-even is 11%
- *  making charge - 4% tunch, 4% running cost, 3% gold profit - so above it the
- *  bill earns, at it the bill has only recovered what it spent, and below it
- *  the bill loses money. The backend decides; nothing here re-derives it. */
-const PnlCard = ({ label, amount, pct, sub, detail }) => {
-  // This card carries NO verdict, by design. It measures the bill against the
-  // metal; the verdict is the 11% making-charge rule. They are different
-  // questions with different answers, and putting the word on this number made
-  // the card read LOSS beside +24,576.45 on a bill priced at 10% making - both
-  // halves correct, the pairing nonsense.
-  //
-  // The verdict lives in exactly one place on this screen: the strip under the
-  // price box. Here the figure is stated plainly, in the neutral tone of a
-  // measurement, and says what it is measured against.
-  // Coloured by its OWN sign, never by the 11% verdict. Those are different
-  // questions - a bill can sit above the metal and still be under break-even -
-  // and painting this card with the verdict is what once made it read LOSS
-  // beside +24,576.45. Above the metal is green, below it is red, exactly level
-  // is neutral. That is what this number measures, and nothing else.
-  const value = amount || 0;
-  const negative = value < 0;
-  const tone = negative
-    ? { box: "border-danger-line bg-danger-soft/50", label: "text-danger/80", value: "text-danger" }
-    : value > 0
-      ? { box: "border-emerald-200 bg-emerald-50", label: "text-emerald-800/75", value: "text-emerald-700" }
-      : { box: "border-line-soft bg-canvas/60", label: "text-muted", value: "text-ink" };
-  return (
-    <div className={`rounded-xl border p-3 text-center ${tone.box}`}>
-      <div className={`text-[10px] font-bold uppercase tracking-wider ${tone.label}`}>{label}</div>
-      <div className={`num mt-0.5 text-base font-extrabold ${tone.value}`}>
-        {negative ? "-" : ""}{money(Math.abs(amount || 0))}
-      </div>
-      <div className="text-[10px] font-semibold text-muted">
-        over the metal{pct != null ? ` · ${Math.abs(pct).toFixed(2)}%` : ""}
-        {sub ? <span className="ml-1 text-[9px] font-medium text-muted">{sub}</span> : null}
-      </div>
-      {detail ? <div className="num mt-1 text-[9px] font-medium leading-snug text-muted">{detail}</div> : null}
-    </div>
-  );
-};
-
 /** Numbered step header. The bill is a sequence, so the sequence is shown. */
 const SectionHead = ({ step, title, meta, action }) => (
   <div className="flex items-center gap-2.5">
@@ -2350,10 +2301,10 @@ const SectionHead = ({ step, title, meta, action }) => (
 );
 
 /** One cell of the item spec strip: label over value, hairline separated. */
-const SpecCell = ({ label, value, mono, sub }) => (
+const SpecCell = ({ label, value, mono, sub, tone = "text-ink" }) => (
   <div className="min-w-0 flex-1 px-4 py-3">
     <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">{label}</div>
-    <div className={`mt-1 truncate text-base font-extrabold text-ink ${mono ? "num" : ""}`}>{value}</div>
+    <div className={`mt-1 truncate text-base font-extrabold ${tone || "text-ink"} ${mono ? "num" : ""}`}>{value}</div>
     {sub ? <div className="truncate text-[10px] font-semibold text-muted">{sub}</div> : null}
   </div>
 );
