@@ -466,27 +466,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
   const [findOpen, setFindOpen] = useState(false);
   useEffect(() => { setFindOpen(false); }, [product]);
 
-  // The summary block travels inside its card 16px from the top of the
-  // screen. When it is taller than the screen its offset goes negative by the
-  // overflow, so its foot (Safe Price, Create Bill) is always reachable.
-  const summaryRef = useRef(null);
-  const [summaryTop, setSummaryTop] = useState(16);
-  useEffect(() => {
-    const el = summaryRef.current;
-    if (!el) return;
-    let scroller = el.parentElement;
-    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
-    const measure = () => {
-      const view = scroller ? scroller.clientHeight : window.innerHeight;
-      setSummaryTop(Math.min(16, view - el.offsetHeight - 16));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    if (scroller) ro.observe(scroller);
-    window.addEventListener("resize", measure);
-    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
-  }, [product, saleMode]);
 
   const onScanned = useCallback((raw) => {
     const v = String(raw || "").trim().toUpperCase();
@@ -1798,13 +1777,13 @@ export default function NewSale({ intent, clearIntent } = {}) {
               at its foot, level with the end of the last step (Payment). It
               spans the lookup row only while the lookup is shown. */}
           <div className={`min-w-0 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:self-stretch ${showFind ? "lg:row-span-2" : ""}`} data-motion="reveal">
-            {/* The CARD fills the row (edges level with the form); its CONTENT
-                is one block that travels inside it, staying on screen as the
-                form scrolls, so the spare height is only ever off-screen - never
-                a gap between Safe Price and Create Bill. No overflow-hidden on
-                the card: it would stop the block from travelling. */}
-            <Card className="border-t-[3px] border-t-accent p-0 lg:flex-1">
-              <div ref={summaryRef} style={{ top: summaryTop }} className="lg:sticky">
+            {/* Receipt layout. The card fills the row, so its edges are level
+                with the form and nothing moves on scroll. The item lines sit at
+                the top; the total and everything after it (payment, safe price,
+                actions) are pushed to the foot, level with the end of Payment.
+                Any spare height falls between the lines and the total, as on a
+                till receipt. */}
+            <Card className="overflow-hidden border-t-[3px] border-t-accent p-0 lg:flex lg:flex-1 lg:flex-col">
               <div className="flex items-center justify-between gap-2 border-b border-line-soft px-5 py-3">
                 <h3 className="text-[15px] font-extrabold tracking-tight text-accent-strong">Bill summary</h3>
                 <div className="flex items-center gap-2">
@@ -1812,7 +1791,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                   <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 text-[10px] font-bold text-accent-strong" title="GST is compulsory on every bill">GST {product.taxRatePercent || 3}%</span>
                 </div>
               </div>
-              <div className="px-5 py-4">
+              <div className="px-5 py-4 lg:flex lg:flex-1 lg:flex-col">
               <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5 text-[11px] leading-snug">
                 <div className="font-bold text-ink">{product.name || "—"}</div>
                 <div className="text-muted">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "—"}`} · {product.purity || "—"} · {grams(product.netGoldWeightGrams)}</div>
@@ -1830,7 +1809,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     This bill does not include the {money(redeemTotal)} scheme redemption yet — the figures below are the bill without it. Fix the price above and it will be applied.
                   </div>
                 )}
-              <div className="mt-3 space-y-0.5">
+              <div className="mt-3 space-y-0.5 lg:flex lg:flex-1 lg:flex-col">
                 {/* Two layouts, one engine. A scheme bill is presented as the
                     SCHEME PORTION / NORMAL PORTION split from the gold billing
                     model: the scheme's grams are bought at pure gold value with
@@ -1953,7 +1932,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       )}
                       <Row label={`GST${taxLabel}`} value={money(product.taxAmount)} />
                       <RoundOffRow total={totalPayable} parts={round2(normalSubtotal - disc) + (product.taxAmount || 0)} />
-                      <Row label="Total Payable" value={money(totalPayable)} strong divider />
+                      <Row label="Total Payable" value={money(totalPayable)} strong divider push />
 
                       {/* What the scheme gold did NOT carry. Not deducted from
                           anything - it was never charged - but it is the whole
@@ -2011,7 +1990,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     )}
                     <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
                     <RoundOffRow total={billTotal} parts={round2((product.subtotalBeforeTax || 0) - (product.discountAmount || 0)) + (product.taxAmount || 0)} />
-                    <BillTotalBand label="Bill Total" value={money(billTotal)} />
+                    <BillTotalBand label="Bill Total" value={money(billTotal)} push />
                     {exchangeValue > 0 && !exchangeInvalid && (
                       <>
                         <Row label="Less: Exchange Value" value={`− ${money(exchangeValue)}`} tone="text-emerald-700" divider />
@@ -2127,7 +2106,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     : ""}
                 </p>
               )}
-              </div>
               </div>
             </Card>
           </div>
@@ -2353,15 +2331,17 @@ const SpecCell = ({ label, value, mono, sub, tone = "text-ink" }) => (
 
 /** The one figure the whole screen exists to produce — given its own band so
     it stops competing with the charge rows above it. */
-const BillTotalBand = ({ label, value }) => (
-  <div className="mt-3 flex items-center justify-between gap-4 rounded-xl bg-accent px-4 py-3.5 text-white">
+const BillTotalBand = ({ label, value, push }) => (
+  <div className={`mt-3 flex items-center justify-between gap-4 rounded-xl bg-accent px-4 py-3.5 text-white ${push ? "lg:mt-auto" : ""}`}>
     <span className="text-xs font-extrabold uppercase tracking-[0.1em] text-white/85">{label}</span>
     <span className="num text-xl font-extrabold">{value}</span>
   </div>
 );
 
-const Row = ({ label, value, strong, divider, tone }) => (
-  <div className={`flex items-center justify-between gap-4 py-1 ${divider ? "mt-1 border-t border-dashed border-line pt-2" : ""} ${strong ? "mt-1 border-t border-line pt-2" : ""}`}>
+// `push` sends a row - and every row after it - to the foot of the summary
+// (desktop receipt layout: the total sits at the bottom).
+const Row = ({ label, value, strong, divider, tone, push }) => (
+  <div className={`flex items-center justify-between gap-4 py-1 ${divider ? "mt-1 border-t border-dashed border-line pt-2" : ""} ${strong ? "mt-1 border-t border-line pt-2" : ""} ${push ? "lg:mt-auto" : ""}`}>
     <span className={`text-xs ${strong ? "font-extrabold text-ink" : "text-muted"}`}>{label}</span>
     <span className={`num text-sm ${strong ? "text-base font-extrabold text-accent-strong" : `font-semibold ${tone || ""}`}`}>{value}</span>
   </div>
