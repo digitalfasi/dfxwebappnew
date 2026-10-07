@@ -466,11 +466,12 @@ export default function NewSale({ intent, clearIntent } = {}) {
   const [findOpen, setFindOpen] = useState(false);
   useEffect(() => { setFindOpen(false); }, [product]);
 
-  // The summary is pinned while the form scrolls. When it is taller than the
-  // visible area its top is pinned ABOVE the screen edge by the overflow, so
-  // it scrolls with the page until its bottom (Safe Price, Create Bill) is in
-  // view and pins there - nothing is ever unreachable, and there is no second
-  // scrollbar inside the card. When it fits, it pins 16px from the top.
+  // The summary moves WITH the form - its top edge stays level with the left
+  // column's - until its bottom (Safe Price, Create Bill) reaches the foot of
+  // the screen, and pins there. So nothing in it is ever out of reach, there
+  // is no second scrollbar inside the card, and the two columns' top edges
+  // match whether profit is shown or hidden. (Pinning at the top instead left
+  // it 16px below the left column whenever it was short enough to fit.)
   const summaryRef = useRef(null);
   const [summaryTop, setSummaryTop] = useState(16);
   useEffect(() => {
@@ -480,7 +481,13 @@ export default function NewSale({ intent, clearIntent } = {}) {
     while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
     const measure = () => {
       const view = scroller ? scroller.clientHeight : window.innerHeight;
-      setSummaryTop(Math.min(16, view - el.offsetHeight - 16));
+      // Never more than where the grid starts, or the summary would be
+      // pushed down before anything has scrolled.
+      let gridEl = el.parentElement;
+      while (gridEl && getComputedStyle(gridEl).display !== "grid") gridEl = gridEl.parentElement;
+      const grid = (gridEl || el.parentElement).getBoundingClientRect().top;
+      const start = scroller ? grid - scroller.getBoundingClientRect().top + scroller.scrollTop : grid + window.scrollY;
+      setSummaryTop(Math.min(start, view - el.offsetHeight - 16));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -1513,10 +1520,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 )
               ) : (
                 <div className="grid gap-3.5 sm:grid-cols-2">
-                  <label className="grid min-w-0 gap-1.5"><span className="text-xs font-bold">Name *</span><Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Walk-in buyer name" /></label>
+                  <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Name *</span><Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Walk-in buyer name" /></label>
                   {/* Optional, but if it is filled it must be a real mobile
                       number - the bill carries it and the store calls it back. */}
-                  <label className="grid min-w-0 gap-1.5">
+                  <label className="grid min-w-0 content-start gap-1.5">
                     <span className="text-xs font-bold">Phone * <span className="font-normal text-muted">— 10 digits</span></span>
                     <PhoneInput value={walkinPhone} onValueChange={setWalkinPhone} error={walkinPhoneInvalid} />
                     {walkinPhoneInvalid && <span className="text-[11px] font-semibold text-danger">Enter all 10 digits</span>}
@@ -1624,7 +1631,9 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     <MoneyInput
                       allowDecimal
                       placeholder="0"
-                      className="mt-2 h-12 bg-surface pl-9 text-xl font-extrabold tracking-tight"
+                      inlineSymbol
+                      frameClassName="mt-2 h-12"
+                      className="text-xl font-extrabold tracking-tight"
                       symbolClassName="text-xl font-extrabold text-ink"
                       value={
                         priceText != null

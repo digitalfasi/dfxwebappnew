@@ -92,7 +92,7 @@ export function DigitsInput({ value, onValueChange, maxDigits = 2, allowDecimal 
  * downstream has to strip separators before sending it to the API — the class
  * of bug where a formatted string reaches a numeric column.
  */
-export function MoneyInput({ value, onValueChange, className, maxDigits = 12, allowDecimal = false, symbolClassName, ...props }) {
+export function MoneyInput({ value, onValueChange, className, maxDigits = 12, allowDecimal = false, symbolClassName, inlineSymbol = false, frameClassName, ...props }) {
   // `allowDecimal` keeps one dot and up to two paise digits. The decimal tail is
   // carried through exactly as typed - grouping only ever touches the rupees -
   // so a half-typed "1250." survives the render and the caret does not jump.
@@ -136,6 +136,45 @@ export function MoneyInput({ value, onValueChange, className, maxDigits = 12, al
   }, [display]);
 
   const countDigits = (text) => String(text).replace(/[^\d.]/g, "").length;
+
+  // `inlineSymbol` sets the rupee sign on the SAME text baseline as the
+  // figure (a flex baseline row inside a field-styled frame). An absolutely
+  // centred sign floats by however the font draws "₹" - at large sizes it
+  // sat visibly higher than the digits. Opt-in; every other field is as it was.
+  if (inlineSymbol) {
+    return (
+      <div className={cn(
+        "flex h-10 items-center rounded-xl border bg-surface px-3.5 transition-[border-color,box-shadow] duration-150",
+        props.error
+          ? "border-danger focus-within:shadow-[0_0_0_3px_var(--color-danger-line)]"
+          : "border-line focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]",
+        frameClassName
+      )}>
+        <div className="flex w-full min-w-0 items-baseline gap-2">
+          <span aria-hidden="true" className={cn("pointer-events-none shrink-0 text-sm font-semibold text-muted", symbolClassName)}>₹</span>
+          <Input
+            ref={inputRef}
+            type="text"
+            inputMode={allowDecimal ? "decimal" : "numeric"}
+            value={display}
+            onChange={(e) => {
+              const caret = e.target.selectionStart ?? e.target.value.length;
+              digitsBeforeCaret.current = countDigits(e.target.value.slice(0, caret));
+              onValueChange?.(sanitize(e.target.value));
+            }}
+            onPaste={(e) => {
+              e.preventDefault();
+              const next = sanitize(e.clipboardData.getData("text"));
+              digitsBeforeCaret.current = countDigits(next);
+              onValueChange?.(next);
+            }}
+            className={cn("num h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 focus:shadow-none", className)}
+            {...props}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative">
