@@ -1367,10 +1367,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
               </div>
             </Card>
 
-            {/* items-start: each card is as tall as its own content. Stretching
-                Customer to Pricing left a blank band under a short search
-                result, and grew with Pricing whenever profit was shown. */}
-            <div className="grid items-start gap-4 2xl:grid-cols-2">
+            {/* Side by side the two cards share one height. Customer's spare
+                height goes to a panel - the empty state, or the results list -
+                never to a blank band, and the note sits at the bottom. */}
+            <div className="grid items-stretch gap-4 2xl:grid-cols-2">
             {/* Customer */}
             <Card className="flex min-w-0 flex-col gap-3.5 p-4">
               <SectionHead step={2} title="Customer" />
@@ -1458,7 +1458,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     {/* Nothing typed yet: say what goes here instead of an
                         empty box. */}
                     {!custQuery.trim() && (
-                      <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 py-6 text-center">
+                      <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 py-6 text-center">
                         <span className="grid h-10 w-10 place-items-center rounded-full bg-accent-soft text-accent-strong ring-1 ring-accent-line">
                           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5a6.5 6.5 0 0 1 3 5.5" /></svg>
                         </span>
@@ -1467,11 +1467,11 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       </div>
                     )}
                     {custQuery.trim() && (
-                      <div className="max-h-56 overflow-y-auto rounded-xl border border-line">
+                      <div className="max-h-56 min-h-[88px] flex-1 overflow-y-auto rounded-xl border border-line bg-canvas/30">
                         {custSearching && <div className="px-4 py-3 text-xs text-muted">Searching…</div>}
                         {!custSearching && custResults.length === 0 && <div className="px-4 py-3 text-xs text-muted">No matching customers.</div>}
                         {!custSearching && custResults.map((c) => (
-                          <button key={c.id} type="button" onClick={() => selectCustomer(c)} className="flex w-full items-center justify-between border-b border-line-soft px-4 py-2.5 text-left last:border-0 hover:bg-canvas/60">
+                          <button key={c.id} type="button" onClick={() => selectCustomer(c)} className="flex w-full items-center justify-between border-b border-line-soft bg-surface px-4 py-2.5 text-left hover:bg-accent-soft/40">
                             <span className="text-sm font-semibold">{c.name}</span>
                             <span className="text-xs text-muted">{c.phone && c.phone !== "—" ? c.phone : c.code || ""}</span>
                           </button>

@@ -28,7 +28,7 @@ export function Select({
   const ref = useRef(null);
   const triggerRef = useRef(null);
   const listRef = useRef(null);
-  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, maxHeight: 224 });
+  const [coords, setCoords] = useState({ top: 0, bottom: null, left: 0, width: 0, maxHeight: 224 });
 
   useEffect(() => {
     const idx = normalized.findIndex((o) => o.value === value);
@@ -64,7 +64,9 @@ export function Select({
     // gets a short scrollable list rather than a list flattened to nothing. The
     // top is clamped to the viewport below, so the floor can never push the
     // list off the screen the way it used to.
-    const maxHeight = Math.max(MIN, Math.min(PREFERRED, room));
+    // Opening up, the box may not be taller than the room above it - the MIN
+    // floor would push its top off the window.
+    const maxHeight = openUp ? Math.min(PREFERRED, room) : Math.max(MIN, Math.min(PREFERRED, room));
     // Keep the list inside the window horizontally too, for a trigger near the
     // right edge whose list is wider than it is.
     // The list is never narrower than 160px, so the clamp and the rendered
@@ -74,12 +76,19 @@ export function Select({
     // pushed off its anchor and sitting to one side of the field it belongs to.
     const width = Math.max(r.width, 160);
     const left = Math.min(Math.max(EDGE, r.left), Math.max(EDGE, window.innerWidth - width - EDGE));
-    const wanted = openUp ? r.top - GAP - maxHeight : r.bottom + GAP;
-    // Whatever the chosen side, the box stays inside the window. Without this
-    // the MIN floor could hang a list off the bottom edge where its last
-    // options cannot be reached at all.
-    const top = Math.min(Math.max(EDGE, wanted), Math.max(EDGE, window.innerHeight - maxHeight - EDGE));
-    setCoords({ top, left, width, maxHeight });
+    // Opening up, the list is pinned by its BOTTOM edge just above the field.
+    // It was placed by its top at (field - 224px), so a list shorter than 224 -
+    // three payment statuses - floated with a gap under it, well away from the
+    // field it belongs to.
+    if (openUp) {
+      setCoords({ top: null, bottom: window.innerHeight - r.top + GAP, left, width, maxHeight });
+      return;
+    }
+    // Opening down, the box stays inside the window. Without this the MIN
+    // floor could hang a list off the bottom edge where its last options
+    // cannot be reached at all.
+    const top = Math.min(Math.max(EDGE, r.bottom + GAP), Math.max(EDGE, window.innerHeight - maxHeight - EDGE));
+    setCoords({ top, bottom: null, left, width, maxHeight });
   };
 
   useEffect(() => {
@@ -133,7 +142,7 @@ export function Select({
       role="listbox"
       style={{
         position: "fixed",
-        top: coords.top,
+        ...(coords.bottom != null ? { bottom: coords.bottom } : { top: coords.top }),
         left: coords.left,
         width: coords.width,
         maxHeight: coords.maxHeight,
