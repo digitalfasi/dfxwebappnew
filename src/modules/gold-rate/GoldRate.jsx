@@ -421,9 +421,13 @@ export default function GoldRate() {
           </CardHeader>
           <CardContent className="relative px-0 pb-0 lg:min-h-0 lg:flex-1">
             <div className="h-56 overflow-y-auto lg:absolute lg:inset-0 lg:h-auto">
-              <table className="w-full border-collapse text-sm">
+              {/* Sticky on the CELLS, not the row: a sticky <tr> in a collapsed
+                  table is not reliably pinned, so scrolled rows showed above and
+                  through the header. The rule under it is a shadow so it moves
+                  with the header instead of staying with the table. */}
+              <table className="w-full border-separate border-spacing-0 text-sm">
                 <thead>
-                  <tr className="sticky top-0 z-10 border-y border-line bg-canvas text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
+                  <tr className="text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted [&>th]:sticky [&>th]:top-0 [&>th]:z-10 [&>th]:bg-canvas [&>th]:shadow-[inset_0_-1px_0_var(--color-line),inset_0_1px_0_var(--color-line)]">
                     <th className="px-6 py-3">Date</th>
                     <th className="py-3 text-right">{trendLabel}</th>
                     <th className="py-3 pr-6 text-right">Change</th>
@@ -434,7 +438,7 @@ export default function GoldRate() {
                     const up = h.chg != null && h.chg > 0;
                     const down = h.chg != null && h.chg < 0;
                     return (
-                      <tr key={h.date} className="border-b border-line-soft transition-colors duration-150 last:border-0 hover:bg-canvas/60">
+                      <tr key={h.date} className="transition-colors duration-150 hover:bg-canvas/60 [&>td]:border-b [&>td]:border-line-soft [&:last-child>td]:border-0">
                         <td className="px-6 py-3 font-semibold">{fmtHistDate(h.date)}</td>
                         <td className="num py-3 text-right font-bold">{cell(h.val)}</td>
                         <td className="py-3 pr-6 text-right">
