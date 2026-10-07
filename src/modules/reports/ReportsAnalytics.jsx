@@ -149,46 +149,84 @@ function StateBlock({ loading, error, empty, onRetry, children }) {
 }
 
 /* ── AI Insight — clarity-first presentation of REAL fetched numbers ──────── */
-function InsightHeading({ children }) {
-  return <div className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-muted">{children}</div>;
+// Status of the period, said in words AND an icon - never colour alone.
+const INSIGHT_TONE = {
+  up:      { label: "Improving",   cls: "border-emerald-200 bg-emerald-50 text-emerald-800", icon: <path d="M3 17l6-6 4 4 8-8M15 7h6v6" /> },
+  down:    { label: "Declining",   cls: "border-danger-line bg-danger-soft text-danger",       icon: <path d="M3 7l6 6 4-4 8 8M15 17h6v-6" /> },
+  steady:  { label: "Steady",      cls: "border-line bg-canvas text-ink-soft",                 icon: <path d="M3 12h18M15 6l6 6-6 6" /> },
+  neutral: { label: "No activity", cls: "border-line bg-canvas text-muted",                    icon: <><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></> },
+};
+const Svg = ({ children, className = "h-4 w-4" }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+);
+
+function InsightHeading({ children, className = "text-muted" }) {
+  return <div className={`text-[11px] font-extrabold uppercase tracking-[0.1em] ${className}`}>{children}</div>;
 }
 
 function AIInsight({ insight }) {
-  const { headline, support, attention, action } = insight;
+  const { headline, support, attention, action, tone = "steady", stats = [] } = insight;
+  const t = INSIGHT_TONE[tone] || INSIGHT_TONE.steady;
   return (
-    <Card data-motion="reveal" className="overflow-hidden border-indigo-100 bg-indigo-50/40 shadow-lg">
-      {/* Header — distinct intelligence treatment */}
-      <div className="flex items-center gap-2.5 border-b border-indigo-100 px-6 py-4">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-100 text-[11px] font-extrabold tracking-wide text-indigo-700">AI</span>
-        <div>
-          <div className="text-base font-extrabold tracking-tight text-ink">AI Insight</div>
-          <div className="text-xs font-semibold text-muted">Based on your current business data</div>
+    <Card data-motion="reveal" className="relative overflow-hidden p-0">
+      {/* Brand strip - burgundy into gold, the same pair the rest of the app uses. */}
+      <div className="h-1 bg-gradient-to-r from-accent via-accent to-gold" aria-hidden="true" />
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-soft bg-gradient-to-r from-accent-soft/70 via-blush/40 to-transparent px-5 py-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-accent to-accent-strong text-gold-light shadow-[0_6px_16px_-6px_rgba(159,29,53,0.6)]">
+            <Svg className="h-5 w-5"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" /></Svg>
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-base font-extrabold tracking-tight text-ink">AI Insight</h3>
+            <p className="text-xs text-muted">Read from your current business data</p>
+          </div>
         </div>
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${t.cls}`}>
+          <Svg className="h-3.5 w-3.5">{t.icon}</Svg>{t.label}
+        </span>
       </div>
 
-      {/* Full-width card, readable content laid across the available space */}
-      <div className="grid gap-4 p-5 lg:grid-cols-3 lg:gap-5 lg:p-6">
-        {/* Primary insight — focal point */}
-        <div className="rounded-xl border border-line bg-white p-5 lg:col-span-2">
+      <div className="grid gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:gap-5">
+        {/* What is happening - the focal point, with its figures as chips. */}
+        <div className="flex min-w-0 flex-col">
           <InsightHeading>What is happening</InsightHeading>
-          <p className="mt-2 max-w-[60ch] text-lg font-extrabold leading-snug tracking-tight text-ink sm:text-xl">{headline}</p>
+          <p className="mt-2 text-xl font-extrabold leading-snug tracking-tight text-ink sm:text-2xl">{headline}</p>
           {support && <p className="mt-2 max-w-[68ch] text-sm leading-relaxed text-muted">{support}</p>}
+          {stats.length > 0 && (
+            <dl className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              {stats.map((st) => (
+                <div key={st.label} className="rounded-xl border border-line-soft bg-canvas/60 px-3.5 py-2.5">
+                  <dt className="text-[11px] font-semibold text-muted">{st.label}</dt>
+                  <dd className={`num mt-0.5 text-lg font-extrabold tracking-tight ${st.tone === "up" ? "text-emerald-700" : st.tone === "down" ? "text-danger" : "text-ink"}`}>{st.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </div>
 
-        {/* Attention (only when real) + recommended action */}
-        <div className="flex flex-col gap-4">
+        {/* Needs attention (only when real) + the next step. */}
+        <div className="flex min-w-0 flex-col gap-3">
           {attention && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <InsightHeading>Needs attention</InsightHeading>
-              <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1">
-                {attention.lines.map((l, i) => <div key={i} className="text-lg font-extrabold text-amber-900">{l}</div>)}
+            <div className="rounded-xl border border-warn-line bg-warn-soft p-4">
+              <div className="flex items-center gap-2 text-amber-800">
+                <Svg><path d="M12 3l9.5 17h-19z" /><path d="M12 10v4M12 17.5v.01" /></Svg>
+                <InsightHeading className="text-amber-800">Needs attention</InsightHeading>
               </div>
-              {attention.note && <p className="mt-2 max-w-[52ch] text-sm leading-relaxed text-amber-900/80">{attention.note}</p>}
+              <ul className="mt-2 space-y-0.5">
+                {attention.lines.map((l, i) => <li key={i} className="num text-base font-extrabold text-amber-950">{l}</li>)}
+              </ul>
+              {attention.note && <p className="mt-1.5 text-xs leading-relaxed text-amber-900/80">{attention.note}</p>}
             </div>
           )}
-          <div className="flex-1 rounded-xl border border-l-4 border-line border-l-indigo-400 bg-white p-4">
-            <InsightHeading>Recommended action</InsightHeading>
-            <p className="mt-2 max-w-[52ch] text-sm font-medium leading-relaxed text-ink-soft">{action}</p>
+          <div className="flex gap-3 rounded-xl border border-accent-line bg-accent-soft/40 p-4">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface text-accent ring-1 ring-accent-line">
+              <Svg><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z" /></Svg>
+            </span>
+            <div className="min-w-0">
+              <InsightHeading className="text-accent-strong">Recommended action</InsightHeading>
+              <p className="mt-1 text-sm font-semibold leading-relaxed text-ink">{action}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -480,7 +518,13 @@ function businessInsight(p) {
   else if (p.outstandingDues > 0) action = `Prioritise follow-up on the ${inr(p.outstandingDues)} outstanding dues.`;
   else action = "Continue monitoring collections and customer payment activity.";
 
-  return { headline, support, attention, action };
+  const tone = noActivity ? "neutral" : showPct && g > 0.5 ? "up" : showPct && g < -0.5 ? "down" : "steady";
+  const stats = noActivity ? [] : [
+    { label: "Revenue", value: inr(p.totalRevenue) },
+    { label: "Successful payments", value: p.successPaymentCount },
+    ...(pctAbs ? [{ label: "vs previous period", value: `${g > 0 ? "+" : "−"}${pctAbs}`, tone: g > 0.5 ? "up" : g < -0.5 ? "down" : undefined }] : []),
+  ];
+  return { headline, support, attention, action, tone, stats };
 }
 
 function schemeInsight(en, schemes) {
@@ -517,7 +561,13 @@ function schemeInsight(en, schemes) {
   else if (lead) action = `Promote ${lead.schemeName} to sustain enrollment growth.`;
   else action = "Continue monitoring enrollments and scheme collections.";
 
-  return { headline, support, attention, action };
+  const tone = noActivity ? "neutral" : en.newEnrollmentsInRange > 0 ? "up" : "steady";
+  const stats = noActivity ? [] : [
+    { label: "New enrollments", value: en.newEnrollmentsInRange },
+    { label: "Active overall", value: en.activeCount },
+    ...(ret != null ? [{ label: "Retention", value: `${ret.toFixed(1)}%`, tone: lowRet ? "down" : undefined }] : []),
+  ];
+  return { headline, support, attention, action, tone, stats };
 }
 
 function topScheme(schemes) {
