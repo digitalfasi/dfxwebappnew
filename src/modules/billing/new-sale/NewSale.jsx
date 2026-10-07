@@ -377,6 +377,19 @@ export default function NewSale({ intent, clearIntent } = {}) {
     if (!(chargeable > 0)) return null;
     return ((product.makingChargeAmount || 0) / chargeable) * 100;
   })();
+  // Why the making % is what it is - display only, from the backend's bands.
+  // The "tunch" band is the HIGHER of the lot's Tunch and what the piece
+  // really cost over today's gold (backend _cost_premium_pct), so when it is
+  // the cost that sets it, say so with the rupees behind it.
+  const makingSplit = (() => {
+    if (!product || !bands) return null;
+    const chargeable = (product.goldValueAmount || 0) - (Number(product.schemeApplied) || 0);
+    const nonMaking = (product.subtotalBeforeTax || 0) - (product.makingChargeAmount || 0);
+    const cost = Number(product.purchaseCost);
+    const premiumPct = cost > 0 && chargeable > 0 ? ((cost - nonMaking) / chargeable) * 100 : null;
+    const costDriven = premiumPct != null && Math.abs(premiumPct - (bands.tunchPercent || 0)) < 0.02;
+    return { cost, nonMaking, costDriven };
+  })();
   // The verdict is the backend's. The local fallback keeps the colour right
   // between quotes and uses the same 11% line, never a second rule.
   const billVerdict =
@@ -1789,6 +1802,33 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       </span>
                     </label>
                   </div>
+                  {/* Making % split - behind the profit eye, Admin only (Staff
+                      get no bands). Answers "Tunch is 5%, why is making 18%?". */}
+                  {showProfit && makingSplit && (
+                    <div className="rounded-xl border border-line-soft bg-canvas/60 p-3">
+                      <p className="text-xs font-bold">
+                        Why making is {round2(listPct)}%
+                        <span className="font-normal text-muted"> — break-even {round2(breakEvenPct)}%, everything above it is profit</span>
+                      </p>
+                      <div className="mt-2 grid grid-cols-3 divide-x divide-line-soft">
+                        {[
+                          [makingSplit.costDriven ? "Piece cost" : "Tunch", bands.tunchPercent],
+                          ["Running cost", bands.runningCostPercent],
+                          ["Gold profit", bands.goldProfitPercent],
+                        ].map(([label, pct], i) => (
+                          <div key={label} className={i ? "pl-3" : "pr-3"}>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+                            <p className="num text-base font-extrabold">{round2(pct || 0)}%</p>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-[11px] text-muted">
+                        {makingSplit.costDriven
+                          ? <>This piece cost <b className="num text-ink">{money(makingSplit.cost)}</b>{product.purchaseRatePerGram ? <> (bought at 24K {money(product.purchaseRatePerGram)}/g, with Tunch and purchase charges)</> : null} — <b className="num text-ink">{money(round2(makingSplit.cost - makingSplit.nonMaking))}</b> over today&apos;s gold value of {money(makingSplit.nonMaking)}. That cost has to be recovered before any profit, so it replaces the lot&apos;s Tunch.</>
+                          : "The Tunch paid to the vendor on this lot."}
+                      </p>
+                    </div>
+                  )}
                 </Card>
 
             {/* Payment */}

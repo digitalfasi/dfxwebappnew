@@ -1204,6 +1204,11 @@ function mapSaleQuote(data = {}, productCode = "", gstApplied = true) {
     currentGoldValueMarginPct: data.current_gold_value_margin_percent ?? null,
     historicalPnl: data.historical_profit_or_loss ?? null,
     profitLabel: data.profit_or_loss_label ?? null,
+    // The piece's own cost, Admin-only server-side (null for Staff). Read only
+    // to explain the making % split behind the profit eye - never printed on
+    // anything the customer sees.
+    purchaseCost: item.purchase_cost ?? null,
+    purchaseRatePerGram: item.purchase_rate_per_gram ?? null,
     // What this item's making charge is made of, and the two floors under it.
     // list = base + running cost + THIS LOT's tunch, so a piece bought at 6%
     // tunch bills at 16% where one bought at 4% bills at 14%. Admin-only
