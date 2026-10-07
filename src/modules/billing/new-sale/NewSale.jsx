@@ -465,6 +465,30 @@ export default function NewSale({ intent, clearIntent } = {}) {
   // "Change item" button). Display only - nothing about the lookup changes.
   const [findOpen, setFindOpen] = useState(false);
   useEffect(() => { setFindOpen(false); }, [product]);
+
+  // The summary is pinned while the form scrolls. When it is taller than the
+  // visible area its top is pinned ABOVE the screen edge by the overflow, so
+  // it scrolls with the page until its bottom (Safe Price, Create Bill) is in
+  // view and pins there - nothing is ever unreachable, and there is no second
+  // scrollbar inside the card. When it fits, it pins 16px from the top.
+  const summaryRef = useRef(null);
+  const [summaryTop, setSummaryTop] = useState(16);
+  useEffect(() => {
+    const el = summaryRef.current;
+    if (!el) return;
+    let scroller = el.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    const measure = () => {
+      const view = scroller ? scroller.clientHeight : window.innerHeight;
+      setSummaryTop(Math.min(16, view - el.offsetHeight - 16));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (scroller) ro.observe(scroller);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, [product, saleMode]);
   const onScanned = useCallback((raw) => {
     const v = String(raw || "").trim().toUpperCase();
     if (!v) return;
@@ -1600,8 +1624,8 @@ export default function NewSale({ intent, clearIntent } = {}) {
                     <MoneyInput
                       allowDecimal
                       placeholder="0"
-                      className="mt-2 h-12 bg-surface pl-10 text-center text-xl font-extrabold tracking-tight"
-                      symbolClassName="text-lg font-extrabold text-ink"
+                      className="mt-2 h-12 bg-surface pl-9 text-xl font-extrabold tracking-tight"
+                      symbolClassName="text-xl font-extrabold text-ink"
                       value={
                         priceText != null
                           ? priceText
@@ -1769,17 +1793,17 @@ export default function NewSale({ intent, clearIntent } = {}) {
           {/* Spans the lookup row only while the lookup is shown. Spanning an
               empty row kept its 20px gap, and the sticky summary slid down
               into it - 20px off the left column at top and bottom. */}
-          <div className={`min-w-0 lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:self-start ${showFind ? "lg:row-span-2" : ""}`} data-motion="reveal">
+          <div ref={summaryRef} style={{ top: summaryTop }} className={`min-w-0 lg:sticky lg:col-start-2 lg:row-start-1 lg:self-start ${showFind ? "lg:row-span-2" : ""}`} data-motion="reveal">
             <Card className="overflow-hidden p-0">
-              <div className="flex items-center justify-between gap-2 border-b border-line-soft border-t-[3px] border-t-accent px-5 py-3.5">
+              <div className="flex items-center justify-between gap-2 border-b border-line-soft border-t-[3px] border-t-accent px-5 py-3">
                 <h3 className="text-[15px] font-extrabold tracking-tight text-accent-strong">Bill summary</h3>
                 <div className="flex items-center gap-2">
                   {requoting && <span className="text-[11px] text-muted">Updating…</span>}
                   <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 text-[10px] font-bold text-accent-strong" title="GST is compulsory on every bill">GST {product.taxRatePercent || 3}%</span>
                 </div>
               </div>
-              <div className="p-5">
-              <div className="rounded-xl border border-line bg-canvas/40 p-3 text-[11px] leading-relaxed">
+              <div className="px-5 py-4">
+              <div className="rounded-xl border border-line bg-canvas/40 px-3 py-2.5 text-[11px] leading-snug">
                 <div className="font-bold text-ink">{product.name || "—"}</div>
                 <div className="text-muted">{product.huid ? `HUID ${product.huid}` : `Item Code ${product.productCode || "—"}`} · {product.purity || "—"} · {grams(product.netGoldWeightGrams)}</div>
                 <div className="mt-1 text-muted">
@@ -2000,7 +2024,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
 
               {showProfit && canApproveBelowCost && (
                 product.safePrice ? (
-                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5">
+                  <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
                     <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-emerald-800">Safe Price</div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                       {/* On a scheme bill these are what the customer HANDS OVER -
@@ -2072,7 +2096,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 </div>
               )}
 
-              <div className="mt-5 flex flex-col gap-2">
+              <div className="mt-4 flex flex-col gap-2">
                 <Button size="sm" className="h-11 w-full bg-accent text-sm hover:bg-accent-strong" disabled={!canCreate} onClick={handleCreateBill}>{creating ? "Working…" : schemeApplied ? "Create Bill & Redeem" : "Create Bill"}</Button>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={handleQuotation} disabled={creating || requoting}>Quotation</Button>
@@ -2326,7 +2350,7 @@ const BillTotalBand = ({ label, value }) => (
 );
 
 const Row = ({ label, value, strong, divider, tone }) => (
-  <div className={`flex items-center justify-between gap-4 py-1.5 ${divider ? "mt-1 border-t border-dashed border-line pt-2.5" : ""} ${strong ? "mt-1 border-t border-line pt-2.5" : ""}`}>
+  <div className={`flex items-center justify-between gap-4 py-1 ${divider ? "mt-1 border-t border-dashed border-line pt-2" : ""} ${strong ? "mt-1 border-t border-line pt-2" : ""}`}>
     <span className={`text-xs ${strong ? "font-extrabold text-ink" : "text-muted"}`}>{label}</span>
     <span className={`num text-sm ${strong ? "text-base font-extrabold text-accent-strong" : `font-semibold ${tone || ""}`}`}>{value}</span>
   </div>
