@@ -115,14 +115,14 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
           <table className="w-full min-w-[820px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted [&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-3">
-                <th className="!pl-6">Banner</th><th>Priority</th><th>Active Window</th><th>Status</th><th className="!pr-6 text-right">Actions</th>
+                <th className="!pl-6">Banner</th><th>Priority</th><th>Active Window</th><th>Status</th><th className="sm:sticky sm:right-0 z-10 bg-canvas !pr-6 text-right sm:shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)]">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((p) => {
                 const status = promotionStatus(p);
                 return (
-                  <tr key={p.id} className="border-b border-line-soft align-middle last:border-0 hover:bg-canvas/60 transition-colors [&>td]:px-3 [&>td]:py-3.5">
+                  <tr key={p.id} className="group border-b border-line-soft align-middle last:border-0 hover:bg-canvas/60 transition-colors [&>td]:px-3 [&>td]:py-3.5">
                     <td className="!pl-6">
                       <div className="flex items-center gap-3">
                         <MediaThumb p={p} />
@@ -138,7 +138,7 @@ export default function PromotionBanners({ onNavigate, setEditingPromo }) {
                     <td className="num font-mono text-xs">{p.priority}</td>
                     <td className="whitespace-nowrap font-mono text-xs text-muted">{p.startDate || "—"} → {p.endDate || "—"}</td>
                     <td><Badge tone={STATUS_TONE[status]} dot>{status}</Badge></td>
-                    <td className="!pr-6 text-right">
+                    <td className="sm:sticky sm:right-0 bg-surface !pr-6 text-right sm:shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)] group-hover:bg-canvas">
                       <div className="flex justify-end gap-1.5">
                         <Button size="sm" variant="outline" onClick={() => handleEdit(p)}>Edit</Button>
                         <Button size="sm" variant={p.isActive ? "outline" : "default"} className={p.isActive ? "" : "bg-accent hover:bg-accent-strong"} disabled={busyId === p.id} onClick={() => toggleEnabled(p)}>{p.isActive ? "Disable" : "Enable"}</Button>

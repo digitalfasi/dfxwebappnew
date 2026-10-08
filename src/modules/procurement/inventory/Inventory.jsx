@@ -956,12 +956,11 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
         // Final Purchase Amount (Base + Tunch) — required purchase_cost. The
         // vendor payable below re-derives the same figure authoritatively.
         purchaseCost: Number(addAmounts.final.toFixed(2)),
-        // Carried onto the item so the sell side bills the stones back instead
-        // of the store absorbing their cost.
+        // The whole Value Addition (V/A) - stones and other charges - is
+        // carried onto the item so the sell side bills it back instead of the
+        // store absorbing it (owner rule 2026-10-08, same as Bulk Purchase).
         stoneChargeAmount: Number(addAmounts.stone.toFixed(2)),
-        // V/A "Other" is NOT carried onto the item: it is a purchase cost on the
-        // vendor payable only (below), exactly as Bulk Purchase does. Sending it
-        // here would add it to the customer's bill as "Other Charges".
+        otherChargesAmount: Number(addAmounts.other.toFixed(2)),
         // Required by the inventory contract; store-default GST (not a Purchase
         // selling field). Sale-time GST is still resolved by the backend.
         taxRatePercent: storeTax,
@@ -1955,7 +1954,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
           <CardContent className="overflow-x-auto px-0 pb-0">
             <table className="w-full min-w-[820px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-line bg-canvas/40 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
+                <tr className="whitespace-nowrap border-b border-line bg-canvas/40 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                   <th className="px-4 py-2.5">Item Code</th>
                   <th className="px-4 py-2.5">Name</th>
                   <th className="px-4 py-2.5">Purity</th>
@@ -1969,12 +1968,12 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
               <tbody>
                 {filteredRawGold.map((r) => (
                   <tr key={r.id} className="border-b border-line-soft last:border-0">
-                    <td className="px-4 py-2.5 font-mono text-xs font-semibold">{r.serialNumber}</td>
-                    <td className="px-4 py-2.5 font-semibold">{r.productName}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs font-semibold">{r.serialNumber}</td>
+                    <td className="min-w-[200px] px-4 py-2.5 font-semibold"><span className="line-clamp-2" title={r.productName}>{r.productName}</span></td>
                     <td className="px-4 py-2.5"><Badge tone="neutral">{r.purity}</Badge></td>
                     <td className="num px-4 py-2.5 text-right">{Number(r.grossWeightGrams).toFixed(3)} g</td>
                     <td className="num px-4 py-2.5 text-right font-semibold">{Number(r.netGoldWeightGrams).toFixed(3)} g</td>
-                    <td className="px-4 py-2.5 text-muted">{r.vendorName || "—"}</td>
+                    <td className="min-w-[180px] px-4 py-2.5 text-muted"><span className="line-clamp-2" title={r.vendorName || ""}>{r.vendorName || "—"}</span></td>
                     {isAdmin && <td className="num px-4 py-2.5 text-right">{r.purchaseCost != null ? money(r.purchaseCost) : "—"}</td>}
                     <td className="px-4 py-2.5">
                       <Badge tone={r.stockStatus === "IN_STOCK" ? "success" : r.stockStatus === "SOLD" ? "warning" : "neutral"} dot>
@@ -2003,12 +2002,12 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
             </colgroup>
             <thead>
               <tr className="border-b border-line bg-canvas/60 text-left align-middle text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                <th className="py-3 pl-6 pr-3">Item Code / HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Supplier</th>{isAdmin && <th className="px-3 py-3 text-center">Tunch</th>}<th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="py-3 pr-6 text-right">Actions</th>
+                <th className="py-3 pl-6 pr-3">Item Code / HUID</th><th className="px-3 py-3">Name</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Purity</th><th className="px-3 py-3 text-right">Net Weight</th><th className="px-3 py-3">Supplier</th>{isAdmin && <th className="px-3 py-3 text-center">Tunch</th>}<th className="px-3 py-3">Status</th><th className="px-3 py-3">Catalogue</th><th className="sm:sticky sm:right-0 z-10 bg-canvas py-3 pl-3 pr-6 text-right sm:shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)]">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(p => (
-                <tr key={p.id || p.code} className="border-b border-line-soft align-middle last:border-0 hover:bg-canvas/60 transition-colors">
+                <tr key={p.id || p.code} className="group border-b border-line-soft align-middle last:border-0 hover:bg-canvas/60 transition-colors">
                   <td className="py-3.5 pl-6 pr-3 whitespace-nowrap">
                     <div className="font-mono text-xs font-semibold">{p.huid || p.code || "Not provided"}</div>
                     <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-muted" title={p.tag ? `Tag ${p.tag}` : undefined}>
@@ -2029,7 +2028,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                   {isAdmin && <td className="px-3 py-3.5 text-center font-mono whitespace-nowrap tabular-nums">{p.tunch != null ? `${p.tunch}%` : "—"}</td>}
                   <td className="px-3 py-3.5"><Badge tone={p.status==="In Stock"?"success":p.status==="Sold"?"warning":"neutral"} dot>{p.status}</Badge></td>
                   <td className="px-3 py-3.5"><Badge tone={p.catalogue==="Yes"?"success":"neutral"}>{p.catalogue}</Badge></td>
-                  <td className="py-3.5 pr-6 whitespace-nowrap">
+                  <td className="sm:sticky sm:right-0 bg-surface py-3.5 pl-3 pr-6 whitespace-nowrap sm:shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)] group-hover:bg-canvas">
                     <div className="flex justify-end gap-1.5">
                       {p.catalogue === "Yes"
                         ? <Button size="sm" variant="outline" onClick={() => openCatModal(p, "update")}>Update Listing</Button>

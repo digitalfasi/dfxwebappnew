@@ -142,6 +142,17 @@ export default function App() {
   });
   const [search, setSearch] = useState("");
   useEffect(() => { setSearch(""); }, [page]);
+  // Every page shares one scrolling area, so a new page used to open at the
+  // scroll position the last one was left at, with its title out of view.
+  // Start each page at the top. (Both the column and <main> can scroll.)
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    const col = scrollRef.current;
+    if (!col) return;
+    col.scrollTop = 0;
+    const main = col.querySelector(":scope > main");
+    if (main) main.scrollTop = 0;
+  }, [page]);
   // Real promotions only — PromotionBanners fetches /admin/promotions on mount.
   const [promotions, setPromotions] = useState([]);
   const [editingPromo, setEditingPromo] = useState(null);
@@ -210,7 +221,7 @@ export default function App() {
   return (
     <div className="flex h-dvh overflow-hidden lg:h-screen">
       <Sidebar page={page} onNavigate={setPage} open={navOpen} onClose={() => setNavOpen(false)} collapsed={navCollapsed} onToggleCollapse={toggleNavCollapsed} />
-      <div className="auto-fade-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain" onScroll={(e) => { const el = e.currentTarget; el.classList.add("is-scrolling"); clearTimeout(el._fadeT); el._fadeT = setTimeout(() => el.classList.remove("is-scrolling"), 1000); }}>
+      <div ref={scrollRef} className="auto-fade-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain" onScroll={(e) => { const el = e.currentTarget; el.classList.add("is-scrolling"); clearTimeout(el._fadeT); el._fadeT = setTimeout(() => el.classList.remove("is-scrolling"), 1000); }}>
         <TopBar
           title={meta.title}
           onMenu={() => setNavOpen(true)}
@@ -221,7 +232,10 @@ export default function App() {
         />
         <MobileRate bullion={bullion} />
         <main className="content-shell relative w-full [&:has([data-own-back])>[data-shell-back]]:hidden min-w-0 flex-1 overflow-x-hidden px-3 py-5 max-lg:pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-7 lg:px-8 lg:py-8">
-          {/* Phone page-level Back, level with the page title. Every page but the
+          {/* Phone/tablet page-level Back, on its own row above the page title.
+              It used to be pinned to the top-right corner, where every page
+              header puts its own main button, so it sat on top of it. In the
+              page flow nothing can end up underneath it. Every page but the
               Dashboard is reached from somewhere else, so it goes one step back
               through the same hash history the browser already keeps. */}
           {page !== "dashboard" && (
@@ -230,9 +244,10 @@ export default function App() {
               aria-label="Go back"
               data-shell-back
               onClick={() => (window.history.length > 1 ? window.history.back() : setPage("dashboard"))}
-              className="absolute right-3 top-4 z-10 grid h-9 w-9 place-items-center rounded-full border border-line bg-surface text-ink active:bg-accent-soft sm:right-6 lg:hidden"
+              className="-ml-1 mb-3 inline-flex h-9 items-center gap-1 rounded-full border border-line bg-surface pl-2 pr-3.5 text-[13px] font-semibold text-ink transition-colors hover:bg-accent-soft active:bg-accent-soft lg:hidden"
             >
-              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+              Back
             </button>
           )}
           {Page

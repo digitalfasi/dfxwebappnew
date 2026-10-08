@@ -165,21 +165,21 @@ export default function Branches() {
         <Card data-motion="reveal" className="overflow-hidden">
           <div className="border-b border-line px-6 py-4"><h3 className="text-sm font-extrabold">Branch list</h3></div>
           <CardContent className="overflow-x-auto px-0 pb-0">
-            <table className="w-full min-w-[760px] border-collapse text-sm">
+            <table className="w-full min-w-[860px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
-                  <th className="px-6 py-3">Branch name</th><th className="py-3">Address</th><th className="py-3">Phone</th><th className="py-3">Location coordinates</th><th className="py-3">Status</th><th className="py-3 text-right pr-6">Actions</th>
+                  <th className="px-6 py-3">Branch name</th><th className="px-4 py-3">Address</th><th className="px-4 py-3">Phone</th><th className="px-4 py-3">Location coordinates</th><th className="px-4 py-3">Status</th><th className="sm:sticky sm:right-0 z-10 bg-canvas py-3 pl-4 pr-6 text-right sm:shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)]">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {branches.map(b => (
-                  <tr key={b.id} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
-                    <td className="px-6 py-3.5 font-bold">{b.name}</td>
-                    <td className="py-3.5 text-muted max-w-[280px]">{b.address}</td>
-                    <td className="py-3.5 font-mono text-xs">{b.phone}</td>
-                    <td className="py-3.5 font-mono text-xs">{b.latitude}, {b.longitude}</td>
-                    <td className="py-3.5"><Badge tone={b.isActive ? "success" : "neutral"} dot>{b.isActive ? "Active" : "Inactive"}</Badge></td>
-                    <td className="py-3.5 pr-6 text-right">
+                  <tr key={b.id} className="group border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
+                    <td className="min-w-[180px] px-6 py-3.5 font-bold">{b.name}</td>
+                    <td className="min-w-[180px] max-w-[280px] px-4 py-3.5 text-muted">{b.address}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs">{b.phone}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs">{b.latitude}, {b.longitude}</td>
+                    <td className="px-4 py-3.5"><Badge tone={b.isActive ? "success" : "neutral"} dot>{b.isActive ? "Active" : "Inactive"}</Badge></td>
+                    <td className="sm:sticky sm:right-0 bg-surface py-3.5 pl-4 pr-6 text-right sm:shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.15)] group-hover:bg-canvas">
                       <div className="flex justify-end gap-2">
                         <Button size="sm" variant="outline" onClick={() => openEdit(b)} disabled={saving}>Edit</Button>
                         <Button size="sm" variant="outline" disabled={saving} onClick={() => handleToggleActive(b)} className={b.isActive ? "text-danger hover:bg-danger-soft" : ""}>

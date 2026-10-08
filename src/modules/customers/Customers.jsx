@@ -630,11 +630,11 @@ export default function Customers({ intent, clearIntent } = {}) {
             <tbody>
               {rows.map((c) => (
                 <tr key={c.code} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
-                  <td className="px-6 py-3.5">
+                  <td className="min-w-[230px] px-6 py-3.5">
                     <button onClick={() => openCustomer(c)} className="flex items-center gap-3 text-left">
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-extrabold text-accent-strong">{c.name[0]}</span>
-                      <span>
-                        <span className="font-bold hover:text-accent hover:underline">{c.name}</span>
+                      <span className="min-w-0">
+                        <span className="line-clamp-2 font-bold hover:text-accent hover:underline" title={c.name}>{c.name}</span>
                         <span className="block text-xs text-muted">{(() => {
                           const parts = [];
                           const age = ageFromDob(c.dob);

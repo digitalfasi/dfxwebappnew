@@ -8,7 +8,7 @@ import { Select } from "@/_shared/ui/select";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { VERDICT, PnlWordCard } from "@/_shared/ui/verdict";
-import { money, grams } from "@/_shared/utils";
+import { money, grams, istToday } from "@/_shared/utils";
 import { billingService } from "@/modules/billing/billingService";
 import { useAuth } from "@/_shared/AuthContext";
 import { customerService } from "@/modules/customers/customerService";
@@ -213,10 +213,14 @@ export default function NewSale({ intent, clearIntent } = {}) {
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [drafts, setDrafts] = useState(null);
-  const [payMethod, setPayMethod] = useState("");
-  const [payStatus, setPayStatus] = useState("");
-  const [partialAmount, setPartialAmount] = useState("");
-  const [payRef, setPayRef] = useState("");
+  // One line per method the customer pays with (UPI 1,00,000 + Cash 53,333).
+  // A line with auto=true follows the balance - the amount due less every
+  // other line - until somebody types into it, so a one-method bill stays exact
+  // while the price is still being worked out. At most one line is auto.
+  const [payLines, setPayLines] = useState([]); // [{ method, amount, ref, auto }]
+  // "Pay later": billed with nothing collected (PENDING). Its own choice, so an
+  // unpaid bill is something the counter said, never something it forgot.
+  const [payLater, setPayLater] = useState(false);
 
   // OTP redemption
   const [otp, setOtp] = useState(null); // {saleId, items:[{enrollmentId,amount}]}
@@ -690,11 +694,57 @@ export default function NewSale({ intent, clearIntent } = {}) {
   const exchangeInvalid = exchangeValue > billTotal + 0.005;
   const remaining = Math.max(0, Number((billTotal - redeemTotal - exchangeValue).toFixed(2)));
 
-  const partialNum = num(partialAmount);
-  const partialInvalid = payStatus === "PARTIAL" && !(partialNum > 0 && partialNum < remaining);
-  const paymentChosen = !!payMethod && !!payStatus;
-  const paidNow = payStatus === "PAID" ? remaining : payStatus === "PARTIAL" ? partialNum : 0;
+  // Split payment. The status is not picked any more - it follows from what
+  // was collected against what is due: all of it PAID, some PARTIAL, "Pay
+  // later" PENDING. Same three statuses the backend has always taken.
+  const nothingDue = !!product && remaining <= 0.005; // scheme / exchange cover it
+  const manualSum = round2(payLines.reduce((s, l) => s + (l.auto ? 0 : num(l.amount)), 0));
+  const autoBalance = Math.max(0, round2(remaining - manualSum));
+  const lineAmount = (l) => (l.auto ? autoBalance : round2(num(l.amount)));
+  const collected = round2(payLines.reduce((s, l) => s + lineAmount(l), 0));
+  const overCollected = collected > remaining + 0.005;
+  const emptyLine = payLines.find((l) => lineAmount(l) <= 0);
+  const paymentChosen = nothingDue || payLater || payLines.length > 0;
+  const payInvalid = !nothingDue && !payLater && (overCollected || !!emptyLine);
+  const payStatus = nothingDue ? "PAID" : payLater ? "PENDING" : !payLines.length ? "" : collected >= remaining - 0.005 ? "PAID" : "PARTIAL";
+  const paidNow = nothingDue || payLater ? 0 : Math.min(collected, remaining);
   const outstanding = Math.max(0, Number((remaining - paidNow).toFixed(2)));
+  // What is actually sent: the largest payment first, because the bill keeps
+  // that one as its payment mode (it is what the invoice prints); the rest
+  // are recorded against the bill straight after it is created.
+  const payPlan = nothingDue || payLater ? [] : payLines
+    .map((l) => ({ method: l.method, amount: lineAmount(l), ref: l.method === "CASH" ? "" : (l.ref || "").trim() }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const togglePayMethod = (m) => {
+    setPayLater(false);
+    setPayLines((ls) => ls.some((l) => l.method === m)
+      ? ls.filter((l) => l.method !== m)
+      // The first method takes the whole balance; a later one starts empty and
+      // the auto line gives up whatever is typed into it.
+      : [...ls, { method: m, amount: "", ref: "", auto: ls.length === 0 }]);
+  };
+  const choosePayLater = () => { setPayLines([]); setPayLater((v) => !v); };
+  const setLineAmount = (m, v) => setPayLines((ls) => ls.map((l) => (l.method === m ? { ...l, amount: v, auto: false } : l)));
+  const setLineRef = (m, v) => setPayLines((ls) => ls.map((l) => (l.method === m ? { ...l, ref: v } : l)));
+  // This line takes the balance; any other auto line keeps the figure it shows.
+  const fillBalance = (m) => setPayLines((ls) => ls.map((l) =>
+    l.method === m ? { ...l, auto: true } : l.auto ? { ...l, amount: String(autoBalance), auto: false } : l));
+  // Every payment after the first is its own ledger row. One that fails does
+  // not undo the bill; it is named, so it can be collected from Payments.
+  const recordPayments = async (saleId, list) => {
+    const failed = [];
+    for (const p of list) {
+      try {
+        await billingService.recordSalePayment(saleId, {
+          amount: p.amount, paymentDate: istToday(), paymentMethod: p.method, referenceNo: p.ref || undefined,
+        });
+      } catch (err) {
+        failed.push({ ...p, reason: err?.message || "" });
+      }
+    }
+    return failed;
+  };
 
   // Empty is valid (a walk-in need not give a number); anything typed has to be
   // all ten digits. PhoneInput already refuses letters, symbols and an 11th
@@ -825,7 +875,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
 
   const canCreate =
     !!product && !creating && !requoting && !discountBlocks &&
-    customerIdentified && paymentChosen && !partialInvalid && !anyLineOverBalance &&
+    customerIdentified && paymentChosen && !payInvalid && !anyLineOverBalance &&
     !redeemOverGold && !rateOutOfBand && !exchangeInvalid;
 
   // ---------------------------------------------------------------------------
@@ -856,7 +906,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
         owner: stashOwner, code: productCode, name: product.name || "", savedAt: Date.now(),
         customerMode, selectedCustomer, walkinName, walkinPhone,
         makingVal, wastageVal, rate: saleMode === "OFFLINE" ? rate : "", exchangeText,
-        payMethod, payStatus, payRef, partialAmount,
+        payLines, payLater,
       }
     : null;
   useEffect(() => {
@@ -877,8 +927,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
     setCustomerMode(v.customerMode || "existing");
     if (v.customerMode === "existing" && v.selectedCustomer?.id) selectCustomer(v.selectedCustomer);
     setWalkinName(v.walkinName || ""); setWalkinPhone(v.walkinPhone || "");
-    setPayMethod(v.payMethod || ""); setPayStatus(v.payStatus || "");
-    setPayRef(v.payRef || ""); setPartialAmount(v.partialAmount || "");
+    setPayLines(Array.isArray(v.payLines) ? v.payLines : []); setPayLater(!!v.payLater);
     handleFind(v.code);
   };
   useEffect(() => {
@@ -904,10 +953,9 @@ export default function NewSale({ intent, clearIntent } = {}) {
     setProduct(null); setProductCode(""); setCode("");
     setRate(""); setMakingVal(""); setWastageVal(""); setDiscountText(null); setExchangeText(""); setGst(true); setShowProfit(false);
     setAllowBelowCost(false); setBelowCostReason(""); setPublishedRate(null);
-    setPayMethod(""); setPayStatus(""); setPartialAmount(""); setPayRef("");
+    setPayLines([]); setPayLater(false);
     setSaleMode(null); setPriceText(null); setQuoteError("");
     clearCustomer(); setCustQuery(""); setCustResults([]); setWalkinName(""); setWalkinPhone("");
-    setPayMethod("CASH"); setPayStatus("PAID"); setPartialAmount(""); setPayRef("");
     setLookupError(""); setOtp(null);
     clearStash();
   };
@@ -918,8 +966,9 @@ export default function NewSale({ intent, clearIntent } = {}) {
       else if (discountBlocks) toast("Discount exceeds this bill’s making charge");
       else if (anyLineOverBalance) toast("A redemption exceeds its scheme balance");
       else if (redeemOverGold) toast(`Scheme redemption can't exceed the item's gold value (${money(goldValue)})`);
-      else if (!paymentChosen) toast("Choose the payment method and status before billing");
-      else if (partialInvalid) toast("Partial amount must be greater than 0 and less than the amount remaining");
+      else if (!paymentChosen) toast("Choose how the customer is paying before billing");
+      else if (overCollected) toast(`The payments add up to ${money(collected)} - more than the ${money(remaining)} due`);
+      else if (emptyLine) toast(`Enter the ${PAYMENT_METHOD_LABEL[emptyLine.method]} amount, or remove it`);
       else if (exchangeInvalid) toast(`Exchange value can't be more than the bill total (${money(billTotal)})`);
       return;
     }
@@ -938,7 +987,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
         // redemption succeeds, and cancelling the OTP has nothing to undo.
         const sale = await billingService.createSale({
           ...baseInputs(),
-          paymentMethod: payMethod,
+          paymentMethod: payPlan[0]?.method || "CASH",
           paymentStatus: "PENDING",
         });
         await enrollmentService.requestRedemptionOtp(sale.id);
@@ -947,9 +996,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
           invoiceNumber: sale.invoiceNumber,
           items: redeemLines.map((l) => ({ enrollmentId: l.enrollmentId, amount: l.amount })),
           // Collected by onOtpDone, once the credit is actually spent.
-          collectAfter: paidNow > 0
-            ? { amount: paidNow, paymentMethod: payMethod, referenceNo: payRef.trim() || undefined }
-            : null,
+          collectAfter: payPlan.filter((p) => p.amount > 0),
         });
         toast("Verification code sent to the customer's app");
         if (resumedDraftId) {
@@ -957,16 +1004,22 @@ export default function NewSale({ intent, clearIntent } = {}) {
           setResumedDraftId(null);
         }
       } else {
+        // The bill is created with the first (largest) payment; with more than
+        // one it is PARTIAL until the others are recorded, and the backend
+        // turns it PAID by itself once they add up to the total.
+        const [first, ...rest] = payPlan;
+        const status = nothingDue ? "PAID" : payLater ? "PENDING" : rest.length ? "PARTIAL" : payStatus;
         const sale = await billingService.createSale({
           ...baseInputs(),
-          paymentMethod: payMethod,
-          paymentStatus: payStatus,
-          initialPaymentAmount: payStatus === "PARTIAL" ? partialNum : undefined,
-          paymentReferenceNo: payRef.trim() || undefined,
+          paymentMethod: first?.method || "CASH",
+          paymentStatus: status,
+          initialPaymentAmount: status === "PARTIAL" ? first.amount : undefined,
+          paymentReferenceNo: first?.ref || undefined,
         });
+        const unrecorded = rest.length ? await recordPayments(sale.id, rest) : [];
         // Open the invoice summary dialog (Download PDF / Print). The form is
         // reset only when the dialog is closed, so the admin keeps the PDF handle.
-        setInvoice({ id: sale.id, invoiceNumber: sale.invoiceNumber, finalAmount: sale.finalAmount });
+        setInvoice({ id: sale.id, invoiceNumber: sale.invoiceNumber, finalAmount: sale.finalAmount, payments: payPlan, unrecorded });
         // The draft became a real bill, so it stops being an unfinished one.
         // Failing to clear it would leave the same bill in the list beside the
         // invoice it turned into, and somebody would bill it twice.
@@ -1007,24 +1060,12 @@ export default function NewSale({ intent, clearIntent } = {}) {
     // the sale had to stay voidable. If this one call fails the sale is still
     // correct and carved, just unpaid, and the admin collects it from the
     // Payments screen; say so plainly rather than implying the sale failed.
-    if (done?.saleId && done?.collectAfter?.amount > 0) {
-      try {
-        await billingService.recordSalePayment(done.saleId, {
-          amount: done.collectAfter.amount,
-          paymentMethod: done.collectAfter.paymentMethod,
-          referenceNo: done.collectAfter.referenceNo,
-        });
-        toast("Sale completed with scheme redemption");
-      } catch (err) {
-        toast(
-          `Scheme redeemed, but the ${money(done.collectAfter.amount)} payment was not recorded` +
-          `${err?.message ? ` — ${err.message}` : ""}. Collect it against ${done.invoiceNumber || "this invoice"} in Payments.`
-        );
-      }
-    } else {
-      toast("Sale completed with scheme redemption");
-    }
-    if (done?.saleId) setInvoice({ id: done.saleId, invoiceNumber: done.invoiceNumber });
+    const list = done?.collectAfter || [];
+    const unrecorded = done?.saleId && list.length ? await recordPayments(done.saleId, list) : [];
+    toast(unrecorded.length
+      ? `Scheme redeemed, but ${unrecorded.map((p) => `${PAYMENT_METHOD_LABEL[p.method]} ${money(p.amount)}`).join(" and ")} was not recorded. Collect it against ${done.invoiceNumber || "this invoice"} in Payments.`
+      : "Sale completed with scheme redemption");
+    if (done?.saleId) setInvoice({ id: done.saleId, invoiceNumber: done.invoiceNumber, payments: list, unrecorded });
   };
 
   // Abandoning the OTP step must not leave the item SOLD. The sale was created
@@ -1072,7 +1113,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
         wastage_value: wastageVal !== "" ? num(wastageVal) : undefined,
         gold_profit_percent: 0,
         discount_amount: 0,
-        payment_method: payMethod || "CASH",
+        payment_method: payPlan[0]?.method || "CASH",
         payment_status: payStatus || "PAID",
       };
       if (resumedDraftId) await billingService.deleteDraft(resumedDraftId);
@@ -1114,8 +1155,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
       // where it lives now; the percentage is resolved once the product is
       // found and the list is known.
       setDiscountText(null);
-      setPayMethod(d.payment_method || "");
-      setPayStatus(d.payment_status || "");
+      // A draft keeps one method and a status, not the amounts: an unpaid one
+      // comes back as Pay later, anything else as its method taking the balance.
+      setPayLater(d.payment_status === "PENDING");
+      setPayLines(d.payment_status !== "PENDING" && d.payment_method ? [{ method: d.payment_method, amount: "", ref: "", auto: true }] : []);
       toast(`Resumed draft — ${d.product_code}. Find the product to reprice it.`);
     } catch (err) {
       toast(err?.message || "Could not open that draft");
@@ -1186,10 +1229,12 @@ export default function NewSale({ intent, clearIntent } = {}) {
             is found by HUID, and bullion, which is found by serial number -
             naming only the HUID told the counter the bar could not be sold
             here, when in fact typing its serial has always worked. */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-soft bg-gradient-to-r from-accent-soft/80 via-accent-soft/30 to-transparent px-5 py-4 sm:flex-nowrap sm:px-6">
+        <div className="flex flex-col gap-3 border-b border-line-soft bg-gradient-to-r from-accent-soft/80 via-accent-soft/30 to-transparent px-5 py-4 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-between sm:px-6">
           {/* Title shrinks (its hint wraps) so the two buttons stay on the
-              title's line in the narrower left column. */}
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+              title's line in the narrower left column. On a phone there is no
+              room for that - the title was squeezed to one word a line - so
+              the buttons drop to their own row, side by side. */}
+          <div className="flex min-w-0 items-center gap-3 sm:flex-1">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-white shadow-[0_6px_16px_-6px_rgba(159,29,53,0.6)]">
               <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
             </span>
@@ -1198,15 +1243,15 @@ export default function NewSale({ intent, clearIntent } = {}) {
               <p className="text-[11px] text-muted">HUID or Item Code for jewellery · serial number for a gold bar</p>
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
             {billOpen && findOpen && (
-              <Button size="sm" variant="ghost" className="h-9 px-3" onClick={() => { setFindOpen(false); setCode(product.huid || product.productCode || ""); }}>Keep current item</Button>
+              <Button size="sm" variant="ghost" className="col-span-2 h-9 px-3" onClick={() => { setFindOpen(false); setCode(product.huid || product.productCode || ""); }}>Keep current item</Button>
             )}
-            <Button size="sm" variant="outline" className="h-9 bg-surface px-3.5" disabled={loading} onClick={() => setCameraOpen(true)} title="Scan the piece's barcode sticker with the camera. A USB or phone scanner works without this - just scan.">
+            <Button size="sm" variant="outline" className="h-9 w-full bg-surface px-3.5 sm:w-auto" disabled={loading} onClick={() => setCameraOpen(true)} title="Scan the piece's barcode sticker with the camera. A USB or phone scanner works without this - just scan.">
               <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10.5 8v8M14 8v8M17 8v8" /></svg>
               Scan barcode
             </Button>
-            <Button size="sm" variant="outline" className="h-9 bg-surface px-3.5" onClick={openDrafts}>
+            <Button size="sm" variant="outline" className="h-9 w-full bg-surface px-3.5 sm:w-auto" onClick={openDrafts}>
               <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></svg>
               Unfinished bills
               {localDraft && <span className="ml-1.5 h-2 w-2 rounded-full bg-accent" aria-label="1 bill in progress" />}
@@ -1926,23 +1971,112 @@ export default function NewSale({ intent, clearIntent } = {}) {
 
             {/* Payment */}
             <Card className="space-y-3.5 p-4 lg:flex-1">
-              <SectionHead step={5} title="Payment" meta={paymentChosen ? undefined : "Required"} />
-              <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-                <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Method *</span>
-                  <Select value={payMethod} onValueChange={setPayMethod} placeholder="Select method" options={PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABEL[m] }))} />
-                </label>
-                <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Status *</span>
-                  <Select value={payStatus} onValueChange={setPayStatus} placeholder="Select status" options={PAYMENT_STATUSES.map((s) => ({ value: s, label: PAYMENT_STATUS_LABEL[s] }))} />
-                </label>
-                {payStatus === "PARTIAL" && (
-                  <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Paid now (₹) *</span>
-                    <Input type="number" step="0.01" value={partialAmount} onChange={(e) => setPartialAmount(e.target.value)} error={partialInvalid ? "Must be > 0 and < remaining" : undefined} />
-                    {partialInvalid && <span className="text-[11px] font-semibold text-danger">Between {money(0)} and {money(remaining)}</span>}
-                  </label>
-                )}
-                <label className="grid min-w-0 content-start gap-1.5"><span className="text-xs font-bold">Reference No.</span><Input value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="Optional" /></label>
-              </div>
-              {!paymentChosen && <p className="text-[11px] font-semibold text-accent-strong">Choose a method and a status — nothing is treated as collected until you do.</p>}
+              <SectionHead step={5} title="Payment" meta={paymentChosen && !payInvalid ? undefined : "Required"} />
+              {nothingDue ? (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2.5 text-xs font-semibold text-emerald-800">
+                  Nothing left to collect: the scheme and exchange cover this bill.
+                </p>
+              ) : (
+                <>
+                  {/* Tiles, not a dropdown: every way to pay is visible at once,
+                      and more than one can be on - UPI for part, cash for the rest. */}
+                  <div>
+                    <div className="mb-1.5 text-xs font-bold">How is the customer paying? <span className="font-normal text-muted">Choose one or more</span></div>
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-6" role="group" aria-label="Payment methods">
+                      {[...PAYMENT_METHODS, "LATER"].map((m) => {
+                        const on = m === "LATER" ? payLater : payLines.some((l) => l.method === m);
+                        return (
+                          <button key={m} type="button" aria-pressed={on} onClick={() => (m === "LATER" ? choosePayLater() : togglePayMethod(m))}
+                            className={`relative flex min-h-[62px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-center text-[11px] font-bold leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                              on ? "border-accent bg-accent-soft text-accent-strong shadow-[inset_0_0_0_1px_var(--color-accent)]" : "border-line bg-surface text-ink-soft hover:border-accent-line hover:bg-accent-soft/40"}`}>
+                            {on && (
+                              <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-accent text-white" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                              </span>
+                            )}
+                            <PayIcon method={m} />
+                            <span className="max-w-full truncate">{m === "LATER" ? "Pay later" : PAYMENT_METHOD_LABEL[m]}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {payLines.length > 0 && (
+                    <div className="space-y-2">
+                      {payLines.map((l) => {
+                        const amt = lineAmount(l);
+                        const label = PAYMENT_METHOD_LABEL[l.method];
+                        return (
+                          <div key={l.method} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-2 rounded-xl border border-line bg-canvas/30 p-2.5 sm:grid-cols-[104px_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                            <div className="order-1 flex h-10 items-center gap-2 text-xs font-bold text-ink"><span className="text-accent-strong"><PayIcon method={l.method} small /></span>{label}</div>
+                            <div className="order-3 col-span-2 min-w-0 sm:order-2 sm:col-span-1">
+                              <MoneyInput allowDecimal inlineSymbol placeholder={`${label} amount`} aria-label={`${label} amount`}
+                                frameClassName={`h-10 ${amt <= 0 && !l.auto ? "border-danger" : ""}`} className="num text-sm font-bold"
+                                value={l.auto ? (autoBalance ? String(autoBalance) : "") : l.amount}
+                                onValueChange={(v) => setLineAmount(l.method, v)} />
+                              <div className="mt-1 min-h-[16px] text-[11px]">
+                                {l.auto
+                                  ? <span className="text-muted">{autoBalance > 0 ? "Takes the balance - type to change" : <span className="font-semibold text-danger">Nothing left for {label} - remove it</span>}</span>
+                                  : amt <= 0
+                                    ? <span className="font-semibold text-danger">Enter the {label} amount, or remove it</span>
+                                    : collected < remaining - 0.005 && <button type="button" onClick={() => fillBalance(l.method)} className="font-bold text-accent hover:underline">Fill balance ({money(round2(remaining - collected + amt))})</button>}
+                              </div>
+                            </div>
+                            {l.method !== "CASH" ? (
+                              <Input className="order-4 col-span-2 min-w-0 sm:order-3 sm:col-span-1" value={l.ref} maxLength={100}
+                                onChange={(e) => setLineRef(l.method, e.target.value)} aria-label={`${label} reference`}
+                                placeholder={{ UPI: "UPI ref / UTR (optional)", CARD: "Last 4 digits / approval no.", BANK_TRANSFER: "UTR / cheque no. (optional)" }[l.method] || "Details (optional)"} />
+                            ) : (
+                              <div className="order-4 hidden h-10 items-center text-[11px] text-muted sm:order-3 sm:flex">No reference needed</div>
+                            )}
+                            <button type="button" onClick={() => togglePayMethod(l.method)} aria-label={`Remove ${label}`}
+                              className="order-2 grid h-10 w-10 place-items-center rounded-lg text-muted transition-colors hover:bg-danger-soft hover:text-danger sm:order-4">
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* The tally: what is collected against what is due, and what
+                      that makes the bill - nothing to pick, nothing to mismatch. */}
+                  {(() => {
+                    const state = !paymentChosen ? "none" : payLater ? "later" : overCollected ? "over" : emptyLine ? "empty" : payStatus === "PAID" ? "paid" : "partial";
+                    const tone = {
+                      none: "border-line bg-canvas/40 text-ink-soft",
+                      empty: "border-danger-line bg-danger-soft text-danger",
+                      later: "border-warn-line bg-warn-soft text-warn",
+                      partial: "border-warn-line bg-warn-soft text-warn",
+                      over: "border-danger-line bg-danger-soft text-danger",
+                      paid: "border-emerald-200 bg-emerald-50/70 text-emerald-800",
+                    }[state];
+                    const chip = { none: "Not chosen", empty: "Incomplete", later: "Pending", partial: "Partial", over: "Too much", paid: "Paid in full" }[state];
+                    const bar = { later: "bg-warn", partial: "bg-warn", over: "bg-danger", empty: "bg-danger", paid: "bg-emerald-600" }[state] || "bg-line";
+                    const pct = remaining > 0 ? Math.min(100, (collected / remaining) * 100) : 0;
+                    return (
+                      <div className={`rounded-xl border px-3.5 py-3 ${tone}`} aria-live="polite">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs">Collected <b className="num text-sm">{money(payLater ? 0 : collected)}</b> of <span className="num font-semibold">{money(remaining)}</span></span>
+                          <span className="rounded-full bg-white/80 px-2.5 py-0.5 text-[11px] font-extrabold">{chip}</span>
+                        </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/70">
+                          <div className={`h-full rounded-full transition-[width] duration-300 ${bar}`} style={{ width: `${payLater ? 0 : pct}%` }} />
+                        </div>
+                        <p className="mt-1.5 text-[11px] font-semibold">
+                          {state === "none" && "Choose how the customer is paying - nothing is treated as collected until you do."}
+                          {state === "later" && `Nothing collected now - the full ${money(remaining)} stays outstanding on this bill.`}
+                          {state === "partial" && `${money(outstanding)} will be left as outstanding on this bill.`}
+                          {state === "empty" && `Enter the ${PAYMENT_METHOD_LABEL[emptyLine.method]} amount, or remove it.`}
+                          {state === "over" && `That is ${money(round2(collected - remaining))} more than the amount due - reduce an amount.`}
+                          {state === "paid" && payPlan.map((p) => `${PAYMENT_METHOD_LABEL[p.method]} ${money(p.amount)}`).join(" · ")}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
               {schemeApplied && <p className="text-[11px] text-muted">Payment applies to the amount remaining after scheme redemption ({money(remaining)}).</p>}
             </Card>
           </div>
@@ -2085,8 +2219,8 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         <Row label={`Making Charge${makingLabel ? ` ${makingLabel}` : ""}`} value={money(product.makingChargeAmount)} />
                       )}
                       <Row label={`Wastage${wastageLabel ? ` ${wastageLabel}` : ""}`} value={money(product.wastageAmount)} />
-                      {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
-                      {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
+                      {/* Stones and other charges are one figure to the customer: V/A. */}
+                      {round2((product.stoneChargeAmount || 0) + (product.otherChargesAmount || 0)) > 0 && <Row label="Value Addition (V/A)" value={money(round2((product.stoneChargeAmount || 0) + (product.otherChargesAmount || 0)))} />}
                       {concession > 0.004 && <Row label={`Discount (${round2(listPct)}% → ${round2(agreedPct)}%)`} value={`− ${money(concession)}`} tone="text-emerald-700" />}
                       {/* This is the GST base, and on a scheme bill it is the
                           CARVED base (1,63,186.95 on the S003 case) while the
@@ -2149,8 +2283,8 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       <Row label={`Making Charge${chargePct(product.makingChargeType, makingVal || product.makingChargeValue) ? ` ${chargePct(product.makingChargeType, makingVal || product.makingChargeValue)}` : ""}`} value={money(product.makingChargeAmount)} />
                     )}
                     <Row label={`Wastage${chargePct(product.wastageType, wastageVal || product.wastageValue) ? ` ${chargePct(product.wastageType, wastageVal || product.wastageValue)}` : ""}`} value={money(product.wastageAmount)} />
-                    {product.stoneChargeAmount > 0 && <Row label="Stone Charge" value={money(product.stoneChargeAmount)} />}
-                    {product.otherChargesAmount > 0 && <Row label="Other Charges" value={money(product.otherChargesAmount)} />}
+                    {/* Stones and other charges are one figure to the customer: V/A. */}
+                    {round2((product.stoneChargeAmount || 0) + (product.otherChargesAmount || 0)) > 0 && <Row label="Value Addition (V/A)" value={money(round2((product.stoneChargeAmount || 0) + (product.otherChargesAmount || 0)))} />}
                     {concession > 0.004 && <Row label={`Discount (${round2(listPct)}% → ${round2(agreedPct)}%)`} value={`− ${money(concession)}`} tone="text-emerald-700" />}
                     <Row label="Subtotal" value={money(product.subtotalBeforeTax)} divider />
                     {/* A discount is excluded from the taxable value, so it is
@@ -2272,8 +2406,8 @@ export default function NewSale({ intent, clearIntent } = {}) {
               {!canCreate && !creating && (
                 <p className="mt-2 text-center text-[11px] text-muted">
                   {!customerIdentified ? "Identify the buyer to enable billing."
-                    : !paymentChosen ? "Select the payment method and status to enable billing."
-                    : partialInvalid ? "Enter a valid part payment to enable billing."
+                    : !paymentChosen ? "Choose how the customer is paying to enable billing."
+                    : payInvalid ? "Fix the payment amounts to enable billing."
                     : discountBlocks ? "Reduce the discount to enable billing."
                     : redeemOverGold ? "Reduce the scheme redemption to enable billing."
                     : belowCostIncomplete ? "Enter the reason for selling below cost to enable billing."
@@ -2378,6 +2512,23 @@ export default function NewSale({ intent, clearIntent } = {}) {
   );
 }
 
+// Icons for the payment tiles; "LATER" is the Pay later tile.
+const PAY_ICON_PATH = {
+  CASH: "M3 6h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 12h.01M18 12h.01",
+  UPI: "M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2",
+  CARD: "M3 5h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM1 10h22M5 15h4",
+  BANK_TRANSFER: "M3 21h18M5 21V11M9.5 21V11M14.5 21V11M19 21V11M2 11l10-7 10 7z",
+  OTHER: "M5 12h.01M12 12h.01M19 12h.01",
+  LATER: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 7v5l3 2",
+};
+function PayIcon({ method, small = false }) {
+  return (
+    <svg viewBox="0 0 24 24" className={small ? "h-4 w-4" : "h-5 w-5"} fill="none" stroke="currentColor" strokeWidth={method === "OTHER" ? 3 : 1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={PAY_ICON_PATH[method] || PAY_ICON_PATH.OTHER} />
+    </svg>
+  );
+}
+
 function InvoiceDialog({ invoice, onClose }) {
   const [busy, setBusy] = useState("");
   const download = async () => {
@@ -2403,6 +2554,19 @@ function InvoiceDialog({ invoice, onClose }) {
         <div className="px-6 py-5 space-y-1">
           <p className="text-sm font-bold">{invoice.invoiceNumber}</p>
           <p className="text-xs text-muted">{invoice.finalAmount != null ? `Bill total ${money(invoice.finalAmount)}. ` : ""}The invoice PDF shows every line — scheme redemption, discount, amount paid and pending amount.</p>
+          {invoice.payments?.length > 1 && (
+            <p className="pt-1 text-xs font-semibold text-ink">
+              Paid by {invoice.payments.map((p) => `${PAYMENT_METHOD_LABEL[p.method]} ${money(p.amount)}`).join(" + ")}
+            </p>
+          )}
+          {/* A payment that did not save is not a failed bill - the bill
+              stands, short by that amount. Said here, where it cannot fade. */}
+          {invoice.unrecorded?.length > 0 && (
+            <div className="mt-2 rounded-xl border border-warn-line bg-warn-soft px-3 py-2.5 text-xs font-semibold text-warn">
+              Not recorded: {invoice.unrecorded.map((p) => `${PAYMENT_METHOD_LABEL[p.method]} ${money(p.amount)}`).join(", ")}.
+              {" "}The bill shows it as outstanding - record it against {invoice.invoiceNumber} in Payments › Record Manual Payment.
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
           <Button variant="outline" size="sm" onClick={print} disabled={!!busy}>{busy === "print" ? "Opening…" : "Print"}</Button>

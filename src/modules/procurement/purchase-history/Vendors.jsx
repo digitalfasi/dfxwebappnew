@@ -292,10 +292,10 @@ export default function Vendors({ intent, clearIntent } = {}) {
                 const staffName = v.contactPerson || r.last?.deliveredBy || "";
                 return (
                   <tr key={v.id} className="border-b border-line-soft last:border-0 hover:bg-canvas/60 transition-colors">
-                    <td className="px-6 py-3.5">
+                    <td className="min-w-[250px] px-6 py-3.5">
                       <button className="flex items-center gap-2 text-left" onClick={() => { setDetailTab("overview"); setDetailVendor(v); }}>
-                        <span className="rounded-md border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-xs font-extrabold tracking-wide text-accent-strong">{v.code || "—"}</span>
-                        <span className="font-bold text-ink hover:text-accent hover:underline">{v.name}</span>
+                        <span className="shrink-0 whitespace-nowrap rounded-md border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-xs font-extrabold tracking-wide text-accent-strong">{v.code || "—"}</span>
+                        <span className="line-clamp-2 font-bold text-ink hover:text-accent hover:underline" title={v.name}>{v.name}</span>
                       </button>
                       {!v.isActive && <div className="mt-1"><Badge tone="neutral" dot>Inactive</Badge></div>}
                     </td>

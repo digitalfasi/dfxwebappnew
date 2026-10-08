@@ -74,6 +74,7 @@ function mapBusinessRow(s) {
     outstanding: s.outstanding,
     status: s.status,
     method: s.method,
+    methods: s.methods || [],
     date: fmtSaleDate(s.saleTimestamp),
     time: fmtSaleTime(s.saleTimestamp),
     ts: s.saleTimestamp || null,
@@ -157,6 +158,22 @@ const TONE = { SUCCESS: "success", Paid: "success", Completed: "success", Partia
 // GET /payments returns the backend enum (CASH, BANK_TRANSFER, …); map it to the
 // MethodBadge label so the ledger shows the same styled pill as the business tab.
 const METHOD_LABEL = { CASH: "Cash", CARD: "Card", UPI: "UPI", BANK_TRANSFER: "Bank Transfer", CHEQUE: "Cheque", ONLINE: "Online" };
+
+// A business bill paid by more than one method shows one badge each (largest
+// first); with amounts where there is room for them.
+function Methods({ r, withAmounts = false }) {
+  if (!(r.methods?.length > 1)) return <MethodBadge method={r.method} />;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {r.methods.map((m) => (
+        <span key={m.label} title={`${m.label} ₹${Number(m.amount).toLocaleString("en-IN")}`} className="inline-flex flex-col items-start">
+          <MethodBadge method={m.label} />
+          {withAmounts && <span className="num mt-0.5 pl-1 text-[11px] font-semibold text-muted">₹{Number(m.amount).toLocaleString("en-IN")}</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function MethodBadge({ method }) {
   const map = {
@@ -373,18 +390,20 @@ export default function Payments({ intent, clearIntent }) {
       </div>
 
       {/* Top navigation / toggle */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Phones: the switch and the button each get a full-width row - side by
+          side they ran past the screen edge and cut the button off. */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Two of them, so they sit side by side instead of hiding behind a
             dropdown that has to be opened to see what the other one even is.
             Same `tab` state, same handler - nothing below this line changes. */}
-        <div data-motion="toolbar" className="inline-flex items-center gap-1 rounded-xl border border-line bg-canvas/60 p-1">
+        <div data-motion="toolbar" className="grid grid-cols-2 items-center gap-1 rounded-xl border border-line bg-canvas/60 p-1 sm:inline-flex">
           {[["business", "Business Payment"], ["scheme", "Scheme Payment"]].map(([val, label]) => (
             <button
               key={val}
               type="button"
               onClick={() => setTab(val)}
               aria-pressed={tab === val}
-              className={`rounded-lg px-4 py-2 text-xs font-bold transition-colors ${
+              className={`whitespace-nowrap rounded-lg px-4 py-2 text-xs font-bold transition-colors ${
                 tab === val ? "bg-accent text-white shadow-sm" : "text-ink-soft hover:bg-surface"
               }`}
             >
@@ -393,14 +412,14 @@ export default function Payments({ intent, clearIntent }) {
           ))}
         </div>
         {/* Primary action — Record Manual Payment on upper-right, blue filled with plus */}
-        <Button size="sm" variant="default" onClick={() => (tab === "business" ? setShowBizManual(true) : setShowManual(true))} className="bg-accent hover:bg-accent-strong">
+        <Button size="sm" variant="default" onClick={() => (tab === "business" ? setShowBizManual(true) : setShowManual(true))} className="w-full bg-accent hover:bg-accent-strong sm:w-auto">
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Record Manual Payment
         </Button>
       </div>
 
       {/* Search & filters — horizontal filter row */}
       <div className="mb-4 flex flex-wrap items-center gap-2" data-motion="toolbar">
-        <SearchInput placeholder={searchPlaceholder} value={f.search} onChange={e => patch({ search: e.target.value })} className="min-w-[260px] flex-1" />
+        <SearchInput placeholder={searchPlaceholder} value={f.search} onChange={e => patch({ search: e.target.value })} className="min-w-[min(260px,100%)] flex-1" />
         <Select value={f.status} onValueChange={(v) => patch({ status: v })} options={tab === "business" ? BUSINESS_STATUS_FILTERS : (schemeView === "payments" ? SCHEME_PAYMENT_STATUS_FILTERS : SCHEME_STATUS_FILTERS)} variant="accent" className="w-40" />
         {/* Date filters: Today / This Week / This Month / Last Month / Overall / Custom.
             Scoped to the selected Payment type only. Hidden in the scheme
@@ -561,7 +580,7 @@ export default function Payments({ intent, clearIntent }) {
                       <div className="font-medium text-ink">{r.date}</div>
                       <div className="text-xs text-muted">{r.time}</div>
                     </td>
-                    <td><MethodBadge method={r.method} /></td>
+                    <td><Methods r={r} /></td>
                     <td className="num whitespace-nowrap text-right font-bold">₹{r.amount.toLocaleString("en-IN")}</td>
                     <td className="num whitespace-nowrap text-right">₹{r.paid.toLocaleString("en-IN")}</td>
                     <td className={`num whitespace-nowrap text-right font-semibold ${r.outstanding > 0 ? "text-danger" : "text-muted"}`}>₹{r.outstanding.toLocaleString("en-IN")}</td>
@@ -822,7 +841,7 @@ export default function Payments({ intent, clearIntent }) {
                     <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Amount</div><div className="font-bold">₹{selected.amount.toLocaleString()}</div></div>
                     <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Paid</div><div className="font-bold">₹{selected.paid.toLocaleString()}</div></div>
                     <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Outstanding</div><div className="font-bold">₹{selected.outstanding.toLocaleString()}</div></div>
-                    <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Method</div><div className="mt-1">{selected.method ? <MethodBadge method={selected.method} /> : <span className="text-sm text-muted">—</span>}</div></div>
+                    <div className="rounded-xl border border-line bg-canvas/40 p-3"><div className="text-xs text-muted">Method</div><div className="mt-1">{selected.method ? <Methods r={selected} withAmounts /> : <span className="text-sm text-muted">—</span>}</div></div>
                   </div>
                   <div className="flex gap-2"><Badge tone={TONE[selected.status] || "neutral"}>{selected.status}</Badge><span className="text-xs text-muted self-center">{selected.date}</span></div>
                   <div className="border-t border-line pt-3">

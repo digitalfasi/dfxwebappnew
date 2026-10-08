@@ -349,7 +349,7 @@ export default function SalesHistory() {
                   className="group cursor-pointer border-b border-line-soft align-middle transition-colors duration-150 last:border-0 hover:bg-canvas/60 [&>td]:px-3 [&>td]:py-3.5"
                 >
                   <td className="!pl-5 font-mono text-xs font-semibold">
-                    {b.inv}
+                    <span className="whitespace-nowrap">{b.inv}</span>
                     {/* A scheme bill used to be indistinguishable from a cheap
                         one here. Marked as a chip rather than a 15th column:
                         this table is already wide, and a column would take
@@ -359,8 +359,8 @@ export default function SalesHistory() {
                     )}
                   </td>
                   <td className="whitespace-nowrap text-muted">{formatDate(b.saleTimestamp)}</td>
-                  <td className="min-w-[130px]">
-                    <div className="font-bold">{b.customer}</div>
+                  <td className="min-w-[170px]">
+                    <div className="line-clamp-2 font-bold" title={b.customer}>{b.customer}</div>
                     {b.customerCode && <div className="font-mono text-[11px] text-muted">{b.customerCode}</div>}
                   </td>
                   <td className="whitespace-nowrap font-mono text-xs text-muted">{b.huid || b.productCode || "—"}</td>
@@ -622,8 +622,7 @@ function SaleDetail({ sale, onClose, onChanged }) {
               />
               <BreakdownRow label={`Making ${chargeLabel(sale.makingChargeType, sale.makingChargeValue)}`} value={formatINR(sale.makingChargeAmount)} />
               <BreakdownRow label={`Wastage ${chargeLabel(sale.wastageType, sale.wastageValue)}`} value={formatINR(sale.wastageAmount)} />
-              {sale.stoneChargeAmount > 0 && <BreakdownRow label="Stone" value={formatINR(sale.stoneChargeAmount)} />}
-              {sale.otherChargesAmount > 0 && <BreakdownRow label="Other" value={formatINR(sale.otherChargesAmount)} />}
+              {(sale.stoneChargeAmount || 0) + (sale.otherChargesAmount || 0) > 0 && <BreakdownRow label="Value Addition (V/A)" value={formatINR((sale.stoneChargeAmount || 0) + (sale.otherChargesAmount || 0))} />}
               <BreakdownRow label="Subtotal" value={formatINR(sale.subtotalBeforeTax)} />
               {/* Where the discount belongs in the column depends on when the
                   bill was raised. A discount now reduces the TAXABLE value, so
