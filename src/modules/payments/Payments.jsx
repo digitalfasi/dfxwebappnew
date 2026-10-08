@@ -183,6 +183,7 @@ function MethodBadge({ method }) {
     UPI: { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-700", icon: "⬔" },
     Cash: { bg: "bg-slate-50", border: "border-slate-200", text: "text-slate-700", icon: "₹" },
     "Bank Transfer": { bg: "bg-slate-50", border: "border-slate-200", text: "text-slate-700", icon: "🏦" },
+    "Pay later": { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", icon: "◷" },
   };
   const s = map[method] || map.Online;
   return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${s.bg} ${s.border} ${s.text}`}><span className="text-[11px]">{s.icon}</span>{method}</span>;

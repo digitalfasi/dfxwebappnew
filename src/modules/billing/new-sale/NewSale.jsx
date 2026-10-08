@@ -1107,7 +1107,9 @@ export default function NewSale({ intent, clearIntent } = {}) {
         product_code: productCode,
         customer_id: customerMode === "existing" ? selectedCustomer?.id || undefined : undefined,
         customer_name: customerMode === "existing" ? selectedCustomer?.name || undefined : (walkinName.trim() || undefined),
-        customer_phone: customerMode === "existing" ? undefined : (walkinPhone.trim() || undefined),
+        customer_phone: customerMode === "existing"
+          ? ((selectedCustomer?.phone || "").replace(/\D/g, "").slice(-10).length === 10 ? (selectedCustomer.phone || "").replace(/\D/g, "").slice(-10) : undefined)
+          : (walkinPhone.trim() || undefined),
         gst_applied: gst,
         making_charge_value: makingVal !== "" ? num(makingVal) : undefined,
         wastage_value: wastageVal !== "" ? num(wastageVal) : undefined,
@@ -1115,6 +1117,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
         discount_amount: 0,
         payment_method: payPlan[0]?.method || "CASH",
         payment_status: payStatus || "PAID",
+        // A draft stores one method. A split names all of them here, so the
+        // resumed bill asks for the amounts again instead of reading as one
+        // method paid in full.
+        note: payPlan.length > 1 ? `pay:${payPlan.map((p) => p.method).join("+")}` : undefined,
       };
       if (resumedDraftId) await billingService.deleteDraft(resumedDraftId);
       await billingService.saveDraft(payload);
@@ -1158,8 +1164,25 @@ export default function NewSale({ intent, clearIntent } = {}) {
       // A draft keeps one method and a status, not the amounts: an unpaid one
       // comes back as Pay later, anything else as its method taking the balance.
       setPayLater(d.payment_status === "PENDING");
-      setPayLines(d.payment_status !== "PENDING" && d.payment_method ? [{ method: d.payment_method, amount: "", ref: "", auto: true }] : []);
-      toast(`Resumed draft — ${d.product_code}. Find the product to reprice it.`);
+      const split = /^pay:/.test(d.note || "")
+        ? d.note.slice(4).split("+").filter((m) => PAYMENT_METHODS.includes(m))
+        : [];
+      setPayLines(d.payment_status === "PENDING" ? []
+        // The first takes the balance; the rest come back empty, so the tally
+        // reads Incomplete until the split amounts are typed again.
+        : split.length > 1 ? split.map((m, i) => ({ method: m, amount: "", ref: "", auto: i === 0 }))
+        : d.payment_method ? [{ method: d.payment_method, amount: "", ref: "", auto: true }] : []);
+      // The buyer comes back too - a customer on file, or the walk-in typed.
+      if (d.customer_id) {
+        setCustomerMode("existing");
+        selectCustomer({ id: d.customer_id, name: d.customer_name || "Customer", phone: d.customer_phone || "—" });
+      } else if (d.customer_name || d.customer_phone) {
+        setCustomerMode("walkin");
+        setWalkinName(d.customer_name || ""); setWalkinPhone(d.customer_phone || "");
+      }
+      toast(split.length > 1
+        ? `Resumed draft — ${d.product_code}. Find the product, then enter the split amounts again.`
+        : `Resumed draft — ${d.product_code}. Find the product to reprice it.`);
     } catch (err) {
       toast(err?.message || "Could not open that draft");
     }
@@ -1907,7 +1930,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         type="number" step="0.01" min="0"
                         value={discountText != null ? discountText : (concession > 0 ? String(concession) : "")}
                         onChange={(e) => onDiscountInput(e.target.value)}
-
+                        // Snap to the discount actually applied - one past the
+                        // making charge is capped, and the box must not keep
+                        // showing the figure that was not given.
+                        onBlur={() => setDiscountText(null)}
                         placeholder="0" />
                       {concession > 0 && (
                         <span className="text-[11px] text-muted">

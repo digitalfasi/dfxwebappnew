@@ -1275,15 +1275,18 @@ function mapSaleRow(raw) {
     paid: raw.amount_paid ?? 0,
     outstanding: raw.amount_outstanding ?? 0,
     // Every method money came in by (largest first) - a bill can be paid part
-    // UPI, part cash. `method` reads "UPI + Cash" for those; a bill with one
-    // method, or nothing collected yet, keeps the bill's own method.
+    // UPI, part cash. `method` reads "UPI + Cash" for those, "Pay later" when
+    // nothing has been collected (the stored method is only the counter's
+    // default then), and the bill's own method otherwise.
     methods: (raw.payment_breakdown || []).map((p) => ({
       label: METHOD_LABEL[String(p.method || "").toUpperCase()] ?? p.method,
       amount: p.amount ?? 0,
     })),
     method: (raw.payment_breakdown || []).length > 1
       ? raw.payment_breakdown.map((p) => METHOD_LABEL[String(p.method || "").toUpperCase()] ?? p.method).join(" + ")
-      : METHOD_LABEL[String(raw.payment_method || "").toUpperCase()] ?? (raw.payment_method || "—"),
+      : !(raw.payment_breakdown || []).length && Number(raw.amount_paid || 0) <= 0 && Number(raw.final_amount || 0) > 0
+        ? "Pay later"
+        : METHOD_LABEL[String(raw.payment_method || "").toUpperCase()] ?? (raw.payment_method || "—"),
     paymentStatus: raw.payment_status ?? "",
     saleStatus: raw.sale_status ?? "COMPLETED",
     saleTimestamp: raw.sale_timestamp ?? raw.created_at ?? null,
