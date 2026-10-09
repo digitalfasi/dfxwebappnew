@@ -1,4 +1,5 @@
 import { apiClient } from "@/_shared/apiClient";
+import { downloadBase64 } from "@/modules/reports/reportService";
 
 // SuperAdmin API. Every call is SuperAdmin-only on the server as well.
 const qs = (params = {}) => {
@@ -23,8 +24,12 @@ export const saService = {
   system: () => get("/superadmin/monitor/system"),
   rateFeed: () => get("/superadmin/monitor/rate-feed"),
 
+  // Platform dashboard
+  dashboard: async (period = "this_month") => (await get("/superadmin/dashboard", { period })).dashboard,
+  exportDashboard: async (period) => downloadBase64((await get("/superadmin/export/dashboard", { format: "excel", period })).export),
+  exportTenants: async () => downloadBase64((await get("/superadmin/export/tenants", { format: "excel" })).export),
+
   // Tenants
-  dashboard: async () => (await get("/superadmin/dashboard")).dashboard,
   tenants: async (status) => (await get("/superadmin/tenants", { status })).tenants,
   tenant: async (id) => (await get(`/superadmin/tenants/${encodeURIComponent(id)}`)).tenant,
   statistics: async (id) => (await get(`/superadmin/tenants/${encodeURIComponent(id)}/statistics`)).statistics,
@@ -105,6 +110,9 @@ export function bytes(n) {
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i += 1; }
   return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
 }
+
+// One rule for "this shop was used today", wherever a count of active shops is shown.
+export const usedToday = (t) => !!(t && (t.live_now || t.users_today || t.logins_today || t.sales_today));
 
 export const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 

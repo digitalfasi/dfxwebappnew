@@ -2,25 +2,15 @@
 import { useEffect, useMemo, useState } from "react";
 import ServerTab from "@/modules/superadmin/Server";
 import {
-  saService, fmtDateTime, fmtTime, fmtDate, ago, seenAt, dur, bytes, inr, EVENT_LABEL, END_LABEL,
+  saService, fmtDateTime, fmtTime, fmtDate, ago, seenAt, dur, bytes, inr, usedToday, EVENT_LABEL, END_LABEL,
 } from "@/modules/superadmin/saService";
 import {
-  Card, Kpi, Pill, Icon, Empty, Skel, Pager, Drawer, HourChart, ClientTag, Who, Donut, HealthBanner, SystemMap,
+  Card, Kpi, Pill, Icon, Empty, Skel, Pager, Drawer, HourChart, ClientTag, Who, HealthBanner, SystemMap,
   STATUS_TONE, STATUS_LABEL, ROLE_TONE, deviceWords, ipTitle, usePoll, useNow, hashParam, scrollToId,
 } from "@/modules/superadmin/saUi";
 
-const TABS = [
-  { key: "live", label: "Live now", icon: "pulse" },
-  { key: "people", label: "People", icon: "users" },
-  { key: "sessions", label: "Login history", icon: "clock" },
-  { key: "signins", label: "Login problems & safety", icon: "shield" },
-  { key: "activity", label: "Changes made", icon: "list" },
-  { key: "system", label: "System health", icon: "server" },
-];
-
 const EVENT_TONE = { LOGIN_SUCCESS: "live", LOGIN_FAILED: "bad", LOGIN_BLOCKED: "warn", LOGOUT: "mute", LOGOUT_ALL: "mute", TOKEN_REUSE: "bad" };
 const EVENT_ICON = { LOGIN_SUCCESS: "key", LOGIN_FAILED: "alert", LOGIN_BLOCKED: "lock", LOGOUT: "out", LOGOUT_ALL: "out", TOKEN_REUSE: "shield" };
-const ROLES = ["Admin", "Staff", "Customer", "SuperAdmin"];
 
 export default function Monitoring({ tab, setTab, shopFilter, setShopFilter }) {
   const [live, setLive] = useState(true);
@@ -45,7 +35,7 @@ export default function Monitoring({ tab, setTab, shopFilter, setShopFilter }) {
       {tab === "people" && <PeopleTab tenants={tenants} shop={shopFilter} setShop={setShopFilter} live={live} onPerson={setPerson} />}
       {tab === "sessions" && <SessionsTab tenants={tenants} live={live} onPerson={setPerson} />}
       {tab === "signins" && <SignInsTab tenants={tenants} live={live} onPerson={setPerson} />}
-      {tab === "activity" && <ActivityTab tenants={tenants} />}
+      {tab === "activity" && <ActivityTab tenants={tenants} shop={shopFilter} />}
       {tab === "system" && <ServerTab live={live} />}
 
       {person && <PersonDrawer id={person} onClose={() => setPerson(null)} />}
@@ -142,7 +132,7 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
       <div className="sa-kpis">
         <Kpi go={"#/control/monitor/sessions?status=active"} live hue="live" label="Live now" value={d.live.total} sub="DFX open in a browser or the app right now" />
         <Kpi go={"#/control/monitor/people?role=all"} icon="users" hue="teal" label="People today" value={d.today.unique_users} sub="different people since midnight" />
-        <Kpi go={"#/control/shops"} icon="shop" hue="app" label="Shops open today" value={(d.tenants || []).filter((t) => t.users_today > 0).length} sub={`of ${d.accounts.tenants} shops used DFX`} />
+        <Kpi go={"#/control/shops"} icon="shop" hue="app" label="Shops open today" value={(d.tenants || []).filter(usedToday).length} sub={`of ${d.accounts.tenants} shops used DFX`} />
         <Kpi go={"#/control/monitor/signins?event=LOGIN_SUCCESS"} icon={d.today.failed_logins || d.today.token_reuse ? "alert" : "check"} hue="web" tone={d.today.token_reuse ? "bad" : d.today.failed_logins ? "warn" : undefined}
           label="Logins today" value={d.today.logins}
           sub={d.today.token_reuse ? `${d.today.token_reuse} security alarm${d.today.token_reuse > 1 ? "s" : ""} - see Sign-ins`
@@ -172,7 +162,7 @@ function LiveTab({ ov, live, now, onPerson, onShop }) {
 function ShopBoard({ tenants, now, onShop }) {
   // "Today" means someone used the shop today - a login left open from
   // yesterday is not activity.
-  const active = [...tenants].filter((t) => t.live_now || t.users_today || t.logins_today || t.sales_today)
+  const active = [...tenants].filter(usedToday)
     .sort((a, b) => b.live_now - a.live_now || b.users_today - a.users_today);
   return (
     <Card title="Shops active today" icon="shop" hue="warn" pad={false}
@@ -528,8 +518,8 @@ const ACTION_LABEL = {
 const prettyAction = (a) => ACTION_LABEL[a] || (a || "").replace(/_/g, " ").toLowerCase().replace(/^\w/, (ch) => ch.toUpperCase());
 const ROLE_WORD = { Admin: "Owner", SuperAdmin: "Super admin", System: "Automatic", "Self sign-up": "Free-trial sign-up" };
 
-function ActivityTab({ tenants }) {
-  const [f, setF] = useState({ tenant_id: "", action: "", date_from: "", date_to: "", q: "", people_only: true });
+function ActivityTab({ tenants, shop }) {
+  const [f, setF] = useState({ tenant_id: shop || "", action: "", date_from: "", date_to: "", q: "", people_only: true });
   const [qd, setQd] = useState("");
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(null);

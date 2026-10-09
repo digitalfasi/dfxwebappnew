@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { saService, fmtDateTime, fmtDate, inr, seenAt } from "@/modules/superadmin/saService";
+import { saService, fmtDateTime, fmtDate, inr, seenAt, usedToday } from "@/modules/superadmin/saService";
 import { Card, Kpi, Pill, Icon, Empty, Skel, Drawer, usePoll, hashParam, scrollToId } from "@/modules/superadmin/saUi";
 
 const PLANS = ["Starter", "Professional", "Business", "Enterprise"];
-// Same rule as the server (password_policy.py): 8+ characters, not a common one.
+// Common passwords, flagged as weak. The Super Admin may still use one: the
+// server only insists on 6 characters for a password set here.
 const WEAK = new Set(["password", "password1", "password123", "12345678", "123456789", "qwerty123", "admin123", "welcome1", "india123", "gold1234", "jewellery"]);
 // Blocks only what the server refuses. Weakness is a warning, the SuperAdmin decides.
 export function passwordProblem(p, confirm) {
@@ -112,7 +113,10 @@ export default function Tenants({ onWatch }) {
   const [filter, setFilter] = useState(() => (FILTERS.some((f) => f.k === hashParam("filter")) ? hashParam("filter") : ""));
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
-  const [openId, setOpenId] = useState(null);
+  // The dashboard opens a shop with #/control/shops?open=<id>.
+  const [openId, setOpenId] = useState(() => hashParam("open"));
+  const [exporting, setExporting] = useState(false);
+  const [exportErr, setExportErr] = useState(null);
   const list = usePoll(() => saService.tenants(), [], { live: false });
   // Today's numbers per shop come from the live board, refreshed every 30 s.
   const ov = usePoll(() => saService.overview(), [], { ms: 30000 });
@@ -136,8 +140,15 @@ export default function Tenants({ onWatch }) {
   const salesN = Object.values(today).reduce((n, t) => n + (t.sales_today || 0), 0);
   const salesAmt = Object.values(today).reduce((n, t) => n + (t.sales_today_amount || 0), 0);
   const customers = Object.values(today).reduce((n, t) => n + (t.customers || 0), 0);
-  const activeToday = Object.values(today).filter((t) => t.users_today > 0).length;
+  const activeToday = Object.values(today).filter(usedToday).length;
   const reload = () => { list.reload(); ov.reload(); };
+  // Drop ?open= so a refresh does not reopen the shop that was just closed.
+  const closeShop = () => { setOpenId(null); if (hashParam("open")) window.history.replaceState(null, "", "#/control/shops"); };
+  const exportShops = async () => {
+    setExporting(true); setExportErr(null);
+    try { await saService.exportTenants(); } catch (e) { setExportErr(e?.message || "Could not create the file."); }
+    finally { setExporting(false); }
+  };
 
   return (
     <div className="sa-grid">
@@ -171,10 +182,12 @@ export default function Tenants({ onWatch }) {
           </div>
           <div className="sa-row">
             <input className="sa-in" placeholder="Search shop, owner, email or phone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search shops" style={{ minWidth: 240 }} />
+            <button className="sa-btn ghost" onClick={exportShops} disabled={exporting}><Icon name="archive" size={16} />{exporting ? "Preparing…" : "Export (Excel)"}</button>
             <button className="sa-btn" onClick={() => setCreating(true)}><Icon name="plus" size={16} />New shop</button>
           </div>
         </div>
         {list.error && <div className="sa-alert bad" style={{ margin: 14 }}><Icon name="alert" />{list.error}</div>}
+        {exportErr && <div className="sa-alert bad" role="alert" style={{ margin: 14 }}><Icon name="alert" />{exportErr}</div>}
         {list.loading && !list.data ? <div className="sa-card-b"><Skel h={160} /></div> : !rows.length ? (
           <Empty title={all.length ? "No shops match" : "No shops yet"}>{all.length ? "Try another filter or search." : "Create the first shop with “New shop”."}</Empty>
         ) : (
@@ -212,7 +225,7 @@ export default function Tenants({ onWatch }) {
       </Card>
 
       {creating && <CreateTenant onClose={() => setCreating(false)} onDone={reload} />}
-      {openId && <TenantDrawer id={openId} onClose={() => setOpenId(null)} onChanged={reload} onWatch={onWatch} />}
+      {openId && <TenantDrawer id={openId} onClose={closeShop} onChanged={reload} onWatch={onWatch} />}
     </div>
   );
 }
@@ -383,11 +396,13 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
   // The plan buttons sit at the top; the Controls card asks at the bottom.
   const confirmInControls = !!confirm && !confirm.top;
 
+  // Re-read after every save: a quick button (Make permanent / Extend) must
+  // not leave the form below on the old values, or "Save exact plan" undoes it.
   useEffect(() => {
     if (tenant?.subscription) {
       setSub({ plan: tenant.subscription.plan, access_mode: tenant.subscription.trial_ends_at ? "TRIAL" : "INDEFINITE", trial_days: 30 });
     }
-  }, [tenant?.subscription?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tenant?.subscription?.id, tenant?.subscription?.plan, tenant?.subscription?.trial_ends_at]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const act = async (fn, ok) => {
     setBusy(true); setMsg(null);
@@ -401,7 +416,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
 
   return (
     <Drawer title={tenant?.name || "Loading…"} sub={tenant ? `Joined DFX on ${fmtDate(tenant.created_at)}` : ""} onClose={onClose}
-      actions={tenant && <button className="sa-btn ghost sm" onClick={() => { onWatch(id); onClose(); }}><Icon name="pulse" size={14} />See what this shop did</button>}>
+      actions={tenant && <button className="sa-btn ghost sm" onClick={() => { onWatch(id, "activity"); onClose(); }}><Icon name="list" size={14} />Changes this shop made</button>}>
       {!tenant ? <Skel h={220} /> : (
         <>
           {msg && <div className={`sa-alert ${msg.tone}`} role="status"><Icon name={msg.tone === "ok" ? "check" : "alert"} />{msg.text}</div>}
@@ -411,7 +426,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
               sub={tenant.status !== "Active" ? "nobody can log in" : trialLeft != null && trialLeft < 0 ? "trial ended - locked at the next login" : "people can log in"} />
             <Kpi go={() => scrollToId("td-plan-card")} icon="clock" hue={trialLeft != null && trialLeft < 7 ? "warn" : "web"} label="Access" value={trialLeft == null ? "Paid · no end date" : trialLeft >= 0 ? `${trialLeft} days left` : "Trial ended"}
               sub={tenant.subscription ? `${tenant.subscription.plan} · ${tenant.subscription.status}` : "no subscription"} />
-            <Kpi go={() => { onWatch(id); onClose(); }} icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st ? `${st.active_enrollments} paying into a scheme` : ""} />
+            <Kpi go={() => { onWatch(id, "customers"); onClose(); }} icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st ? `${st.active_enrollments} paying into a scheme` : ""} />
           </div>
 
           <Card title="Shop and owner" icon="shop">

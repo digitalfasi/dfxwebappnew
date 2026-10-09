@@ -183,8 +183,8 @@ export function HourChart({ a = [], b = [], aLabel, bLabel, height = 150 }) {
           aria-label={`${aLabel} per hour today: peak ${Math.max(0, ...a)}`}>
           {ticks.map((t) => (
             <g key={t}>
-              <line x1={padL} x2={W} y1={y(t)} y2={y(t)} stroke="#E8ECF4" strokeDasharray={t ? "3 4" : "0"} />
-              <text x={padL - 6} y={y(t) + 4} fontSize="10" textAnchor="end" fill="#8792AA">{t}</text>
+              <line x1={padL} x2={W} y1={y(t)} y2={y(t)} stroke="#F3E4E6" strokeDasharray={t ? "3 4" : "0"} />
+              <text x={padL - 6} y={y(t) + 4} fontSize="10" textAnchor="end" fill="#A68A90">{t}</text>
             </g>
           ))}
           {Array.from({ length: 24 }).map((_, h) => {
@@ -192,14 +192,14 @@ export function HourChart({ a = [], b = [], aLabel, bLabel, height = 150 }) {
             const va = a[h] || 0, vb = b[h] || 0;
             return (
               <g key={h}>
-                {h === nowH && <rect x={x} y={top} width={bw} height={H - padB - top} fill="#EAF0FF" rx="6" />}
-                <rect x={x + bw * 0.16} y={y(va)} width={bw * 0.34} height={Math.max(0, H - padB - y(va))} rx="3" fill="#2F5BD3">
+                {h === nowH && <rect x={x} y={top} width={bw} height={H - padB - top} fill="#FBE8EC" rx="6" />}
+                <rect x={x + bw * 0.16} y={y(va)} width={bw * 0.34} height={Math.max(0, H - padB - y(va))} rx="3" fill="#A3173B">
                   <title>{`${String(h).padStart(2, "0")}:00 — ${va} ${aLabel.toLowerCase()}`}</title>
                 </rect>
                 <rect x={x + bw * 0.52} y={y(vb)} width={bw * 0.34} height={Math.max(0, H - padB - y(vb))} rx="3" fill="#F2A93B">
                   <title>{`${String(h).padStart(2, "0")}:00 — ${vb} ${bLabel.toLowerCase()}`}</title>
                 </rect>
-                {h % 3 === 0 && <text x={x + bw / 2} y={H - 6} fontSize="10" textAnchor="middle" fill="#8792AA">{String(h).padStart(2, "0")}</text>}
+                {h % 3 === 0 && <text x={x + bw / 2} y={H - 6} fontSize="10" textAnchor="middle" fill="#A68A90">{String(h).padStart(2, "0")}</text>}
               </g>
             );
           })}
@@ -209,29 +209,6 @@ export function HourChart({ a = [], b = [], aLabel, bLabel, height = 150 }) {
   );
 }
 
-// Split bar: parts that add up to one whole (web vs app, roles).
-export function SplitBar({ parts }) {
-  const total = parts.reduce((s, p) => s + p.value, 0);
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", height: 12, borderRadius: 99, overflow: "hidden", background: "var(--rule2)" }}>
-        {total > 0 && parts.map((p) => p.value > 0 && (
-          <div key={p.label} title={`${p.label}: ${p.value}`} style={{ width: `${(p.value / total) * 100}%`, background: p.color }} />
-        ))}
-      </div>
-      <div style={{ display: "grid", gap: 6 }}>
-        {parts.map((p) => (
-          <div key={p.label} className="sa-row" style={{ justifyContent: "space-between", fontSize: 13 }}>
-            <span className="sa-row" style={{ gap: 8 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: p.color, display: "inline-block" }} />{p.label}</span>
-            <b className="num">{p.value}{total ? <span className="sa-dim" style={{ fontWeight: 400 }}> · {Math.round((p.value / total) * 100)}%</span> : null}</b>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
 // Ring chart: parts of one whole, total in the middle.
 export function Donut({ parts, label, size = 150 }) {
   const total = parts.reduce((a, p) => a + p.value, 0);
@@ -240,7 +217,7 @@ export function Donut({ parts, label, size = 150 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
       <svg width={size} height={size} viewBox="0 0 140 140" role="img" aria-label={`${label}: ${total}`}>
-        <circle cx="70" cy="70" r={r} fill="none" stroke="#EEF1F7" strokeWidth="16" />
+        <circle cx="70" cy="70" r={r} fill="none" stroke="#F7ECEC" strokeWidth="16" />
         {total > 0 && parts.filter((p) => p.value > 0).map((p) => {
           const len = (p.value / total) * c;
           const el = (
@@ -252,8 +229,8 @@ export function Donut({ parts, label, size = 150 }) {
           acc += len;
           return el;
         })}
-        <text x="70" y="68" textAnchor="middle" fontSize="26" fontWeight="600" fill="#0E1630" style={{ fontFamily: "Fira Code, monospace" }}>{total}</text>
-        <text x="70" y="88" textAnchor="middle" fontSize="11" fill="#8A93AB">{label}</text>
+        <text x="70" y="68" textAnchor="middle" fontSize="26" fontWeight="600" fill="#2B1118" style={{ fontFamily: "Fira Code, monospace" }}>{total}</text>
+        <text x="70" y="88" textAnchor="middle" fontSize="11" fill="#A68A90">{label}</text>
       </svg>
       <div style={{ display: "grid", gap: 8, flex: "1 1 140px", minWidth: 140 }}>
         {parts.map((p) => (
@@ -280,10 +257,10 @@ export function HealthBanner({ level, title, points, side }) {
 // The live system, drawn: people -> gateway -> server -> database -> backups.
 // Moving dots mean traffic is flowing on that link right now.
 const MAP_NODES = {
-  web: { x: 10, y: 22, w: 250, h: 84, hue: "#2F5BD3", bg: "#EAF0FF", icon: "web" },
+  web: { x: 10, y: 22, w: 250, h: 84, hue: "#A3173B", bg: "#FBE8EC", icon: "web" },
   app: { x: 10, y: 150, w: 250, h: 84, hue: "#6E52C9", bg: "#F1EBFF", icon: "phone" },
   gw: { x: 350, y: 86, w: 250, h: 84, hue: "#0FA3B1", bg: "#E2F6F8", icon: "shield" },
-  api: { x: 690, y: 86, w: 250, h: 84, hue: "#2F5BD3", bg: "#EAF0FF", icon: "server" },
+  api: { x: 690, y: 86, w: 250, h: 84, hue: "#A3173B", bg: "#FBE8EC", icon: "server" },
   db: { x: 1030, y: 22, w: 250, h: 84, hue: "#10A36A", bg: "#E5F7EF", icon: "db" },
   bk: { x: 1030, y: 150, w: 250, h: 84, hue: "#D9820B", bg: "#FFF4E0", icon: "archive" },
 };
@@ -308,7 +285,7 @@ export function SystemMap({ nodes, flows }) {
         <svg className="sa-map" viewBox="0 0 1290 250" width="100%" style={{ minWidth: 700, maxHeight: 250, display: "block", margin: "0 auto" }} role="img"
           aria-label="Live system map: people, gateway, server, database and backups">
           <defs>
-            <filter id="saSh" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#10183F" floodOpacity=".07" /></filter>
+            <filter id="saSh" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#3A0F1A" floodOpacity=".07" /></filter>
             <filter id="saGlow" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="3.2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
           </defs>
           {MAP_LINKS.map(([k, d]) => {
@@ -322,7 +299,7 @@ export function SystemMap({ nodes, flows }) {
               <g key={k}>
                 <path d={d} className="bed" />
                 <path d={d} className="ties" />
-                <path d={d} className="rail" stroke={people || hb ? col : "#C7CEDD"} strokeOpacity={people ? 0.55 : hb ? 0.35 : 1} strokeDasharray={people || hb ? undefined : "3 7"} />
+                <path d={d} className="rail" stroke={people || hb ? col : "#E2CACE"} strokeOpacity={people ? 0.55 : hb ? 0.35 : 1} strokeDasharray={people || hb ? undefined : "3 7"} />
                 {Array.from({ length: cars }).map((_, n) => (
                   <path key={`f${n}`} d={d} pathLength="100" className="train" stroke={col} filter="url(#saGlow)"
                     strokeDasharray={people ? "9 91" : "5 95"} style={{ "--d": `${dur}s`, animationDelay: `${-(dur / cars) * n}s, ${-0.2 * n}s` }} />
@@ -335,7 +312,7 @@ export function SystemMap({ nodes, flows }) {
           })}
           {Object.entries(MAP_NODES).map(([k, nd]) => {
             const d = nodes[k] || {};
-            const ring = d.state === "bad" ? "#E5484D" : d.state === "warn" ? "#D9820B" : d.state === "off" ? "#B7C0D6" : nd.hue;
+            const ring = d.state === "bad" ? "#E5484D" : d.state === "warn" ? "#D9820B" : d.state === "off" ? "#DCC3C8" : nd.hue;
             const alive = d.state === "live" || d.state === "warn" || d.state === "bad";
             return (
               <g key={k} transform={`translate(${nd.x},${nd.y})`}>
@@ -349,9 +326,9 @@ export function SystemMap({ nodes, flows }) {
                 )}
                 <rect x="14" y="18" width="48" height="48" rx="13" fill={nd.bg} />
                 <g transform="translate(26,30)" color={nd.hue}><Icon name={nd.icon} size={24} /></g>
-                <text x="76" y="34" fontSize="13" fill="#5B6480" fontWeight="600">{d.title}</text>
-                <text x="76" y="56" fontSize="18" fill="#0E1630" className="v">{d.value}</text>
-                <text x="76" y="73" fontSize="12" fill={d.state === "bad" ? "#B42A2F" : d.state === "warn" ? "#9A5A04" : "#8A93AB"}>{d.note}</text>
+                <text x="76" y="34" fontSize="13" fill="#7A5A62" fontWeight="600">{d.title}</text>
+                <text x="76" y="56" fontSize="18" fill="#2B1118" className="v">{d.value}</text>
+                <text x="76" y="73" fontSize="12" fill={d.state === "bad" ? "#B42A2F" : d.state === "warn" ? "#9A5A04" : "#A68A90"}>{d.note}</text>
                 <circle cx={nd.w - 18} cy="18" r="4.5" fill={ring} />
                 {alive && !reduce && (
                   <circle cx={nd.w - 18} cy="18" r="4.5" fill="none" stroke={ring} strokeWidth="2">
@@ -365,9 +342,9 @@ export function SystemMap({ nodes, flows }) {
         </svg>
       </div>
       <div className="sa-legend" style={{ justifyContent: "center", marginTop: 6 }}>
-        <span><i style={{ background: "#2F5BD3", borderRadius: 99 }} />Moving lines: people using DFX right now</span>
-        <span><i style={{ background: "#9FB3F5", borderRadius: 99 }} />Slow line: DFX checking itself</span>
-        <span><i style={{ background: "#C7CEDD", borderRadius: 99 }} />Dotted line: nobody using that part</span>
+        <span><i style={{ background: "#A3173B", borderRadius: 99 }} />Moving lines: people using DFX right now</span>
+        <span><i style={{ background: "#E79AAB", borderRadius: 99 }} />Slow line: DFX checking itself</span>
+        <span><i style={{ background: "#E2CACE", borderRadius: 99 }} />Dotted line: nobody using that part</span>
         <span><i style={{ background: "#E5484D", borderRadius: 99 }} />Red box: needs attention - tell the tech team</span>
       </div>
     </div>

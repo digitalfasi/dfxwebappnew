@@ -13,6 +13,19 @@ const KIND_TONE = {
   "Scanner probe": "warn", "Automated client": "app", "Rate limited": "sky",
 };
 
+// The server agent and the backend log in UTC; everything on screen is IST.
+const IST_MIN = 330;
+const istHm = (hm) => {
+  const [h, m] = String(hm || "").split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return hm;
+  const t = (h * 60 + m + IST_MIN) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+};
+const logTime = (at) => {
+  const t = Date.parse(`${at.replace(" ", "T").replace(",", ".")}Z`);
+  return Number.isNaN(t) ? (at.slice(11, 19) || "—") : fmtTime(new Date(t).toISOString());
+};
+
 // "Automated client" = a script or tool (curl, Python...) calling the API.
 // Most of those are ours - the gold-rate job on this server (127.0.0.1) and
 // health checks - so they are listed, never counted as attacks.
@@ -51,8 +64,8 @@ export default function ServerTab({ live }) {
       {sec === "overview" && <Overview d={d} h={h} setSec={setSec} />}
       {sec === "security" && <Security h={h} counts={ev.data?.summary_24h?.counts || {}} failedTop={ev.data?.summary_24h?.top_failed_ips || []} />}
       {sec === "traffic" && <Traffic t={h?.web_traffic} setSec={setSec} />}
-      {sec === "logs" && <Logs h={h} setSec={setSec} />}
-      {sec === "database" && <Database db={d.database || {}} setSec={setSec} />}
+      {sec === "logs" && <Logs h={h} />}
+      {sec === "database" && <Database db={d.database || {}} />}
       {sec === "server" && <ServerInfo d={d} h={h} />}
     </div>
   );
@@ -76,12 +89,12 @@ function Overview({ d, h, setSec }) {
   return (
     <>
       <div className="sa-kpis six">
-        <Kpi go={() => setSec("server")} icon="activity" hue={cpuPct >= 85 ? "bad" : cpuPct >= 60 ? "warn" : "live"} label="CPU load" value={cpuPct != null ? `${cpuPct}%` : "—"} sub={`${load.toFixed(2)} on ${m.cpus || "?"} cores`} />
-        <Kpi go={() => setSec("server")} icon="server" hue={memPct >= 90 ? "bad" : memPct >= 75 ? "warn" : "web"} label="Memory" value={memPct != null ? `${memPct}%` : "—"} sub={mem.MemTotal ? `${bytes(mem.MemTotal - mem.MemAvailable)} of ${bytes(mem.MemTotal)}` : ""} />
-        <Kpi go={() => setSec("server")} icon="archive" hue={diskPct >= 90 ? "bad" : diskPct >= 80 ? "warn" : "app"} label="Disk" value={diskPct != null ? `${diskPct}%` : "—"} sub={disk ? `${bytes(disk.free)} free` : ""} />
+        <Kpi icon="activity" hue={cpuPct >= 85 ? "bad" : cpuPct >= 60 ? "warn" : "live"} label="CPU load" value={cpuPct != null ? `${cpuPct}%` : "—"} sub={`${load.toFixed(2)} on ${m.cpus || "?"} cores`} />
+        <Kpi icon="server" hue={memPct >= 90 ? "bad" : memPct >= 75 ? "warn" : "web"} label="Memory" value={memPct != null ? `${memPct}%` : "—"} sub={mem.MemTotal ? `${bytes(mem.MemTotal - mem.MemAvailable)} of ${bytes(mem.MemTotal)}` : ""} />
+        <Kpi icon="archive" hue={diskPct >= 90 ? "bad" : diskPct >= 80 ? "warn" : "app"} label="Disk" value={diskPct != null ? `${diskPct}%` : "—"} sub={disk ? `${bytes(disk.free)} free` : ""} />
         <Kpi go={() => setSec("database")} icon="db" hue={db.healthy ? "teal" : "bad"} label="Database" value={db.healthy ? bytes(db.size_bytes) : "Down"} sub={`${conns} of ${db.max_connections || "?"} connections`} />
         <Kpi go={() => { setSec("server"); setTimeout(() => scrollToId("srv-backups"), 50); }} icon="archive" hue={dumpH == null || dumpH > 30 ? "bad" : "live"} label="Last backup" value={dumpH != null ? `${dumpH} h ago` : "—"} sub="runs nightly 07:45 IST" />
-        <Kpi go={() => setSec("server")} icon="lock" hue={certDays != null && certDays < 20 ? "bad" : "live"} label="SSL certificate" value={certDays != null ? `${certDays} days` : "—"} sub={h?.certificate?.expires ? `until ${fmtDate(h.certificate.expires)}` : ""} />
+        <Kpi icon="lock" hue={certDays != null && certDays < 20 ? "bad" : "live"} label="SSL certificate" value={certDays != null ? `${certDays} days` : "—"} sub={h?.certificate?.expires ? `until ${fmtDate(h.certificate.expires)}` : ""} />
       </div>
       {h && (
         <Card title="What is using the machine" icon="box" hue="web" pad={false} right={<small>heaviest first · live snapshot</small>}>
@@ -235,7 +248,7 @@ function Traffic({ t, setSec }) {
       </div>
       <Card id="trf-chart" title="Requests per minute" icon="activity" hue="web" right={<small>last 60 minutes</small>}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(60,1fr)", gap: 2, alignItems: "end", height: 110 }}>
-          {t.per_minute.map((x) => <div key={x.t} title={`${x.t} UTC · ${x.n}`} style={{ height: `${Math.max(3, (x.n / max) * 106)}px`, background: "var(--acc)", borderRadius: 2, opacity: x.n ? 1 : 0.2 }} />)}
+          {t.per_minute.map((x) => <div key={x.t} title={`${istHm(x.t)} IST · ${x.n} requests`} style={{ height: `${Math.max(3, (x.n / max) * 106)}px`, background: "var(--acc)", borderRadius: 2, opacity: x.n ? 1 : 0.2 }} />)}
         </div>
       </Card>
       <div className="sa-split">
@@ -259,7 +272,7 @@ function Rank({ rows, k }) {
 
 // ── Logs: one line per entry, open for detail ───────────────────────────
 const LOG_RX = /^\[([^\]]+)\]\s*\[(\w+)\]\s*\[([^\]]+)\]:\s*(.*)$/;
-function Logs({ h, setSec }) {
+function Logs({ h }) {
   const [open, setOpen] = useState(null);
   const L = h?.app_logs;
   if (!L) return <Card><Empty title="Logs need the server agent" /></Card>;
@@ -278,10 +291,10 @@ function Logs({ h, setSec }) {
       <Card id="log-lines" title="Backend log · last hour" icon="list" hue="ink" pad={false} right={<small>click a line for the full text</small>}>
         {!rows.length ? <Empty title="Nothing logged in the last hour" /> : (
           <div className="sa-tbl"><table>
-            <thead><tr><th>Time (UTC)</th><th>Level</th><th>Where</th><th>Message</th></tr></thead>
+            <thead><tr><th>Time (IST)</th><th>Level</th><th>Where</th><th>Message</th></tr></thead>
             <tbody>{rows.map((r) => (
               <tr key={r.i} className="click" onClick={() => setOpen(open === r.i ? null : r.i)}>
-                <td className="mono" style={{ fontSize: 12 }}>{r.at.slice(11, 19) || "—"}</td>
+                <td className="mono" style={{ fontSize: 12 }}>{logTime(r.at)}</td>
                 <td><Pill tone={r.lvl === "ERROR" || r.lvl === "CRITICAL" ? "bad" : "warn"}>{r.lvl.toLowerCase()}</Pill></td>
                 <td className="mono sa-dim" style={{ fontSize: 12 }}>{r.src}</td>
                 <td className={open === r.i ? "wrap mono" : "mono"} style={{ fontSize: 12, maxWidth: 640, overflow: "hidden", textOverflow: "ellipsis" }}>{r.msg}</td>
@@ -296,15 +309,15 @@ function Logs({ h, setSec }) {
 }
 
 // ── Database ────────────────────────────────────────────────────────────
-function Database({ db, setSec }) {
+function Database({ db }) {
   const conns = Object.values(db.connections || {}).reduce((s, n) => s + n, 0);
   return (
     <>
       <div className="sa-kpis">
-        <Kpi go={() => setSec("overview")} icon="db" hue={db.healthy ? "live" : "bad"} label="Status" value={db.healthy ? "Healthy" : "Down"} sub={(db.version || "").split(" on ")[0]} />
+        <Kpi icon="db" hue={db.healthy ? "live" : "bad"} label="Status" value={db.healthy ? "Healthy" : "Down"} sub={(db.version || "").split(" on ")[0]} />
         <Kpi go={() => scrollToId("db-tables")} icon="archive" hue="teal" label="Size" value={bytes(db.size_bytes)} sub={`${db.table_count ?? "—"} tables`} />
-        <Kpi go={() => setSec("overview")} icon="activity" hue={conns / (db.max_connections || 100) > 0.7 ? "warn" : "web"} label="Connections" value={`${conns} / ${db.max_connections ?? "—"}`} sub={Object.entries(db.connections || {}).map(([k, v]) => `${v} ${k}`).join(" · ")} />
-        <Kpi go={() => setSec("server")} icon="clock" hue="app" label="Running since" value={db.started_at ? ago(db.started_at) : "—"} sub={`migration ${db.migration || "—"}`} />
+        <Kpi icon="activity" hue={conns / (db.max_connections || 100) > 0.7 ? "warn" : "web"} label="Connections" value={`${conns} / ${db.max_connections ?? "—"}`} sub={Object.entries(db.connections || {}).map(([k, v]) => `${v} ${k}`).join(" · ")} />
+        <Kpi icon="clock" hue="app" label="Running since" value={db.started_at ? ago(db.started_at) : "—"} sub={`migration ${db.migration || "—"}`} />
       </div>
       <DataExplorer />
     </>

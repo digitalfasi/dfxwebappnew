@@ -33,7 +33,7 @@ function qs(params) {
 }
 
 /** Decode a base64 export payload and hand it to the browser as a download. */
-function downloadBase64(file) {
+export function downloadBase64(file) {
   if (typeof window === "undefined" || !file?.content_base64) return;
   const bytes = atob(file.content_base64);
   const arr = new Uint8Array(bytes.length);
