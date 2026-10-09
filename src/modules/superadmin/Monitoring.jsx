@@ -6,7 +6,7 @@ import {
 } from "@/modules/superadmin/saService";
 import {
   Card, Kpi, Pill, Icon, Empty, Skel, Pager, Drawer, HourChart, ClientTag, Who, HealthBanner, SystemMap,
-  STATUS_TONE, STATUS_LABEL, ROLE_TONE, deviceWords, ipTitle, usePoll, useNow, hashParam, scrollToId,
+  STATUS_TONE, STATUS_LABEL, ROLE_TONE, deviceWords, ipTitle, usePoll, useNow, hashParam, scrollToId, useHashParam,
 } from "@/modules/superadmin/saUi";
 
 const EVENT_TONE = { LOGIN_SUCCESS: "live", LOGIN_FAILED: "bad", LOGIN_BLOCKED: "warn", LOGOUT: "mute", LOGOUT_ALL: "mute", TOKEN_REUSE: "bad" };
@@ -14,7 +14,10 @@ const EVENT_ICON = { LOGIN_SUCCESS: "key", LOGIN_FAILED: "alert", LOGIN_BLOCKED:
 
 export default function Monitoring({ tab, setTab, shopFilter, setShopFilter }) {
   const [live, setLive] = useState(true);
-  const [person, setPerson] = useState(null);
+  // Search opens a person with #/control/monitor/people?person=<id>.
+  const [person, setPerson] = useState(() => hashParam("person"));
+  const linkedPerson = useHashParam("person");
+  useEffect(() => { if (linkedPerson) setPerson(linkedPerson); }, [linkedPerson]);
   const ov = usePoll(() => saService.overview(), [], { ms: 15000, live });
   const now = useNow(15000);
   const tenants = ov.data?.tenants || [];
@@ -38,7 +41,11 @@ export default function Monitoring({ tab, setTab, shopFilter, setShopFilter }) {
       {tab === "activity" && <ActivityTab tenants={tenants} shop={shopFilter} />}
       {tab === "system" && <ServerTab live={live} />}
 
-      {person && <PersonDrawer id={person} onClose={() => setPerson(null)} />}
+      {person && <PersonDrawer id={person} onClose={() => {
+        setPerson(null);
+        // Drop ?person= so a refresh does not reopen the person just closed.
+        if (hashParam("person")) window.history.replaceState(null, "", window.location.hash.split("?")[0]);
+      }} />}
     </>
   );
 }

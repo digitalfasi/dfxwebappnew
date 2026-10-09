@@ -24,8 +24,12 @@ export const saService = {
   system: () => get("/superadmin/monitor/system"),
   rateFeed: () => get("/superadmin/monitor/rate-feed"),
 
+  // Search across every shop (top bar, Ctrl+K)
+  search: async (q) => (await get("/superadmin/search", { q })).search,
+
   // Platform dashboard
-  dashboard: async (period = "this_month") => (await get("/superadmin/dashboard", { period })).dashboard,
+  // A period name ("this_month") or a custom { date_from, date_to }.
+  dashboard: async (p = "this_month") => (await get("/superadmin/dashboard", typeof p === "string" ? { period: p } : p)).dashboard,
   exportDashboard: async (period) => downloadBase64((await get("/superadmin/export/dashboard", { format: "excel", period })).export),
   exportTenants: async () => downloadBase64((await get("/superadmin/export/tenants", { format: "excel" })).export),
 

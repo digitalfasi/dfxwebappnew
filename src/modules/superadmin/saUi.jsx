@@ -33,6 +33,18 @@ const P = {
   chev: "M6 9l6 6 6-6",
   eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 100-6 3 3 0 000 6z",
   activity: "M4 20V10M10 20V4M16 20v-7M22 20H2",
+  home: "M3 10.5L12 3l9 7.5M5 9v11h5v-6h4v6h5V9",
+  bell: "M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0",
+  search: "M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3",
+  calendar: "M4 6h16v15H4zM4 10h16M8 3v4M16 3v4",
+  download: "M12 3v12M7 10l5 5 5-5M4 21h16",
+  wallet: "M3 7h15a2 2 0 012 2v10H5a2 2 0 01-2-2V7zM3 7l12-4v4M16 13h.01",
+  coins: "M12 4c4 0 7 1.3 7 3s-3 3-7 3-7-1.3-7-3 3-3 7-3zM5 7v5c0 1.7 3 3 7 3s7-1.3 7-3V7M5 12v5c0 1.7 3 3 7 3s7-1.3 7-3v-5",
+  store: "M4 10v10h16V10M3 4h18l-1 6H4L3 4zM9 20v-6h6v6",
+  chart: "M5 20V12M10 20V6M15 20v-9M20 20V9",
+  live: "M5 12a7 7 0 0114 0M8.5 12a3.5 3.5 0 017 0M12 12h.01M2 12a10 10 0 0120 0",
+  login: "M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2",
+  doc: "M6 3h9l5 5v13H6zM14 3v6h6M9 13h7M9 17h7",
 };
 export function Icon({ name, size = 18, stroke = 1.75, className, style }) {
   return (
@@ -176,15 +188,15 @@ export function HourChart({ a = [], b = [], aLabel, bLabel, height = 150 }) {
     <div>
       <div className="sa-legend" style={{ marginBottom: 8 }}>
         <span><i style={{ background: "var(--acc)" }} />{aLabel}</span>
-        <span><i style={{ background: "#F2A93B" }} />{bLabel}</span>
+        <span><i style={{ background: "#E3A15C" }} />{bLabel}</span>
       </div>
       <div style={{ overflowX: "auto" }}>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ minWidth: 480, display: "block" }} role="img"
           aria-label={`${aLabel} per hour today: peak ${Math.max(0, ...a)}`}>
           {ticks.map((t) => (
             <g key={t}>
-              <line x1={padL} x2={W} y1={y(t)} y2={y(t)} stroke="#F3E4E6" strokeDasharray={t ? "3 4" : "0"} />
-              <text x={padL - 6} y={y(t) + 4} fontSize="10" textAnchor="end" fill="#A68A90">{t}</text>
+              <line x1={padL} x2={W} y1={y(t)} y2={y(t)} stroke="#EEF1EF" strokeDasharray={t ? "3 4" : "0"} />
+              <text x={padL - 6} y={y(t) + 4} fontSize="10" textAnchor="end" fill="#7A8783">{t}</text>
             </g>
           ))}
           {Array.from({ length: 24 }).map((_, h) => {
@@ -192,14 +204,14 @@ export function HourChart({ a = [], b = [], aLabel, bLabel, height = 150 }) {
             const va = a[h] || 0, vb = b[h] || 0;
             return (
               <g key={h}>
-                {h === nowH && <rect x={x} y={top} width={bw} height={H - padB - top} fill="#FBE8EC" rx="6" />}
-                <rect x={x + bw * 0.16} y={y(va)} width={bw * 0.34} height={Math.max(0, H - padB - y(va))} rx="3" fill="#A3173B">
+                {h === nowH && <rect x={x} y={top} width={bw} height={H - padB - top} fill="#E6F2F0" rx="6" />}
+                <rect x={x + bw * 0.16} y={y(va)} width={bw * 0.34} height={Math.max(0, H - padB - y(va))} rx="3" fill="#0F766E">
                   <title>{`${String(h).padStart(2, "0")}:00 — ${va} ${aLabel.toLowerCase()}`}</title>
                 </rect>
-                <rect x={x + bw * 0.52} y={y(vb)} width={bw * 0.34} height={Math.max(0, H - padB - y(vb))} rx="3" fill="#F2A93B">
+                <rect x={x + bw * 0.52} y={y(vb)} width={bw * 0.34} height={Math.max(0, H - padB - y(vb))} rx="3" fill="#E3A15C">
                   <title>{`${String(h).padStart(2, "0")}:00 — ${vb} ${bLabel.toLowerCase()}`}</title>
                 </rect>
-                {h % 3 === 0 && <text x={x + bw / 2} y={H - 6} fontSize="10" textAnchor="middle" fill="#A68A90">{String(h).padStart(2, "0")}</text>}
+                {h % 3 === 0 && <text x={x + bw / 2} y={H - 6} fontSize="10" textAnchor="middle" fill="#7A8783">{String(h).padStart(2, "0")}</text>}
               </g>
             );
           })}
@@ -217,7 +229,7 @@ export function Donut({ parts, label, size = 150 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
       <svg width={size} height={size} viewBox="0 0 140 140" role="img" aria-label={`${label}: ${total}`}>
-        <circle cx="70" cy="70" r={r} fill="none" stroke="#F7ECEC" strokeWidth="16" />
+        <circle cx="70" cy="70" r={r} fill="none" stroke="#EEF1EF" strokeWidth="16" />
         {total > 0 && parts.filter((p) => p.value > 0).map((p) => {
           const len = (p.value / total) * c;
           const el = (
@@ -229,8 +241,8 @@ export function Donut({ parts, label, size = 150 }) {
           acc += len;
           return el;
         })}
-        <text x="70" y="68" textAnchor="middle" fontSize="26" fontWeight="600" fill="#2B1118" style={{ fontFamily: "Fira Code, monospace" }}>{total}</text>
-        <text x="70" y="88" textAnchor="middle" fontSize="11" fill="#A68A90">{label}</text>
+        <text x="70" y="68" textAnchor="middle" fontSize="26" fontWeight="600" fill="#17201E" style={{ fontFamily: "Fira Code, monospace" }}>{total}</text>
+        <text x="70" y="88" textAnchor="middle" fontSize="11" fill="#7A8783">{label}</text>
       </svg>
       <div style={{ display: "grid", gap: 8, flex: "1 1 140px", minWidth: 140 }}>
         {parts.map((p) => (
@@ -257,12 +269,12 @@ export function HealthBanner({ level, title, points, side }) {
 // The live system, drawn: people -> gateway -> server -> database -> backups.
 // Moving dots mean traffic is flowing on that link right now.
 const MAP_NODES = {
-  web: { x: 10, y: 22, w: 250, h: 84, hue: "#A3173B", bg: "#FBE8EC", icon: "web" },
+  web: { x: 10, y: 22, w: 250, h: 84, hue: "#0F766E", bg: "#E6F2F0", icon: "web" },
   app: { x: 10, y: 150, w: 250, h: 84, hue: "#6E52C9", bg: "#F1EBFF", icon: "phone" },
-  gw: { x: 350, y: 86, w: 250, h: 84, hue: "#0FA3B1", bg: "#E2F6F8", icon: "shield" },
-  api: { x: 690, y: 86, w: 250, h: 84, hue: "#A3173B", bg: "#FBE8EC", icon: "server" },
-  db: { x: 1030, y: 22, w: 250, h: 84, hue: "#10A36A", bg: "#E5F7EF", icon: "db" },
-  bk: { x: 1030, y: 150, w: 250, h: 84, hue: "#D9820B", bg: "#FFF4E0", icon: "archive" },
+  gw: { x: 350, y: 86, w: 250, h: 84, hue: "#3478C6", bg: "#EAF2FB", icon: "shield" },
+  api: { x: 690, y: 86, w: 250, h: 84, hue: "#0F766E", bg: "#E6F2F0", icon: "server" },
+  db: { x: 1030, y: 22, w: 250, h: 84, hue: "#16865B", bg: "#E5F7EF", icon: "db" },
+  bk: { x: 1030, y: 150, w: 250, h: 84, hue: "#D97706", bg: "#FFF4E0", icon: "archive" },
 };
 const MAP_LINKS = [
   ["web", "M260,64 C305,64 305,128 350,128"],
@@ -285,21 +297,21 @@ export function SystemMap({ nodes, flows }) {
         <svg className="sa-map" viewBox="0 0 1290 250" width="100%" style={{ minWidth: 700, maxHeight: 250, display: "block", margin: "0 auto" }} role="img"
           aria-label="Live system map: people, gateway, server, database and backups">
           <defs>
-            <filter id="saSh" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#3A0F1A" floodOpacity=".07" /></filter>
+            <filter id="saSh" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#10201D" floodOpacity=".07" /></filter>
             <filter id="saGlow" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="3.2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
           </defs>
           {MAP_LINKS.map(([k, d]) => {
             const f = flows[k] || 0;
             const people = typeof f === "number" && f > 0;
             const hb = f === "hb";
-            const col = nodes[k]?.state === "bad" ? "#E5484D" : MAP_NODES[k].hue;
+            const col = nodes[k]?.state === "bad" ? "#D14343" : MAP_NODES[k].hue;
             const cars = people ? Math.min(4, f + 1) : hb ? 1 : 0;
             const dur = people ? Math.max(1.1, 2.2 - f * 0.2) : 4;
             return (
               <g key={k}>
                 <path d={d} className="bed" />
                 <path d={d} className="ties" />
-                <path d={d} className="rail" stroke={people || hb ? col : "#E2CACE"} strokeOpacity={people ? 0.55 : hb ? 0.35 : 1} strokeDasharray={people || hb ? undefined : "3 7"} />
+                <path d={d} className="rail" stroke={people || hb ? col : "#D3DCD8"} strokeOpacity={people ? 0.55 : hb ? 0.35 : 1} strokeDasharray={people || hb ? undefined : "3 7"} />
                 {Array.from({ length: cars }).map((_, n) => (
                   <path key={`f${n}`} d={d} pathLength="100" className="train" stroke={col} filter="url(#saGlow)"
                     strokeDasharray={people ? "9 91" : "5 95"} style={{ "--d": `${dur}s`, animationDelay: `${-(dur / cars) * n}s, ${-0.2 * n}s` }} />
@@ -312,7 +324,7 @@ export function SystemMap({ nodes, flows }) {
           })}
           {Object.entries(MAP_NODES).map(([k, nd]) => {
             const d = nodes[k] || {};
-            const ring = d.state === "bad" ? "#E5484D" : d.state === "warn" ? "#D9820B" : d.state === "off" ? "#DCC3C8" : nd.hue;
+            const ring = d.state === "bad" ? "#D14343" : d.state === "warn" ? "#D97706" : d.state === "off" ? "#C6D0CC" : nd.hue;
             const alive = d.state === "live" || d.state === "warn" || d.state === "bad";
             return (
               <g key={k} transform={`translate(${nd.x},${nd.y})`}>
@@ -326,9 +338,9 @@ export function SystemMap({ nodes, flows }) {
                 )}
                 <rect x="14" y="18" width="48" height="48" rx="13" fill={nd.bg} />
                 <g transform="translate(26,30)" color={nd.hue}><Icon name={nd.icon} size={24} /></g>
-                <text x="76" y="34" fontSize="13" fill="#7A5A62" fontWeight="600">{d.title}</text>
-                <text x="76" y="56" fontSize="18" fill="#2B1118" className="v">{d.value}</text>
-                <text x="76" y="73" fontSize="12" fill={d.state === "bad" ? "#B42A2F" : d.state === "warn" ? "#9A5A04" : "#A68A90"}>{d.note}</text>
+                <text x="76" y="34" fontSize="13" fill="#66736F" fontWeight="600">{d.title}</text>
+                <text x="76" y="56" fontSize="18" fill="#17201E" className="v">{d.value}</text>
+                <text x="76" y="73" fontSize="12" fill={d.state === "bad" ? "#A12D2D" : d.state === "warn" ? "#8A4B05" : "#7A8783"}>{d.note}</text>
                 <circle cx={nd.w - 18} cy="18" r="4.5" fill={ring} />
                 {alive && !reduce && (
                   <circle cx={nd.w - 18} cy="18" r="4.5" fill="none" stroke={ring} strokeWidth="2">
@@ -342,10 +354,10 @@ export function SystemMap({ nodes, flows }) {
         </svg>
       </div>
       <div className="sa-legend" style={{ justifyContent: "center", marginTop: 6 }}>
-        <span><i style={{ background: "#A3173B", borderRadius: 99 }} />Moving lines: people using DFX right now</span>
-        <span><i style={{ background: "#E79AAB", borderRadius: 99 }} />Slow line: DFX checking itself</span>
-        <span><i style={{ background: "#E2CACE", borderRadius: 99 }} />Dotted line: nobody using that part</span>
-        <span><i style={{ background: "#E5484D", borderRadius: 99 }} />Red box: needs attention - tell the tech team</span>
+        <span><i style={{ background: "#0F766E", borderRadius: 99 }} />Moving lines: people using DFX right now</span>
+        <span><i style={{ background: "#8CCFC6", borderRadius: 99 }} />Slow line: DFX checking itself</span>
+        <span><i style={{ background: "#D3DCD8", borderRadius: 99 }} />Dotted line: nobody using that part</span>
+        <span><i style={{ background: "#D14343", borderRadius: 99 }} />Red box: needs attention - tell the tech team</span>
       </div>
     </div>
   );
@@ -379,4 +391,30 @@ export function usePoll(loader, deps, { ms = 15000, live = true } = {}) {
     return () => clearInterval(t);
   }, [live, ms]);
   return { ...state, reload: () => run.current(false) };
+}
+
+// A value from the hash query (#/control/shops?open=id) that follows later
+// hash changes too, so a link works when its page is already open.
+export function useHashParam(k) {
+  const [v, setV] = useState(() => hashParam(k));
+  useEffect(() => {
+    const on = () => setV(hashParam(k));
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, [k]);
+  return v;
+}
+
+// Page heading: eyebrow, title, one-line description, actions on the right.
+export function PageHead({ eyebrow, title, sub, actions }) {
+  return (
+    <div className="sa-ph">
+      <div style={{ minWidth: 0 }}>
+        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
+        <h1>{title}</h1>
+        {sub && <p>{sub}</p>}
+      </div>
+      {actions && <div className="actions">{actions}</div>}
+    </div>
+  );
 }

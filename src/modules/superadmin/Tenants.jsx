@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { saService, fmtDateTime, fmtDate, inr, seenAt, usedToday } from "@/modules/superadmin/saService";
-import { Card, Kpi, Pill, Icon, Empty, Skel, Drawer, usePoll, hashParam, scrollToId } from "@/modules/superadmin/saUi";
+import { Card, Kpi, Pill, Icon, Empty, Skel, Drawer, usePoll, hashParam, scrollToId, useHashParam } from "@/modules/superadmin/saUi";
 
 const PLANS = ["Starter", "Professional", "Business", "Enterprise"];
 // Common passwords, flagged as weak. The Super Admin may still use one: the
@@ -115,6 +115,8 @@ export default function Tenants({ onWatch }) {
   const [creating, setCreating] = useState(false);
   // The dashboard opens a shop with #/control/shops?open=<id>.
   const [openId, setOpenId] = useState(() => hashParam("open"));
+  const linked = useHashParam("open");
+  useEffect(() => { if (linked) setOpenId(linked); }, [linked]);
   const [exporting, setExporting] = useState(false);
   const [exportErr, setExportErr] = useState(null);
   const list = usePoll(() => saService.tenants(), [], { live: false });
