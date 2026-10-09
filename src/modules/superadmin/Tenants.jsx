@@ -258,7 +258,7 @@ function CreateTenant({ onClose, onDone }) {
   const [f, setF] = useState({
     business_name: "", subdomain: "", business_address: "", business_phone: "", contact_email: "", gst_number: "",
     admin_name: "", admin_email: "", admin_phone: "", plan: "Professional", trial_days: 14, brand_color: "",
-    admin_password: "", admin_password2: "",
+    admin_password: "", admin_password2: "", modules: MODULE_PRESETS[0].mods,
   });
   const [slugTouched, setSlugTouched] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -285,6 +285,7 @@ function CreateTenant({ onClose, onDone }) {
     if (f.brand_color && !/^#[0-9A-Fa-f]{6}$/.test(f.brand_color)) e.brand_color = "Use a hex colour like #2C6FBD.";
     const pw = passwordProblem(f.admin_password, f.admin_password2);
     if (pw) e.admin_password = pw;
+    if (!f.modules.length) e.modules = "Choose at least one module.";
     return e;
   };
 
@@ -300,6 +301,8 @@ function CreateTenant({ onClose, onDone }) {
     try {
       const { admin_password2, ...rest } = f; // eslint-disable-line no-unused-vars
       const body = { ...rest, trial_days: Number(f.trial_days) || 0 };
+      // Everything is the default; send a choice only when the shop is limited.
+      if (sameMods(f.modules, MODULE_PRESETS[0].mods)) delete body.modules;
       ["contact_email", "gst_number", "admin_phone", "brand_color"].forEach((k) => { if (!body[k]) delete body[k]; });
       const res = await saService.provision(body);
       setDone(res);
@@ -341,6 +344,7 @@ function CreateTenant({ onClose, onDone }) {
             <dt>Shop</dt><dd>{done.tenant.name} <span className="mono sa-dim">({done.tenant.slug})</span></dd>
             <dt>Branch</dt><dd>{done.branch.name}</dd>
             <dt>Plan</dt><dd>{done.subscription.plan} · {done.subscription.status}</dd>
+            <dt>Modules</dt><dd>{modulesLabel(done.tenant.modules) || "Everything"}</dd>
             <dt>Trial ends</dt><dd>{done.subscription.trial_ends_at ? fmtDate(done.subscription.trial_ends_at) : "No end date"}</dd>
           </dl>
         </Card>
@@ -393,6 +397,29 @@ function CreateTenant({ onClose, onDone }) {
             {F({ k: "trial_days", label: "Trial days", type: "number", min: 0, max: 365, help: "0 = no trial limit. Change later any time." })}
             {F({ k: "brand_color", label: "Brand colour", placeholder: "#2C6FBD", help: "Optional hex colour." })}
           </div>
+        </fieldset>
+        <fieldset className="sa-fs" id="ct-modules" tabIndex={-1}><legend>Modules</legend>
+          <p className="sa-muted" style={{ fontSize: 13, margin: "0 0 12px" }}>
+            Every shop has the dashboard, customers, payments, gold rate, reports, marketing, staff, branches, support and settings. Choose what else this shop uses. You can change it later from the shop.
+          </p>
+          <div className="sa-seg" role="radiogroup" aria-label="Quick choice" style={{ marginBottom: 12 }}>
+            {MODULE_PRESETS.map((p) => (
+              <button type="button" key={p.label} role="radio" aria-selected={sameMods(f.modules, p.mods)} aria-checked={sameMods(f.modules, p.mods)}
+                onClick={() => { setF((s) => ({ ...s, modules: p.mods })); setFieldErr((s) => ({ ...s, modules: undefined })); }}>{p.label}</button>
+            ))}
+          </div>
+          <div className="sa-mods">
+            {SHOP_MODULES.map((m) => (
+              <label key={m.k} className={`sa-mod${f.modules.includes(m.k) ? " on" : ""}`}>
+                <input type="checkbox" checked={f.modules.includes(m.k)} onChange={() => {
+                  setF((s) => ({ ...s, modules: s.modules.includes(m.k) ? s.modules.filter((x) => x !== m.k) : SHOP_MODULES.map((x) => x.k).filter((x) => x === m.k || s.modules.includes(x)) }));
+                  setFieldErr((s) => ({ ...s, modules: undefined }));
+                }} />
+                <div><b>{m.label}</b><span>{m.text}</span></div>
+              </label>
+            ))}
+          </div>
+          {fieldErr.modules && <span className="err" role="alert" style={{ display: "block", marginTop: 8, fontSize: 12, fontWeight: 600, color: "var(--bad)" }}>{fieldErr.modules}</span>}
         </fieldset>
         {err && <div className="sa-alert bad" role="alert"><Icon name="alert" />{err}</div>}
         <div className="sa-row" style={{ justifyContent: "flex-end" }}>

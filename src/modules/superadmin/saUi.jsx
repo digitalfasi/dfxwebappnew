@@ -156,12 +156,18 @@ export function Pager({ page, limit, total, onPage }) {
 
 export function Drawer({ title, sub, onClose, children, actions }) {
   const ref = useRef(null);
+  // onClose is a new function on every parent render, and the header clock
+  // re-renders the console every second. Focusing on each of those pulled
+  // focus out of whatever was in use - an open dropdown closed within a
+  // second, typing stopped. Focus once, when the drawer opens.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
     window.addEventListener("keydown", onKey);
     ref.current?.focus();
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
   return (
     <>
       <div className="sa-drawer-bg" onClick={onClose} />
