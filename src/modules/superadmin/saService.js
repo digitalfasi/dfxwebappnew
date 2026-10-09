@@ -41,6 +41,8 @@ export const saService = {
     (await apiClient.post("/superadmin/tenants/provision", body, { auth: true })).data.provisioned,
   setStatus: async (id, status) =>
     (await apiClient.put(`/superadmin/tenants/${encodeURIComponent(id)}/status`, { status }, { auth: true })).data.tenant,
+  setModules: async (id, modules) =>
+    (await apiClient.put(`/superadmin/tenants/${encodeURIComponent(id)}/modules`, { modules }, { auth: true })).data.tenant,
   setSubscription: async (id, body) =>
     (await apiClient.put(`/superadmin/tenants/${encodeURIComponent(id)}/subscription`, body, { auth: true })).data.tenant,
   setAdminStatus: async (id, isActive) =>

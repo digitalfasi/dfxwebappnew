@@ -370,6 +370,15 @@ font-family:"Manrope","Segoe UI",system-ui,sans-serif;color:var(--ink);min-heigh
   .sa-drawer-h>div:first-child{flex:1 1 200px;min-width:0}
   .sa-drawer-b{padding:14px 14px 28px}
 }
+.sa-mods{display:grid;gap:10px}
+.sa-mod{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--rule);border-radius:12px;cursor:pointer;transition:background .15s,border-color .15s}
+.sa-mod:hover{background:var(--tint)}
+.sa-mod.on{border-color:var(--acc);background:var(--acc-soft)}
+.sa-mod input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--acc);flex:none;cursor:pointer}
+.sa-mod b{display:block;font-size:14px}
+.sa-mod span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.45}
+.sa-mod:has(input:focus-visible){outline:2px solid var(--acc);outline-offset:2px}
+.sa-modtag{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:999px;background:var(--acc-soft);color:var(--acc-ink);font-size:11.5px;font-weight:700;width:max-content}
 .sa-swipe{display:none}
 @media (max-width:760px){.sa-swipe{display:block;font-size:11.5px;color:var(--faint);text-align:center;margin-top:6px}}
 @media (prefers-reduced-motion:reduce){.sa *{animation:none!important;transition:none!important}}

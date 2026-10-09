@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Sidebar, { NAV_SECTIONS } from "@/_shared/Sidebar";
 import { useAuth } from "@/_shared/AuthContext";
-import { canOpen, landingPage } from "@/_shared/moduleAccess";
+import { canOpen, landingPage, shopHas, PAGE_SHOP_MODULE } from "@/_shared/moduleAccess";
 import { istToday } from "@/_shared/utils";
 import TopBar, { MobileRate } from "@/_shared/TopBar";
 import Dashboard from "@/modules/dashboard/Dashboard";
@@ -61,7 +61,17 @@ const PAGES = {
 // Shown when a URL resolves to a module this user was not granted. It is a
 // statement, not an error: the server would refuse the calls this page makes,
 // so the page is not opened at all. Not a security boundary - the server is.
-function NoAccess({ name }) {
+function NoAccess({ name, notInShop }) {
+  if (notInShop) {
+    return (
+      <div className="mx-auto mt-16 max-w-md rounded-2xl border border-line bg-canvas/40 px-6 py-8 text-center">
+        <div className="text-sm font-extrabold text-ink">{name} is not part of this shop&apos;s DFX plan</div>
+        <p className="mt-2 text-xs text-muted">
+          Contact DFX support if you would like to add it.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="mx-auto mt-16 max-w-md rounded-2xl border border-line bg-canvas/40 px-6 py-8 text-center">
       <div className="text-sm font-extrabold text-ink">{name} is not part of your access</div>
@@ -107,7 +117,7 @@ function pageFromHash() {
 }
 
 export default function App() {
-  const { logout, user, permissions } = useAuth();
+  const { logout, user, permissions, shopModules } = useAuth();
   const [page, setPageState] = useState(pageFromHash);
   // What the navigation was FOR, when the destination alone does not say it.
   // "New Enrollment" on the Dashboard has to land on Customers with the Add
@@ -195,25 +205,28 @@ export default function App() {
   // beats a red error from a screen that should never have opened.
   const role = user?.backendRole ?? user?.role ?? null;
   const navOrder = NAV_SECTIONS.flatMap((s) => s.items).map((i) => i.id);
-  const allowed = canOpen(page, role, permissions);
+  const allowed = canOpen(page, role, permissions, shopModules);
+  // Refused because the SHOP does not use this module, not because of a grant.
+  const notInShop = !allowed && !shopHas(shopModules, PAGE_SHOP_MODULE[page]);
   // Land somewhere openable. A staff member without Dashboard used to arrive on
   // a page that refused him before he had touched anything.
   useEffect(() => {
     if (allowed || !role) return;
-    const home = landingPage(role, permissions, navOrder);
+    const home = landingPage(role, permissions, navOrder, shopModules);
     if (home && home !== page) setPage(home);
-  }, [allowed, role, page, permissions]);
+  }, [allowed, role, page, permissions, shopModules]);
 
   // A barcode scanned on any other page opens that piece in New Sale. New Sale
   // runs its own scanner listener, so this one is off there.
   const onAppScan = useCallback((raw) => {
     const v = String(raw || "").trim().toUpperCase();
     if (!v) return;
-    if (!canOpen("new-sale", role, permissions)) { toast(`Scanned ${v} - this login cannot open New Sale`); return; }
+    if (!shopHas(shopModules, "billing")) return; // no billing in this shop: a scan means nothing
+    if (!canOpen("new-sale", role, permissions, shopModules)) { toast(`Scanned ${v} - this login cannot open New Sale`); return; }
     // Owner's rule: a scan on any page goes straight to New Sale, found or not.
     setPage("new-sale", { scan: v });
-  }, [role, permissions]); // eslint-disable-line react-hooks/exhaustive-deps
-  useScannerInput(onAppScan, !!user && page !== "new-sale");
+  }, [role, permissions, shopModules]); // eslint-disable-line react-hooks/exhaustive-deps
+  useScannerInput(onAppScan, !!user && page !== "new-sale" && shopHas(shopModules, "billing"));
 
   const meta = PAGES[page] ?? NAV_SECTIONS.flatMap((s) => s.items).find((i) => i.id === page) ?? { title: "Dashboard" };
   const Page = allowed ? meta.component : null;
@@ -254,7 +267,7 @@ export default function App() {
             ? <Page onNavigate={setPage} intent={intent} clearIntent={() => setIntent(null)} search={search} promotions={promotions} setPromotions={setPromotions} editingPromo={editingPromo} setEditingPromo={setEditingPromo} />
             : allowed
               ? <ComingSoon name={meta.title} />
-              : <NoAccess name={meta.title} />}
+              : <NoAccess name={meta.title} notInShop={notInShop} />}
         </main>
       </div>
       <Toast onRef={() => {}} />

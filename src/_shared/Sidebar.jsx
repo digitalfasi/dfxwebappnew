@@ -91,7 +91,7 @@ export const NAV_SECTIONS = [
 ];
 
 export default function Sidebar({ page, onNavigate, open, onClose, collapsed = false, onToggleCollapse }) {
-  const { user, tenantName, tenantLogo, permissions } = useAuth();
+  const { user, tenantName, tenantLogo, permissions, shopModules } = useAuth();
   // The Settings logo. A URL that fails to load falls back to the initial tile
   // rather than a broken-image icon; a new URL gets a fresh try.
   const [logoBroken, setLogoBroken] = useState(false);
@@ -104,7 +104,7 @@ export default function Sidebar({ page, onNavigate, open, onClose, collapsed = f
   // heading either, or the menu grows empty groups.
   const role = user?.backendRole ?? user?.role ?? null;
   const VISIBLE = NAV_SECTIONS
-    .map((sec) => ({ ...sec, items: sec.items.filter((it) => canOpen(it.id, role, permissions)) }))
+    .map((sec) => ({ ...sec, items: sec.items.filter((it) => canOpen(it.id, role, permissions, shopModules)) }))
     .filter((sec) => sec.items.length > 0);
   // Never fall back to the product name. Showing "DFX Solution" to a staff
   // member of Afsar jewellers displays a different business's identity, which

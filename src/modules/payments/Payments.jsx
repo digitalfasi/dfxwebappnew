@@ -6,6 +6,7 @@ import { SearchInput } from "@/_shared/ui/input";
 import { Select } from "@/_shared/ui/select";
 import { istToday } from "@/_shared/utils";
 import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
+import { useAuth } from "@/_shared/AuthContext";
 import { paymentService } from "@/modules/payments/paymentService";
 import { billingService } from "@/modules/billing/billingService";
 import { enrollmentService } from "@/modules/plan/enrollment/enrollmentService";
@@ -192,8 +193,14 @@ function MethodBadge({ method }) {
 export default function Payments({ intent, clearIntent }) {
   const scope = useRef(null);
   usePressFeedback(scope);
+  // A shop runs schemes, billing or both (Super Admin's shop modules). Only the
+  // payments of what it runs exist here; with one kind there is no switch.
+  const { hasModule } = useAuth();
+  const hasSchemes = hasModule("schemes");
+  const hasBilling = hasModule("billing");
   // Spec: Scheme Payments — currently selected
-  const [tab, setTab] = useState("scheme");
+  const [tabState, setTab] = useState("scheme");
+  const tab = !hasSchemes ? "business" : !hasBilling ? "scheme" : tabState;
   // Business and Scheme are INDEPENDENT views. Each keeps its OWN search,
   // status, period and custom range — changing a filter on one tab must never
   // change the other. (They used to share one set of filter state, which is why
@@ -268,9 +275,9 @@ export default function Payments({ intent, clearIntent }) {
     setLoadError("");
     try {
       const [scheme, payments, businessResp] = await Promise.all([
-        enrollmentService.getEnrollments().then((rows) => rows.map(mapSchemeRow)),
-        paymentService.getSchemePayments(),
-        billingService.listSales(),
+        hasSchemes ? enrollmentService.getEnrollments().then((rows) => rows.map(mapSchemeRow)) : [],
+        hasSchemes ? paymentService.getSchemePayments() : [],
+        hasBilling ? billingService.listSales() : { sales: [], totalOutstanding: 0 },
       ]);
       setSchemeRows(scheme);
       setSchemePayments(payments);
@@ -281,7 +288,7 @@ export default function Payments({ intent, clearIntent }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hasSchemes, hasBilling]);
 
   async function settle(r, status) {
     if (status === "SUCCESS" && !window.confirm(`Confirm ₹${r.amount.toLocaleString("en-IN")} from ${r.customer}? Gold will be credited to the passbook.`)) return;
@@ -387,7 +394,11 @@ export default function Payments({ intent, clearIntent }) {
       {/* Page title + Subtitle */}
       <div data-motion="page-head" className="mb-6">
         <h2 className="text-2xl font-extrabold tracking-tight">Payments</h2>
-        <p className="mt-1 max-w-[60ch] text-sm text-muted">Manage and view all business and scheme payments — track installments, settle dues and reconcile collections.</p>
+        <p className="mt-1 max-w-[60ch] text-sm text-muted">{hasSchemes && hasBilling
+          ? "Manage and view all business and scheme payments — track installments, settle dues and reconcile collections."
+          : hasSchemes
+            ? "Manage and view all scheme payments — track installments, settle dues and reconcile collections."
+            : "Manage and view all business payments — track bill payments, settle outstanding and reconcile collections."}</p>
       </div>
 
       {/* Top navigation / toggle */}
@@ -397,6 +408,7 @@ export default function Payments({ intent, clearIntent }) {
         {/* Two of them, so they sit side by side instead of hiding behind a
             dropdown that has to be opened to see what the other one even is.
             Same `tab` state, same handler - nothing below this line changes. */}
+        {hasSchemes && hasBilling ? (
         <div data-motion="toolbar" className="grid grid-cols-2 items-center gap-1 rounded-xl border border-line bg-canvas/60 p-1 sm:inline-flex">
           {[["business", "Business Payment"], ["scheme", "Scheme Payment"]].map(([val, label]) => (
             <button
@@ -412,6 +424,7 @@ export default function Payments({ intent, clearIntent }) {
             </button>
           ))}
         </div>
+        ) : <span className="hidden sm:block" />}
         {/* Primary action — Record Manual Payment on upper-right, blue filled with plus */}
         <Button size="sm" variant="default" onClick={() => (tab === "business" ? setShowBizManual(true) : setShowManual(true))} className="w-full bg-accent hover:bg-accent-strong sm:w-auto">
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Record Manual Payment

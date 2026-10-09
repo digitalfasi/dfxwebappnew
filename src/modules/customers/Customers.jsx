@@ -124,7 +124,12 @@ export default function Customers({ intent, clearIntent } = {}) {
   const [kycError, setKycError] = useState("");
   const [kycBusy, setKycBusy] = useState(false);
   // UAT-only test-customer deletion.
-  const { tenantId, backendRole } = useAuth();
+  const { tenantId, backendRole, hasModule } = useAuth();
+  // Super Admin's shop modules: a shop without Schemes never offers enrolling,
+  // and a shop without Billing has no purchases to show.
+  const hasSchemes = hasModule("schemes");
+  const hasBilling = hasModule("billing");
+  const typeFilters = hasSchemes ? FILTERS : FILTERS.filter((f) => f !== "Scheme Customer" && f !== "Hybrid");
   // Staff look customers up; adding, editing, enrolling and KYC decisions are
   // the Admin's (server-enforced since the 2026-10-06 security assessment).
   const canEdit = isShopAdmin(backendRole);
@@ -239,6 +244,7 @@ export default function Customers({ intent, clearIntent } = {}) {
   // the same dialog in the same state - schemes fetched, rate fetched.
   function openAddCustomer() {
     setShowAdd(true);
+    if (!hasSchemes) return;
     loadActiveSchemes();
     loadTodayRate();
   }
@@ -505,7 +511,7 @@ export default function Customers({ intent, clearIntent } = {}) {
       <div data-motion="page-head" className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Customer Directory</h2>
-          <p className="mt-1 max-w-[60ch] text-sm text-muted">Search, filter and open any customer to see full 360° profile, schemes and history.</p>
+          <p className="mt-1 max-w-[60ch] text-sm text-muted">Search, filter and open any customer to see full 360° profile, {hasSchemes ? "schemes and " : ""}history.</p>
         </div>
         {/* The scheme list is fetched when the form opens, so the picker is
             already populated by the time the admin scrolls to it. */}
@@ -531,7 +537,8 @@ export default function Customers({ intent, clearIntent } = {}) {
           { label: "Scheme", key: "Scheme Customer", color: "#9f1d35" },
           { label: "Hybrid", key: "Hybrid", color: "#9f1d35" },
           { label: "New", key: "New", color: "#9f1d35" },
-        ].map((t) => ({ ...t, count: typeCounts ? typeCounts[t.key] ?? 0 : null }));
+        ].filter((t) => hasSchemes || (t.key !== "Scheme Customer" && t.key !== "Hybrid"))
+          .map((t) => ({ ...t, count: typeCounts ? typeCounts[t.key] ?? 0 : null }));
         // Backend counts when available; the page-derived numbers only as a
         // fallback (and then they are what they are — this page's rows).
         const kycPending = summary ? summary.kycPending : customers.filter(c => c.kyc === "Pending Review").length;
@@ -557,7 +564,7 @@ export default function Customers({ intent, clearIntent } = {}) {
 
         return (
           <div className="mb-4 grid gap-3" data-motion="stat">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className={`grid gap-3 ${hasSchemes ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
               <StatCard
                 label="Total customers" value={totalCustomers} note="All time" tint="#9f1d35" ring="rgba(159,29,53,0.3)"
                 icon={<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /></svg>}
@@ -567,10 +574,10 @@ export default function Customers({ intent, clearIntent } = {}) {
                 valueClass={kycPending > 0 ? "text-danger" : ""}
                 icon={<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M9 15h6" /></svg>}
               />
-              <StatCard
+              {hasSchemes && <StatCard
                 label="Scheme enrolled" value={schemeEnrolled} note="With live schemes" tint="#9f1d35" ring="rgba(159,29,53,0.3)"
                 icon={<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="5" /><circle cx="16" cy="13" r="4" /><path d="M8 13c1.5 1.5 3.5 1.5 5 0" /></svg>}
-              />
+              />}
             </div>
 
             {/* Customer Types — share-of-base composition with bars. */}
@@ -579,7 +586,7 @@ export default function Customers({ intent, clearIntent } = {}) {
                 <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Customer Types</div>
                 <div className="text-[11px] text-muted">Share of {totalCustomers.toLocaleString("en-IN")} customers</div>
               </div>
-              <div className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className={`mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 ${hasSchemes ? "xl:grid-cols-4" : ""}`}>
                 {typeComp.map(({ label, count, color }) => (
                   <div key={label}>
                     <div className="flex items-baseline justify-between gap-2">
@@ -603,7 +610,7 @@ export default function Customers({ intent, clearIntent } = {}) {
         <div className="flex flex-wrap items-center gap-3">
           <SearchInput className="w-full max-w-sm" placeholder="Search name, code, contact..." value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search customers" />
           <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by type">
-            {FILTERS.map((f) => (
+            {typeFilters.map((f) => (
               <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all active:scale-95 ${filter === f ? "border-accent bg-accent text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{f}</button>
             ))}
           </div>
@@ -789,7 +796,7 @@ export default function Customers({ intent, clearIntent } = {}) {
                   </span>
                 ) : null}
               </label>
-              <label className="grid gap-1.5">
+              {hasSchemes && <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Enroll in Scheme <span className="font-normal text-muted">— optional</span></span>
                 <Select
                   value={form.schemeId}
@@ -815,7 +822,7 @@ export default function Customers({ intent, clearIntent } = {}) {
                     ? "No active scheme to offer. Create one under Plans → Schemes."
                     : `${schemeList.length} active scheme${schemeList.length === 1 ? "" : "s"} available. The customer is enrolled as soon as the account is created.`}
                 </span>
-              </label>
+              </label>}
 
               {/* D5: the same two choices the Enroll modal offers, from the same
                   builder. Enrolling from here used to send neither, so the
@@ -1128,10 +1135,10 @@ export default function Customers({ intent, clearIntent } = {}) {
                     </div>
                   </div>
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                <div className={`mt-4 grid gap-3 text-center ${hasSchemes ? "grid-cols-3" : "grid-cols-2"}`}>
                   <div className="rounded-xl bg-white border border-accent-line p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">DOB</div><div className="mt-0.5 text-sm font-bold">{fmtDob(selected.dob)}</div><div className="text-xs text-muted">{ageFromDob(selected.dob) != null ? `${ageFromDob(selected.dob)} years` : "—"}</div></div>
                   <div className="rounded-xl bg-white border border-line p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">Member Since</div><div className="mt-0.5 text-sm font-bold">{selected.since}</div><div className="text-xs text-muted">{selected.type}</div></div>
-                  <div className="rounded-xl bg-white border border-line p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">Schemes</div><div className="mt-0.5 text-sm font-bold">{selected.schemes.length || 0}</div><div className="text-xs text-muted">{selected.schemes.length ? "Active" : "No active schemes"}</div></div>
+                  {hasSchemes && <div className="rounded-xl bg-white border border-line p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">Schemes</div><div className="mt-0.5 text-sm font-bold">{selected.schemes.length || 0}</div><div className="text-xs text-muted">{selected.schemes.length ? "Active" : "No active schemes"}</div></div>}
                 </div>
               </div>
 
@@ -1152,7 +1159,7 @@ export default function Customers({ intent, clearIntent } = {}) {
                   </div>
                 </section>
 
-                <section>
+                {hasSchemes && <section>
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-extrabold uppercase tracking-widest text-ink">Scheme Information</h4>
                     {canEdit && <button onClick={openEnroll} className="rounded-lg border border-accent-line bg-accent-soft px-2.5 py-1 text-[11px] font-bold text-accent-strong hover:bg-accent-line">+ Add scheme</button>}
@@ -1178,17 +1185,20 @@ export default function Customers({ intent, clearIntent } = {}) {
                       <div className="mt-1 text-xs">Use <span className="font-bold text-ink">+ Add scheme</span> above to enroll this customer.</div>
                     </div>
                   )}
-                </section>
+                </section>}
 
                 <section>
                   <h4 className="text-xs font-extrabold uppercase tracking-widest text-ink">Customer History</h4>
-                  {!selected.history?.length ? (
+                  {(() => {
+                    const history = (selected.history || []).filter((h) =>
+                      (hasSchemes || h.action !== "Payment") && (hasBilling || h.action !== "Purchase"));
+                    return !history.length ? (
                     <div className="mt-3 rounded-xl border border-dashed border-line bg-canvas/30 p-6 text-center text-sm text-muted">No customer history yet.</div>
                   ) : (
                   <div className="mt-3 relative pl-6">
                     <div className="absolute left-1.5 top-2 bottom-2 w-px bg-line" />
                     <div className="grid gap-3">
-                      {selected.history.map((h, i) => (
+                      {history.map((h, i) => (
                         <div key={i} className="relative rounded-xl border border-line bg-white p-3">
                           <span className={`absolute -left-[22px] top-4 h-2.5 w-2.5 rounded-full border-2 border-white shadow ${h.action.includes("Payment") ? "bg-accent" : h.action.includes("KYC") ? "bg-info" : "bg-ink"}`} />
                           <div className="flex items-center justify-between">
@@ -1200,7 +1210,8 @@ export default function Customers({ intent, clearIntent } = {}) {
                       ))}
                     </div>
                   </div>
-                  )}
+                  );
+                  })()}
                 </section>
               </div>
             </div>

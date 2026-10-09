@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { authService } from "@/_shared/authService";
+import { shopHas } from "@/_shared/moduleAccess";
 import { apiClient, tokenStore, SESSION_EXPIRED_EVENT } from "@/_shared/apiClient";
 
 /**
@@ -80,10 +81,12 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (username, password) => {
     const u = await authService.loginWithEmail(username, password);
-    setUser(u);
+    // The login response carries no logo and no shop modules; /users/me does.
+    // Waited for, so a shop without Billing never sees Billing for a moment.
+    const me = await authService.fetchCurrentUser().catch(() => null);
+    setUser(me ? { ...u, shopModules: me.shopModules } : u);
+    if (me) { setTenantLogo(me.tenantLogoUrl || null); setTenantPhone(me.tenantPhone || null); }
     if (u?.backendRole !== "SuperAdmin") authService.getTenantName().then((tn) => setTenantName(tn || u?.tenantName || null));
-    // The login response carries no logo; /users/me does. Best-effort.
-    authService.fetchCurrentUser().then((me) => { setTenantLogo(me?.tenantLogoUrl || null); setTenantPhone(me?.tenantPhone || null); }).catch(() => {});
     return u;
   }, []);
 
@@ -137,8 +140,15 @@ export function AuthProvider({ children }) {
     [permissions]
   );
 
+  // Which parts of DFX this shop uses (schemes / catalogue / billing). null
+  // until known = every module, which is what every shop had before.
+  const shopModules = user?.shopModules ?? null;
+  const hasModule = useCallback((m) => shopHas(shopModules, m), [shopModules]);
+
   const value = {
     user,
+    shopModules,
+    hasModule,
     role: user?.role ?? null,
     backendRole: user?.backendRole ?? null,
     tenantId: user?.tenantId ?? null,

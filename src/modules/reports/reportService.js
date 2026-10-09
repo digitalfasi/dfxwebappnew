@@ -124,6 +124,54 @@ export const reportService = {
     };
   },
 
+  /** GET /reports/sales-trend — completed product sales per bucket. profit is
+   *  null for Staff (the backend withholds it). */
+  async getSalesTrend(opts) {
+    const res = await apiClient.get(`/reports/sales-trend${qs(periodParams(opts))}`, { auth: true });
+    const r = res.data?.report ?? {};
+    const points = (r.trend ?? []).map((p) => ({
+      label: p.period_label,
+      amount: Number(p.total_amount) || 0,
+      count: Number(p.sale_count) || 0,
+      gold: Number(p.gold_weight_grams) || 0,
+      profit: p.profit == null ? null : Number(p.profit),
+    }));
+    const sum = (k) => points.reduce((s, p) => s + (p[k] || 0), 0);
+    return {
+      rangeLabel: r.range?.label ?? null,
+      points,
+      totalSales: sum("amount"),
+      billCount: sum("count"),
+      goldSold: sum("gold"),
+      profit: points.some((p) => p.profit != null) ? sum("profit") : null,
+    };
+  },
+
+  /** GET /reports/sales-by-category — share of sales per category. */
+  async getSalesByCategory(opts) {
+    const res = await apiClient.get(`/reports/sales-by-category${qs(periodParams(opts))}`, { auth: true });
+    const r = res.data?.report ?? {};
+    return [...(r.categories ?? [])].sort((a, b) => (Number(b.total_sales) || 0) - (Number(a.total_sales) || 0)).map((c) => ({
+      category: c.category,
+      totalSales: Number(c.total_sales) || 0,
+      billCount: Number(c.bill_count) || 0,
+      percentage: Number(c.percentage) || 0,
+    }));
+  },
+
+  /** GET /reports/top-customers/business — customers ranked by what they bought. */
+  async getTopCustomersBySales(opts, limit = 10) {
+    const params = periodParams(opts);
+    params.set("limit", String(limit));
+    const res = await apiClient.get(`/reports/top-customers/business${qs(params)}`, { auth: true });
+    const r = res.data?.report ?? {};
+    return (r.customers ?? []).map((c) => ({
+      customerName: c.customer_name,
+      totalSpent: Number(c.total_spent) || 0,
+      billCount: Number(c.bill_count) || 0,
+    }));
+  },
+
   /** GET /reports/export/reports-summary — Top Customers export (csv/excel/markdown). */
   async exportReportsSummary(opts, format = "excel", limit = 10) {
     const params = periodParams(opts);

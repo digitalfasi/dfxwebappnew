@@ -30,6 +30,9 @@ function mapBackendUser(raw) {
     tenantName: raw.tenant_name ?? null,
     tenantLogoUrl: raw.tenant_logo_url ?? null,
     tenantPhone: raw.tenant_phone ?? null,
+    // The modules this user's SHOP has (Super Admin's per-shop switches). Only
+    // /users/me carries it; null = not known yet, treated as every module.
+    shopModules: raw.shop_modules ?? null,
   };
 }
 

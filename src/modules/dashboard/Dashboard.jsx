@@ -7,6 +7,7 @@ import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { formatINR, istToday, BUILD_SHA } from "@/_shared/utils";
 import { apiClient } from "@/_shared/apiClient";
 import { useAuth } from "@/_shared/AuthContext";
+import { PAGE_SHOP_MODULE, shopHas } from "@/_shared/moduleAccess";
 import { toast } from "@/_shared/toast";
 import { reportService } from "@/modules/reports/reportService";
 import { billingService } from "@/modules/billing/billingService";
@@ -77,7 +78,7 @@ const MOBILE_MODULES = [
     { title: "Catalogue Studio", page: "catalogue", icon: P_GRID, wide: true },
   ] },
   { id: "scheme", title: "Scheme", icon: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z", actions: [
-    { title: "New Enrollment", page: "customers", intent: "add-customer", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6" },
+    { title: "New Enrollment", page: "customers", intent: "add-customer", module: "schemes", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6" },
     { title: "Scheme Plans", page: "schemes", icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
   ] },
 ];
@@ -552,8 +553,17 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // even the word - so the dashboard does not hand it to them either. The
   // backend now returns null for them; hiding the card as well means they see
   // a screen that makes sense rather than a KPI permanently reading "—".
-  const { backendRole } = useAuth();
+  const { backendRole, shopModules } = useAuth();
   const seesProfit = backendRole === "Admin" || backendRole === "SuperAdmin";
+  // The Super Admin decides per shop whether it runs gold schemes, stock and
+  // billing, or both. A shop is never shown the business it does not run:
+  // no figures, no charts, no requests for them.
+  const hasSchemes = shopHas(shopModules, "schemes");
+  const hasBilling = shopHas(shopModules, "billing");
+  const solo = hasSchemes !== hasBilling; // one business: it gets the full width
+  const quickModules = MOBILE_MODULES
+    .map((m) => ({ ...m, actions: m.actions.filter((a) => shopHas(shopModules, a.module || PAGE_SHOP_MODULE[a.page])) }))
+    .filter((m) => m.actions.length > 0);
   const nav = (page, intent) => onNavigate && onNavigate(page, intent);
 
   const [loading, setLoading] = useState(true);
@@ -671,11 +681,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
     const allTime = buildQuery({ date_from: "2020-01-01", date_to: today });
     (async () => {
       const [payAll, billing, enr, cds] = await Promise.all([
-        getSummary(`/reports/payment-summary${allTime}`),
+        hasSchemes ? getSummary(`/reports/payment-summary${allTime}`) : null,
         // Both now carry the dashboard's own ceiling. They were running on the
         // 45s default - twice - which is a minute and a half of em dash.
-        retryOnce(() => billingService.listSales({ limit: 5, timeoutMs: DASHBOARD_TIMEOUT_MS }), null),
-        retryOnce(() => enrollmentService.getEnrollments("", { timeoutMs: DASHBOARD_TIMEOUT_MS }), []),
+        hasBilling ? retryOnce(() => billingService.listSales({ limit: 5, timeoutMs: DASHBOARD_TIMEOUT_MS }), null) : null,
+        hasSchemes ? retryOnce(() => enrollmentService.getEnrollments("", { timeoutMs: DASHBOARD_TIMEOUT_MS }), []) : [],
         // Today's KPI cards go through the same retry as every other
         // dashboard fetch. A single failed first call - a token refresh still
         // in flight straight after login - used to leave the cards dead for
@@ -705,11 +715,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
       setCoreLoading(false);
       // billing === null means both attempts failed. Say so rather than
       // leaving one card dashed among four that worked.
-      setCoreFailed(billing === null || !payAllOk);
+      setCoreFailed((hasBilling && billing === null) || (hasSchemes && !payAllOk));
       setLoading(false);
     })();
     return () => { alive = false; };
-  }, [reloadToken]);
+  }, [reloadToken, hasSchemes, hasBilling]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Business KPIs + Sales Trend follow bizPeriod
   const bizReq = useRef("today");
@@ -721,7 +731,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
     if (bizReq.current !== key) setSalesTrend(null);
     bizReq.current = key;
     const q = rangeQuery(bizPeriod, bizCustom);
-    if (!q) return; // custom awaiting Apply
+    if (!q || !hasBilling) return; // custom awaiting Apply, or no billing in this shop
     setBizLoading(true);
     getReport(`/reports/sales-trend${q}`).then((t) => {
       // A superseded response must not paint, but it must not leave the panel
@@ -736,7 +746,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
       setBizFailed(rows === null);
       setBizReason(rows === null ? (t && t.__refused ? "not permitted for this account" : dashboardFailureReason()) : "");
     });
-  }, [bizPeriod, bizCustom, reloadToken]);
+  }, [bizPeriod, bizCustom, reloadToken, hasBilling]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scheme KPIs + Collections Trend follow schemePeriod
   const schemeReq = useRef("today");
@@ -745,7 +755,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
     if (schemeReq.current !== key) { setPaySummary(null); setEnrollSummary(null); }
     schemeReq.current = key;
     const q = rangeQuery(schemePeriod, schemeCustom);
-    if (!q) return;
+    if (!q || !hasSchemes) return;
     setSchemeLoading(true);
     Promise.all([getSummary(`/reports/payment-summary${q}`), getSummary(`/reports/enrollment-summary${q}`)])
       .then(([p, e]) => {
@@ -762,32 +772,32 @@ export default function Dashboard({ onNavigate, search = "" }) {
         setSchemeFailed(dead);
         setSchemeReason(dead ? ((p && p.__refused) || (e && e.__refused) ? "not permitted for this account" : dashboardFailureReason()) : "");
       });
-  }, [schemePeriod, schemeCustom, reloadToken]);
+  }, [schemePeriod, schemeCustom, reloadToken, hasSchemes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Top Selling Categories (analytics period)
   const catReq = useRef("this_year");
   useEffect(() => {
     // Below-fold analytics: hold until the base load resolves so it doesn't add
     // to the first-paint request fan-out. Data shown is unchanged, only later.
-    if (loading) return;
+    if (loading || !hasBilling) return;
     const key = analyticsKey(catPeriod, catCustom);
     catReq.current = key;
     const q = analyticsQuery(catPeriod, catCustom);
     if (!q) return;
     getReport(`/reports/sales-by-category${q}`).then((r) => { if (catReq.current === key) setSalesCats(r); });
-  }, [catPeriod, catCustom, loading]);
+  }, [catPeriod, catCustom, loading, hasBilling]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Popular Schemes (analytics period)
   const popReq = useRef("this_year");
   useEffect(() => {
     // Below-fold analytics — deferred behind the base load, same as categories.
-    if (loading) return;
+    if (loading || !hasSchemes) return;
     const key = analyticsKey(popPeriod, popCustom);
     popReq.current = key;
     const q = analyticsQuery(popPeriod, popCustom);
     if (!q) return;
     getReport(`/reports/scheme-summary${q}`).then((r) => { if (popReq.current === key) setPopSchemes(rowsOrUnknown(r, "schemes")); });
-  }, [popPeriod, popCustom, loading]);
+  }, [popPeriod, popCustom, loading, hasSchemes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* derived — all backend-authoritative, summed only (no invented values) */
   const bizPfx = periodPrefix(bizPeriod);
@@ -840,8 +850,8 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // fire, while the two beside it read correct keys and did. Silence looked
   // like good news. Worded in enrollment terms because that is what is counted:
   // one customer may hold several overdue enrollments.
-  if (cards.overdue_enrollments) alerts.push({ id: "overdue", tone: "danger", title: `${cards.overdue_enrollments} enrollment(s) with overdue payments`, detail: "Review collections", page: "scheme-management", intent: { status: "Overdue", period: "all" } });
-  if (cards.pending_inspection) alerts.push({ id: "inspect", tone: "warning", title: `${cards.pending_inspection} item(s) pending inspection`, detail: "Inspect returned inventory", page: "inventory" });
+  if (hasSchemes && cards.overdue_enrollments) alerts.push({ id: "overdue", tone: "danger", title: `${cards.overdue_enrollments} enrollment(s) with overdue payments`, detail: "Review collections", page: "scheme-management", intent: { status: "Overdue", period: "all" } });
+  if (hasBilling && cards.pending_inspection) alerts.push({ id: "inspect", tone: "warning", title: `${cards.pending_inspection} item(s) pending inspection`, detail: "Inspect returned inventory", page: "inventory" });
   if (cards.pending_kyc) alerts.push({ id: "kyc", tone: "warning", title: `${cards.pending_kyc} pending KYC`, detail: "Verify customers", page: "customers", intent: { kyc: "Pending" } });
 
   return (
@@ -854,29 +864,34 @@ export default function Dashboard({ onNavigate, search = "" }) {
         <Card data-motion="reveal" className="mb-4 p-4">
           <CardTitle className="mb-3 text-sm font-extrabold">Quick Actions</CardTitle>
           {(() => {
-            const mod = MOBILE_MODULES.find((m) => m.id === mobileModule);
+            const mod = quickModules.length === 1 ? quickModules[0] : quickModules.find((m) => m.id === mobileModule);
             const tile = "group flex rounded-xl border border-line bg-white text-left transition-all duration-200 [&:hover]:border-accent/50 [&:hover]:bg-accent-soft [&:hover]:shadow-[0_8px_20px_-12px_rgba(159,29,53,0.35)] active:border-accent/50 active:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
             const ico = (d) => <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
             if (!mod) return (
               <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2 lg:gap-3">
-                {MOBILE_MODULES.map((m) => (
-                  <button key={m.id} type="button" onClick={() => setMobileModule(m.id)} className={`${tile} min-h-[60px] items-center gap-3 px-3.5 py-2.5`}>
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line transition-colors group-[:hover]:bg-white group-[:hover]:text-accent group-[:hover]:ring-accent/30 group-active:bg-white group-active:text-accent group-active:ring-accent/30">{ico(m.icon)}</span>
-                    <span className="min-w-0 flex-1 text-[14px] font-bold leading-tight text-ink transition-colors group-[:hover]:text-accent-strong group-active:text-accent-strong">{m.title}</span>
+                {quickModules.map((m) => {
+                  // A group left with one action (e.g. only Catalogue Studio in a
+                  // shop without Billing) opens that action, not a list of one.
+                  const only = m.actions.length === 1 ? m.actions[0] : null;
+                  return (
+                  <button key={m.id} type="button" onClick={() => (only ? nav(only.page, only.intent) : setMobileModule(m.id))} className={`${tile} min-h-[60px] items-center gap-3 px-3.5 py-2.5`}>
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-strong ring-1 ring-accent-line transition-colors group-[:hover]:bg-white group-[:hover]:text-accent group-[:hover]:ring-accent/30 group-active:bg-white group-active:text-accent group-active:ring-accent/30">{ico(only ? only.icon : m.icon)}</span>
+                    <span className="min-w-0 flex-1 text-[14px] font-bold leading-tight text-ink transition-colors group-[:hover]:text-accent-strong group-active:text-accent-strong">{only ? only.title : m.title}</span>
                     <span className="text-lg text-accent-strong/70 transition-colors group-[:hover]:text-accent-strong group-active:text-accent-strong" aria-hidden="true">›</span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             );
             return (
               <div>
-                <div className="mb-3 flex items-center gap-2.5">
+                {quickModules.length > 1 && <div className="mb-3 flex items-center gap-2.5">
                   <button type="button" onClick={() => setMobileModule(null)} aria-label="Back"
                     className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-line bg-white text-ink active:bg-accent-soft/60">
                     <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                   </button>
                   <span className="min-w-0 text-[15px] font-extrabold leading-tight text-ink">{mod.title}</span>
-                </div>
+                </div>}
                 <div className={`grid grid-cols-2 gap-2.5 lg:gap-3 ${mod.actions.length > 2 ? "lg:grid-cols-4" : "lg:grid-cols-2"}`}>
                   {/* New Enrollment adds a customer - Admin only since 2026-10-06. */}
                   {mod.actions.filter((a) => seesProfit || a.intent !== "add-customer").map((a) => (
@@ -893,8 +908,9 @@ export default function Dashboard({ onNavigate, search = "" }) {
         </Card>
       </div>
 
-      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className={`mb-4 grid grid-cols-1 gap-4 ${solo ? "" : "lg:grid-cols-2"}`}>
         {/* ============ BUSINESS ============ */}
+        {hasBilling && (
         <section data-motion="reveal" className="space-y-2.5 rounded-2xl border border-accent-line bg-accent-soft/40 p-3">
           <div className="flex items-center gap-2.5 rounded-xl border border-accent-line bg-accent-soft px-3 py-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-white">
@@ -927,7 +943,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
               </button>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className={`grid grid-cols-2 gap-2.5 ${solo ? "lg:grid-cols-4" : ""}`}>
             <KpiCard title={`${bizPfx} Sales`} value={fmtCurrency(bizSales)} loading={bizFirstLoad} onClick={() => nav("sales-history")} />
             <KpiCard title={`${bizPfx} Gold Sold`} value={fmtGrams(goldSold)} loading={bizFirstLoad} onClick={() => nav("sales-history")} />
             {seesProfit && (
@@ -936,6 +952,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <KpiCard title="Outstanding Amount" value={fmtCurrency(outstanding)} loading={coreLoading} danger onClick={() => nav("payments", { tab: "business", dateFilter: "Overall" })} />
           </div>
 
+          <div className={solo ? "grid gap-2.5 lg:grid-cols-2 lg:[&>*:last-child]:col-span-2" : "space-y-2.5"}>
           {/* Sales Trend */}
           <Card className="p-3.5">
             {/* Title + metric on one line (metric top-right), period tabs on
@@ -1000,9 +1017,12 @@ export default function Dashboard({ onNavigate, search = "" }) {
             )}
             <Button onClick={() => nav("new-sale")} variant="outline" size="sm" className="mt-2.5 w-full text-xs font-bold">+ New Sale (Billing)</Button>
           </Card>
+          </div>
         </section>
+        )}
 
         {/* ============ SCHEMES ============ */}
+        {hasSchemes && (
         <section data-motion="reveal" className="space-y-2.5 rounded-2xl border border-accent-line bg-accent-soft/40 p-3">
           <div className="flex items-center gap-2.5 rounded-xl border border-accent-line bg-accent-soft px-3 py-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-lg text-white" style={{ backgroundColor: SCHEME_ACCENT }}>
@@ -1023,7 +1043,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
               <button onClick={reload} className="rounded-lg border border-danger-line bg-white px-2.5 py-1 text-[11px] font-bold text-danger hover:bg-danger-soft">Retry</button>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className={`grid grid-cols-2 gap-2.5 ${solo ? "lg:grid-cols-4" : ""}`}>
             <KpiCard title={`${schemePfx} Collection`} value={fmtCurrency(paySummary?.total_revenue)} loading={schemeFirstLoad} growth={paySummary?.total_revenue_growth_percent} growthOf={paySummary?.total_revenue} onClick={() => nav("payments")} />
             {/* Both carry the window they were counted over, so Enrollment
                 Management opens standing in the same window instead of showing
@@ -1038,6 +1058,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             <KpiCard title="Pending Dues" value={fmtCurrency(pendingDues)} loading={coreLoading} danger onClick={() => nav("payments", { tab: "scheme", dateFilter: "Overall" })} />
           </div>
 
+          <div className={solo ? "grid gap-2.5 lg:grid-cols-2 lg:[&>*:last-child]:col-span-2" : "space-y-2.5"}>
           {/* Collections Trend */}
           <Card className="p-3.5">
             <div className="mb-2.5 flex items-center justify-between gap-2">
@@ -1094,7 +1115,9 @@ export default function Dashboard({ onNavigate, search = "" }) {
             )}
             <Button onClick={() => nav("scheme-management")} variant="outline" size="sm" className="mt-2.5 w-full text-xs font-bold">+ New Enrollment</Button>
           </Card>
+          </div>
         </section>
+        )}
       </div>
 
       {/* ACTION CENTER — real operational alerts (overdue payments, pending KYC,
@@ -1110,7 +1133,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
         <CardTitle className="mb-2 text-xs font-bold">Action Center</CardTitle>
         {cards.__failed ? (
           <div className="flex items-center justify-center gap-2 rounded-xl border border-warn-line bg-warn-soft py-6 text-xs font-semibold text-warn">
-            Alerts unavailable — could not load overdue payments, KYC or inspections.
+            Alerts unavailable — could not load {[hasSchemes && "overdue payments", "KYC", hasBilling && "inspections"].filter(Boolean).join(", ").replace(/, ([^,]*)$/, " or $1")}.
           </div>
         ) : alerts.length === 0 ? (
           <div className="flex items-center justify-center py-6 text-xs font-medium text-faint">All clear — no pending actions</div>

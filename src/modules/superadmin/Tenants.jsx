@@ -4,6 +4,27 @@ import { saService, fmtDateTime, fmtDate, inr, seenAt, usedToday } from "@/modul
 import { Card, Kpi, Pill, Icon, Empty, Skel, Drawer, usePoll, hashParam, scrollToId, useHashParam } from "@/modules/superadmin/saUi";
 
 const PLANS = ["Starter", "Professional", "Business", "Enterprise"];
+
+// Which parts of DFX a shop uses (backend constants.ALL_SHOP_MODULES). Every
+// shop has the dashboard, customers, payments, gold rate, reports, marketing,
+// staff, branches, support and settings; these three are switched per shop.
+export const SHOP_MODULES = [
+  { k: "schemes", label: "Schemes", text: "Gold saving schemes, enrollments, instalments and passbooks." },
+  { k: "catalogue", label: "Catalogue", text: "Catalogue Studio - designs and product pages for customers." },
+  { k: "billing", label: "Inventory & Billing", text: "Stock, purchases, suppliers, New Sale, invoices and sales history." },
+];
+const MODULE_PRESETS = [
+  { label: "Everything", mods: ["schemes", "catalogue", "billing"] },
+  { label: "Schemes & Catalogue", mods: ["schemes", "catalogue"] },
+  { label: "Inventory & Billing", mods: ["billing"] },
+];
+const sameMods = (a, b) => a.length === b.length && a.every((m) => b.includes(m));
+/** "Schemes & Catalogue" for a shop that is not on everything; "" when it is. */
+export function modulesLabel(mods) {
+  if (!Array.isArray(mods) || sameMods(mods, MODULE_PRESETS[0].mods)) return "";
+  const preset = MODULE_PRESETS.find((p) => sameMods(mods, p.mods));
+  return preset ? `${preset.label} only` : `${SHOP_MODULES.filter((m) => mods.includes(m.k)).map((m) => m.label).join(" + ")} only`;
+}
 // Common passwords, flagged as weak. The Super Admin may still use one: the
 // server only insists on 6 characters for a password set here.
 const WEAK = new Set(["password", "password1", "password123", "12345678", "123456789", "qwerty123", "admin123", "welcome1", "india123", "gold1234", "jewellery"]);
@@ -202,7 +223,7 @@ export default function Tenants({ onWatch }) {
               const d = today[t.id] || {};
               return (
                 <tr key={t.id} className="click" onClick={() => setOpenId(t.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setOpenId(t.id)}>
-                  <td className="who"><b>{t.name}</b><span>Joined {fmtDate(t.created_at)}</span></td>
+                  <td className="who"><b>{t.name}</b><span>Joined {fmtDate(t.created_at)}</span>{modulesLabel(t.modules) && <span className="sa-modtag">{modulesLabel(t.modules)}</span>}</td>
                   <td><PlanCell t={t} /></td>
                   <td className="who">
                     <b>{t.admin_name || <span className="sa-dim">No owner account</span>}</b>
@@ -413,6 +434,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
     finally { setBusy(false); setConfirm(null); }
   };
 
+  const hasSchemes = !tenant?.modules || tenant.modules.includes("schemes");
   const trialLeft = tenant?.subscription?.trial_ends_at
     ? Math.ceil((new Date(tenant.subscription.trial_ends_at).getTime() - Date.now()) / 86400000) : null;
 
@@ -428,7 +450,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
               sub={tenant.status !== "Active" ? "nobody can log in" : trialLeft != null && trialLeft < 0 ? "trial ended - locked at the next login" : "people can log in"} />
             <Kpi go={() => scrollToId("td-plan-card")} icon="clock" hue={trialLeft != null && trialLeft < 7 ? "warn" : "web"} label="Access" value={trialLeft == null ? "Paid · no end date" : trialLeft >= 0 ? `${trialLeft} days left` : "Trial ended"}
               sub={tenant.subscription ? `${tenant.subscription.plan} · ${tenant.subscription.status}` : "no subscription"} />
-            <Kpi go={() => { onWatch(id, "customers"); onClose(); }} icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st ? `${st.active_enrollments} paying into a scheme` : ""} />
+            <Kpi go={() => { onWatch(id, "customers"); onClose(); }} icon="users" hue="teal" label="Customers" value={st?.total_customers ?? "—"} sub={st && hasSchemes ? `${st.active_enrollments} paying into a scheme` : ""} />
           </div>
 
           <Card title="Shop and owner" icon="shop">
@@ -444,7 +466,7 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
             </dl>
           </Card>
 
-          {st && (
+          {st && hasSchemes && (
             <Card title="Business so far" icon="activity">
               <dl className="sa-kv">
                 <dt>Money collected in schemes</dt><dd>{inr(st.total_revenue)}</dd>
@@ -509,6 +531,8 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
               </div>
             </Card>
           )}
+
+          <ModulesCard tenant={tenant} busy={busy} act={act} />
 
           <Card id="td-controls" title="Switch off or block" icon="shield">
             <div style={{ display: "grid", gap: 12 }}>
@@ -591,6 +615,59 @@ function TenantDrawer({ id, onClose, onChanged, onWatch }) {
         </>
       )}
     </Drawer>
+  );
+}
+
+// What the shop uses. A switch only hides: data is kept, and switching a
+// module back on brings it all back. The server refuses a switched-off module
+// for the shop's owner and staff, not just the menu.
+function ModulesCard({ tenant, busy, act }) {
+  const current = tenant.modules || MODULE_PRESETS[0].mods;
+  const [mods, setMods] = useState(current);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => { setMods(tenant.modules || MODULE_PRESETS[0].mods); setAsking(false); }, [tenant.modules?.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = !sameMods(mods, current);
+  const turnedOff = SHOP_MODULES.filter((m) => current.includes(m.k) && !mods.includes(m.k));
+  const toggle = (k) => setMods((x) => (x.includes(k) ? x.filter((m) => m !== k) : SHOP_MODULES.map((m) => m.k).filter((m) => m === k || x.includes(m))));
+  const save = () => act(() => saService.setModules(tenant.id, mods), "Modules saved. The shop sees the change at its next page load.");
+  return (
+    <Card id="td-modules" title="Modules" icon="box">
+      <p className="sa-muted" style={{ fontSize: 13, margin: "0 0 12px" }}>
+        Every shop has the dashboard, customers, payments, gold rate, reports, marketing, staff, branches, support and settings. Choose what else this shop uses.
+      </p>
+      <div className="sa-seg" role="radiogroup" aria-label="Quick choice" style={{ marginBottom: 12 }}>
+        {MODULE_PRESETS.map((p) => (
+          <button key={p.label} role="radio" aria-selected={sameMods(mods, p.mods)} aria-checked={sameMods(mods, p.mods)} onClick={() => { setMods(p.mods); setAsking(false); }}>{p.label}</button>
+        ))}
+      </div>
+      <div className="sa-mods">
+        {SHOP_MODULES.map((m) => (
+          <label key={m.k} className={`sa-mod${mods.includes(m.k) ? " on" : ""}`}>
+            <input type="checkbox" checked={mods.includes(m.k)} onChange={() => { toggle(m.k); setAsking(false); }} />
+            <div><b>{m.label}</b><span>{m.text}</span></div>
+          </label>
+        ))}
+      </div>
+      {!mods.length && <div className="sa-alert bad" role="alert" style={{ marginTop: 12 }}><Icon name="alert" />A shop needs at least one module.</div>}
+      {asking ? (
+        <div className="sa-alert info" role="alertdialog" style={{ marginTop: 12 }}>
+          <Icon name="alert" />
+          <div style={{ display: "grid", gap: 10, flex: 1 }}>
+            <b>Switch off {turnedOff.map((m) => m.label).join(" and ")} for {tenant.name}?</b>
+            <span style={{ fontSize: 13 }}>The owner and staff will no longer see or open it. Nothing is deleted - switch it back on any time and everything returns.</span>
+            <div className="sa-row">
+              <button className="sa-btn sm" disabled={busy} onClick={save}>{busy ? "Saving…" : "Yes, save"}</button>
+              <button className="sa-btn ghost sm" onClick={() => setAsking(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="sa-row" style={{ justifyContent: "flex-end", marginTop: 12, gap: 8 }}>
+          {dirty && <button className="sa-btn ghost sm" onClick={() => setMods(current)}>Undo</button>}
+          <button className="sa-btn" disabled={busy || !dirty || !mods.length} onClick={() => (turnedOff.length ? setAsking(true) : save())}>Save modules</button>
+        </div>
+      )}
+    </Card>
   );
 }
 

@@ -7,6 +7,8 @@ import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { toast } from "@/_shared/toast";
 import { reportService } from "@/modules/reports/reportService";
 import { customerService } from "@/modules/customers/customerService";
+import { billingService } from "@/modules/billing/billingService";
+import { useAuth } from "@/_shared/AuthContext";
 
 const PERIODS = ["Today", "This Week", "This Month", "This Year", "Custom"];
 
@@ -240,7 +242,13 @@ export default function ReportsAnalytics() {
   usePressFeedback(scope);
 
   const [mode, setMode] = useState("reports"); // reports | analytics
-  const [domain, setDomain] = useState("business"); // business | scheme
+  const [domainState, setDomain] = useState("business"); // business | scheme
+  // A shop without Schemes (Super Admin's shop modules) has no scheme money to
+  // report: "Business" and "Scheme" here are both read off scheme payments and
+  // enrollments. It gets its real business instead - product sales.
+  const { hasModule } = useAuth();
+  const salesOnly = !hasModule("schemes");
+  const domain = salesOnly ? "sales" : domainState;
   const [period, setPeriod] = useState("This Month");
   const [dateFrom, setDateFrom] = useState("2026-08-01");
   const [dateTo, setDateTo] = useState("2026-08-31");
@@ -254,6 +262,9 @@ export default function ReportsAnalytics() {
   const [enrollment, setEnrollment] = useState(null);
   const [schemes, setSchemes] = useState([]);
   const [birthdays, setBirthdays] = useState(null); // null=not loaded, []=none
+  const [sales, setSales] = useState(null);
+  const [salesCats, setSalesCats] = useState([]);
+  const [topBuyers, setTopBuyers] = useState([]);
 
   const opts = { period, dateFrom, dateTo };
 
@@ -261,7 +272,15 @@ export default function ReportsAnalytics() {
     setLoading(true);
     setError("");
     try {
-      if (domain === "business") {
+      if (domain === "sales") {
+        const [st, cats, tb, gr] = await Promise.all([
+          reportService.getSalesTrend(opts),
+          reportService.getSalesByCategory(opts),
+          reportService.getTopCustomersBySales(opts, 10),
+          reportService.getGoldRateTrend(opts).catch(() => null),
+        ]);
+        setSales(st); setSalesCats(cats); setTopBuyers(tb); setGoldRate(gr);
+      } else if (domain === "business") {
         const [p, tc, gr] = await Promise.all([
           reportService.getPaymentSummary(opts),
           reportService.getTopCustomers(opts, 10),
@@ -287,7 +306,7 @@ export default function ReportsAnalytics() {
 
   // Upcoming birthdays — real customer DOB only, computed once and cached.
   useEffect(() => {
-    if (mode !== "analytics" || domain !== "business" || birthdays !== null) return;
+    if (mode !== "analytics" || domain === "scheme" || birthdays !== null) return;
     let cancel = false;
     (async () => {
       try {
@@ -307,7 +326,9 @@ export default function ReportsAnalytics() {
   async function handleExport() {
     setExporting(true);
     try {
-      if (mode === "analytics") await reportService.exportAnalyticsSummary("excel");
+      // Sales shops export their sales register (the scheme exports would be refused).
+      if (domain === "sales") await billingService.exportSalesXlsx();
+      else if (mode === "analytics") await reportService.exportAnalyticsSummary("excel");
       else await reportService.exportReportsSummary(opts, "excel", 10);
       toast("Export downloaded");
     } catch (err) {
@@ -317,7 +338,7 @@ export default function ReportsAnalytics() {
     }
   }
 
-  const empty = domain === "business" ? !payment : !enrollment;
+  const empty = domain === "sales" ? !sales : domain === "business" ? !payment : !enrollment;
 
   return (
     <div ref={scope} className="mx-auto max-w-[1200px]">
@@ -327,7 +348,9 @@ export default function ReportsAnalytics() {
           <h2 className="text-2xl font-extrabold tracking-tight">Reports &amp; Analytics</h2>
           <p className="mt-1 max-w-[62ch] text-sm text-muted">
             {mode === "reports"
-              ? "Factual records for the selected period — revenue, collections, enrollment and scheme data."
+              ? (salesOnly
+                ? "Factual records for the selected period — sales, bills, gold sold and your best customers."
+                : "Factual records for the selected period — revenue, collections, enrollment and scheme data.")
               : "Interpretation of the same data — trends, strengths, risks and where to focus."}
           </p>
         </div>
@@ -342,17 +365,18 @@ export default function ReportsAnalytics() {
       </div>
 
       {/* Domain tabs */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      {!salesOnly && <div className="mb-4 flex flex-wrap items-center gap-2">
         {[["business", "Business"], ["scheme", "Scheme"]].map(([k, lbl]) => (
           <button key={k} onClick={() => setDomain(k)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all ${domain === k ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{lbl}</button>
         ))}
-      </div>
+      </div>}
 
       {/* Period selector */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {PERIODS.map((p) => (
           <button key={p} onClick={() => setPeriod(p)} className={`rounded-full border px-3.5 py-1.5 text-xs font-bold transition-all active:scale-95 ${period === p ? "border-ink bg-ink text-white" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{p}</button>
         ))}
+        {sales?.rangeLabel && domain === "sales" && <span className="ml-1 text-xs font-semibold text-muted">Range: <span className="font-bold text-ink">{sales.rangeLabel}</span></span>}
         {payment?.range?.label && domain === "business" && <span className="ml-1 text-xs font-semibold text-muted">Range: <span className="font-bold text-ink">{payment.range.label}</span></span>}
       </div>
       {period === "Custom" && (
@@ -364,6 +388,70 @@ export default function ReportsAnalytics() {
       )}
 
       <StateBlock loading={loading} error={error} empty={!loading && !error && empty} onRetry={load}>
+        {/* ── SALES (shops without Schemes) ───────────────────────── */}
+        {domain === "sales" && sales && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-motion="stat">
+              <Kpi label="Total Sales" value={inr(sales.totalSales)} sub={ROUNDING_NOTE} />
+              <Kpi label="Bills" value={sales.billCount} tone="info" sub="Completed sales" />
+              <Kpi label="Gold Sold" value={`${sales.goldSold.toFixed(3)} g`} sub="Net weight" />
+              {sales.profit != null
+                ? <Kpi label="Profit" value={inr(sales.profit)} tone={sales.profit < 0 ? "danger" : undefined} />
+                : <Kpi label="Avg Bill Value" value={sales.billCount ? inr(sales.totalSales / sales.billCount) : "—"} />}
+            </div>
+
+            {mode === "reports" ? (
+              <>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <Card data-motion="reveal">
+                    <CardHeader><div><CardTitle>Sales Trend</CardTitle><CardDescription>Sales (₹) across the period</CardDescription></div><Badge tone="neutral">{period}</Badge></CardHeader>
+                    <CardContent><LineChart points={sales.points.map((p) => ({ label: p.label, value: p.amount }))} tipFormat={inr} axisFormat={inrShort} unit="Sales (₹)" label="Sales trend" /></CardContent>
+                  </Card>
+                  <Card data-motion="reveal">
+                    <CardHeader><div><CardTitle>Gold Rate Trend (24K)</CardTitle><CardDescription>{goldRate?.latestChangePercent != null ? `₹ per gram · latest day-over-day ${pct(goldRate.latestChangePercent)}` : "₹ per gram over the period"}</CardDescription></div></CardHeader>
+                    <CardContent><LineChart points={(goldRate?.trend || []).map((p) => ({ label: p.date, value: p.rate }))} color="#a68631" tipFormat={inr} axisFormat={inrShort} unit="Rate (₹/g)" label="Gold rate trend" /></CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <Card data-motion="reveal" className="overflow-hidden">
+                    <CardHeader><div><CardTitle>Sales by Category</CardTitle><CardDescription>Share of sales (₹) in the period</CardDescription></div></CardHeader>
+                    <CardContent className="overflow-x-auto px-0 pb-0"><CategoryTable rows={salesCats} /></CardContent>
+                  </Card>
+                  <Card data-motion="reveal" className="overflow-hidden">
+                    <CardHeader><div><CardTitle>Top Customers</CardTitle><CardDescription>Ranked by what they bought in the period</CardDescription></div></CardHeader>
+                    <CardContent className="overflow-x-auto px-0 pb-0"><TopBuyersTable rows={topBuyers} /></CardContent>
+                  </Card>
+                </div>
+              </>
+            ) : (
+              <>
+                <Card data-motion="reveal">
+                  <CardHeader><div><CardTitle>Gold Sold Trend</CardTitle><CardDescription>Net gold weight (g) sold across the period</CardDescription></div></CardHeader>
+                  <CardContent><LineChart points={sales.points.map((p) => ({ label: p.label, value: p.gold }))} color="#a68631" tipFormat={(v) => `${Number(v).toFixed(3)} g`} axisFormat={(v) => `${Number(v).toFixed(0)} g`} unit="Gold sold (g)" label="Gold sold trend" /></CardContent>
+                </Card>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3" data-motion="reveal">
+                  <MetricCard icon="ticket" title="Avg Bill Value" tone="neutral"
+                    value={sales.billCount ? inr(sales.totalSales / sales.billCount) : "—"} note={`Across ${sales.billCount} bill(s)`} />
+                  <MetricCard icon="growth" title="Best Category" tone="neutral"
+                    value={salesCats[0]?.category || "—"} note={salesCats[0] ? `${salesCats[0].percentage.toFixed(1)}% of sales · ${inr(salesCats[0].totalSales)}` : "No sales in range"} />
+                  <MetricCard icon="growth" title="Best Customer" tone="neutral"
+                    value={topBuyers[0] ? topBuyers[0].customerName || "Walk-in" : "—"} note={topBuyers[0] ? `${inr(topBuyers[0].totalSpent)} · ${topBuyers[0].billCount} bill(s)` : "No sales in range"} />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <BirthdayCard data={birthdays} />
+                  <Card data-motion="reveal" className="overflow-hidden">
+                    <CardHeader><div><CardTitle>Top Customers</CardTitle><CardDescription>Strongest relationships this period</CardDescription></div></CardHeader>
+                    <CardContent className="overflow-x-auto px-0 pb-0"><TopBuyersTable rows={topBuyers.slice(0, 5)} /></CardContent>
+                  </Card>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── BUSINESS ─────────────────────────────────────────────── */}
         {domain === "business" && payment && (
           <div className="space-y-4">
@@ -673,6 +761,44 @@ function TopCustomersTable({ rows, compact }) {
             <td className="num whitespace-nowrap py-3 pr-6 text-right font-bold">{inr(c.totalInvested)}</td>
             {!compact && <td className="num whitespace-nowrap py-3 pr-6 text-right">{Number(c.goldWeightGrams || 0).toFixed(2)}</td>}
             <td className="py-3 pl-2 pr-6"><Badge tone={c.status === "ACTIVE" ? "info" : c.status === "COMPLETED" ? "success" : "neutral"} dot>{c.status || "—"}</Badge></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function CategoryTable({ rows }) {
+  if (!rows?.length) return <div className="px-6 py-10 text-center text-sm font-semibold text-muted">No category sales in this period</div>;
+  return (
+    <table className="w-full min-w-[480px] border-collapse text-sm">
+      <thead><tr className="border-y border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted"><th className="px-6 py-3">Category</th><th className="py-3 pr-4 text-right">Bills</th><th className="py-3 pr-4 text-right">Sales</th><th className="py-3 pr-6 text-right">Share</th></tr></thead>
+      <tbody>
+        {rows.map((c) => (
+          <tr key={c.category} className="border-b border-line-soft last:border-0 hover:bg-canvas/60">
+            <td className="truncate px-6 py-3 font-bold">{c.category || "—"}</td>
+            <td className="num py-3 pr-4 text-right">{c.billCount}</td>
+            <td className="num whitespace-nowrap py-3 pr-4 text-right font-bold">{inr(c.totalSales)}</td>
+            <td className="num py-3 pr-6 text-right">{c.percentage.toFixed(1)}%</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function TopBuyersTable({ rows }) {
+  if (!rows?.length) return <div className="px-6 py-10 text-center text-sm font-semibold text-muted">No customer purchases in this period</div>;
+  return (
+    <table className="w-full min-w-[440px] border-collapse text-sm">
+      <thead><tr className="border-y border-line bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted"><th className="w-[64px] px-6 py-3">#</th><th className="py-3 pr-4">Customer</th><th className="py-3 pr-4 text-right">Bills</th><th className="py-3 pr-6 text-right">Bought</th></tr></thead>
+      <tbody>
+        {rows.map((c, i) => (
+          <tr key={i} className="border-b border-line-soft last:border-0 hover:bg-canvas/60">
+            <td className="px-6 py-3 font-bold">#{i + 1}</td>
+            <td className="truncate py-3 pr-4 font-bold">{c.customerName || "Walk-in"}</td>
+            <td className="num py-3 pr-4 text-right">{c.billCount}</td>
+            <td className="num whitespace-nowrap py-3 pr-6 text-right font-bold">{inr(c.totalSpent)}</td>
           </tr>
         ))}
       </tbody>

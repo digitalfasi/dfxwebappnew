@@ -70,6 +70,29 @@ export const PAGE_MODULE = {
   settings: ADMIN_ONLY,
 };
 
+/** Pages that belong to one SHOP module. The Super Admin switches Schemes,
+ *  Catalogue or Inventory & Billing off per shop (backend
+ *  constants.ALL_SHOP_MODULES); the shop's pages for it then do not exist for
+ *  anyone in that shop, owner included. The server refuses them too. */
+export const PAGE_SHOP_MODULE = {
+  schemes: "schemes",
+  "scheme-management": "schemes",
+  catalogue: "catalogue",
+  "master-inventory": "billing",
+  inventory: "billing",
+  "supplier-directory": "billing",
+  vendors: "billing",
+  "new-sale": "billing",
+  "sales-history": "billing",
+  "store-defaults": "billing",
+};
+
+/** Does the shop have this module? Unknown (null) = yes: every shop had
+ *  every module before the switches existed. */
+export function shopHas(shopModules, module) {
+  return !Array.isArray(shopModules) || shopModules.includes(module);
+}
+
 const PRIVILEGED = new Set(["Admin", "SuperAdmin"]);
 
 /** May this user change business definitions or approve? Staff are view-only
@@ -95,7 +118,9 @@ export function expandPermissions(permissions) {
  * Admin and SuperAdmin may open everything — their access is never gated by a
  * module key, which is why this returns true before looking at permissions.
  */
-export function canOpen(pageId, role, permissions) {
+export function canOpen(pageId, role, permissions, shopModules = null) {
+  const shopModule = PAGE_SHOP_MODULE[pageId];
+  if (shopModule && !shopHas(shopModules, shopModule)) return false;
   if (PRIVILEGED.has(role)) return true;
   const needed = PAGE_MODULE[pageId];
   // An unmapped page is not silently opened. A new page added without a mapping
@@ -108,8 +133,8 @@ export function canOpen(pageId, role, permissions) {
 /** The page a user should land on. Dashboard when they may open it, otherwise
  *  the first page they can — landing a staff member on a page that immediately
  *  refuses him is how this defect looked from the counter. */
-export function landingPage(role, permissions, order) {
-  if (canOpen("dashboard", role, permissions)) return "dashboard";
+export function landingPage(role, permissions, order, shopModules = null) {
+  if (canOpen("dashboard", role, permissions, shopModules)) return "dashboard";
   const ids = order && order.length ? order : Object.keys(PAGE_MODULE);
-  return ids.find((id) => canOpen(id, role, permissions)) || null;
+  return ids.find((id) => canOpen(id, role, permissions, shopModules)) || null;
 }
