@@ -7,7 +7,7 @@ import { usePageMotion, usePressFeedback } from "@/_shared/usePageMotion";
 import { formatINR, istToday, BUILD_SHA } from "@/_shared/utils";
 import { apiClient } from "@/_shared/apiClient";
 import { useAuth } from "@/_shared/AuthContext";
-import { PAGE_SHOP_MODULE, shopHas } from "@/_shared/moduleAccess";
+import { PAGE_SHOP_MODULE, canOpen, shopHas } from "@/_shared/moduleAccess";
 import { toast } from "@/_shared/toast";
 import { reportService } from "@/modules/reports/reportService";
 import { billingService } from "@/modules/billing/billingService";
@@ -92,6 +92,15 @@ const SCHEME_SHOP_ACTIONS = [
   { title: "Add Scheme", hint: "New saving plan", page: "schemes", intent: "add-scheme", admin: true, icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
   { title: "Add Catalogue", hint: "New design", page: "catalogue", intent: "add-product", admin: true, module: "catalogue", icon: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM17.5 14v7M14 17.5h7" },
   { title: "Complete Scheme", hint: "Close a plan", page: "scheme-management", intent: { status: "Active", period: "all" }, admin: true, icon: "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3" },
+];
+// The same four-tile set for a shop that runs stock and billing without
+// schemes. Add Inventory opens Add Purchase (Inventory turns it into a draft
+// for staff); New Sale lands with the cursor in the code box.
+const BILLING_SHOP_ACTIONS = [
+  SCHEME_SHOP_ACTIONS[0],
+  { title: "Add Inventory", hint: "New purchase", page: "inventory", intent: "add-purchase", icon: "M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8" },
+  { title: "New Sale", hint: "Bill a piece", page: "new-sale", intent: "find-code", icon: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zM3 6h18M16 10a4 4 0 0 1-8 0" },
+  { title: "Sales History", hint: "Past bills", page: "sales-history", icon: "M3 3v5h5M3.05 13A9 9 0 1 0 6 5.3L3 8M12 7v5l4 2" },
 ];
 
 const PERIOD_TABS = [
@@ -564,7 +573,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
   // even the word - so the dashboard does not hand it to them either. The
   // backend now returns null for them; hiding the card as well means they see
   // a screen that makes sense rather than a KPI permanently reading "—".
-  const { backendRole, shopModules } = useAuth();
+  const { backendRole, shopModules, permissions } = useAuth();
   const seesProfit = backendRole === "Admin" || backendRole === "SuperAdmin";
   // The Super Admin decides per shop whether it runs gold schemes, stock and
   // billing, or both. A shop is never shown the business it does not run:
@@ -576,8 +585,11 @@ export default function Dashboard({ onNavigate, search = "" }) {
     .map((m) => ({ ...m, actions: m.actions.filter((a) => shopHas(shopModules, a.module || PAGE_SHOP_MODULE[a.page])) }))
     .filter((m) => m.actions.length > 0);
   const nav = (page, intent) => onNavigate && onNavigate(page, intent);
-  const schemeShopActions = hasSchemes && !hasBilling
-    ? SCHEME_SHOP_ACTIONS.filter((a) => (seesProfit || !a.admin) && (!a.module || shopHas(shopModules, a.module)))
+  // A one-business shop gets four direct tiles instead of the module groups;
+  // each tile shows only if this login may open its page.
+  const soloSet = hasSchemes && !hasBilling ? SCHEME_SHOP_ACTIONS : hasBilling && !hasSchemes ? BILLING_SHOP_ACTIONS : null;
+  const schemeShopActions = soloSet
+    ? soloSet.filter((a) => (seesProfit || !a.admin) && canOpen(a.page, backendRole, permissions, shopModules))
     : null;
 
   const [loading, setLoading] = useState(true);

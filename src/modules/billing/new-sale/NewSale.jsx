@@ -536,6 +536,22 @@ export default function NewSale({ intent, clearIntent } = {}) {
     clearIntent?.();
     onScanned(v);
   }, [intent]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Dashboard "New Sale" quick action: put the cursor in the code box.
+  useEffect(() => {
+    if (intent !== "find-code") return;
+    // The page redraws the box while it loads, which drops the focus, so for
+    // ~3 s put it back whenever nothing else has it (never steals from a field
+    // the user picked). Cleared at the end: clearing first re-runs this
+    // effect, whose cleanup would stop the timer.
+    let tries = 0;
+    const t = setInterval(() => {
+      const el = document.getElementById("ns-find-code");
+      const free = !document.activeElement || document.activeElement === document.body;
+      if (el && free) el.focus();
+      if (++tries > 20) { clearInterval(t); clearIntent?.(); }
+    }, 150);
+    return () => clearInterval(t);
+  }, [intent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-quote authoritatively when any pricing input changes (debounced). The
   // backend recomputes; an over-ceiling discount is rejected server-side and we
