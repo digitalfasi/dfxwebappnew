@@ -83,6 +83,17 @@ const MOBILE_MODULES = [
   ] },
 ];
 
+// A shop that runs schemes without billing gets four direct actions instead of
+// the module groups. Each one opens the form it names; Complete Scheme opens
+// Enrollment Management on the running plans, where Manage closes one (only an
+// Active enrolment can be closed - Completed ones are already finished).
+const SCHEME_SHOP_ACTIONS = [
+  { title: "Add Customer", hint: "Register a new customer", page: "customers", intent: "add-customer", admin: true, icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6" },
+  { title: "Add Scheme", hint: "Create a new saving plan", page: "schemes", intent: "add-scheme", admin: true, icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
+  { title: "Add Catalogue", hint: "Put a new design in the catalogue", page: "catalogue", intent: "add-product", admin: true, module: "catalogue", icon: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM17.5 14v7M14 17.5h7" },
+  { title: "Complete Scheme", hint: "Close a customer's plan", page: "scheme-management", intent: { status: "Active", period: "all" }, admin: true, icon: "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3" },
+];
+
 const PERIOD_TABS = [
   { value: "today", label: "Today" },
   { value: "this_week", label: "This Week" },
@@ -565,6 +576,9 @@ export default function Dashboard({ onNavigate, search = "" }) {
     .map((m) => ({ ...m, actions: m.actions.filter((a) => shopHas(shopModules, a.module || PAGE_SHOP_MODULE[a.page])) }))
     .filter((m) => m.actions.length > 0);
   const nav = (page, intent) => onNavigate && onNavigate(page, intent);
+  const schemeShopActions = hasSchemes && !hasBilling
+    ? SCHEME_SHOP_ACTIONS.filter((a) => (seesProfit || !a.admin) && (!a.module || shopHas(shopModules, a.module)))
+    : null;
 
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);    // Generate Report popup
@@ -861,6 +875,29 @@ export default function Dashboard({ onNavigate, search = "" }) {
       <div>
         <h2 className="mb-3 text-2xl font-extrabold tracking-tight lg:hidden">Dashboard</h2>
 
+        {schemeShopActions ? (schemeShopActions.length > 0 && (
+        <Card data-motion="reveal" className="mb-4 p-4">
+          <CardTitle className="mb-3 text-sm font-extrabold">Quick Actions</CardTitle>
+          <div className={`grid grid-cols-2 gap-2.5 lg:gap-3 ${schemeShopActions.length >= 4 ? "lg:grid-cols-4" : schemeShopActions.length === 3 ? "lg:grid-cols-3" : ""}`}>
+            {schemeShopActions.map((a) => (
+              <button key={a.title} type="button" onClick={() => nav(a.page, a.intent)}
+                className="group relative flex min-h-[120px] flex-col justify-between gap-4 overflow-hidden rounded-2xl border border-line bg-white p-4 text-left transition-all duration-200 [&:hover]:-translate-y-0.5 [&:hover]:border-accent/50 [&:hover]:shadow-[0_12px_28px_-16px_rgba(159,29,53,0.45)] active:translate-y-0 active:border-accent/50 active:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 motion-reduce:transition-none motion-reduce:[&:hover]:translate-y-0">
+                <span aria-hidden="true" className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-accent-soft/70 transition-transform duration-300 group-[:hover]:scale-125" />
+                <span className="relative grid h-11 w-11 place-items-center rounded-xl bg-accent text-white shadow-[0_6px_14px_-6px_rgba(159,29,53,0.6)]">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={a.icon} /></svg>
+                </span>
+                <span className="relative flex items-end justify-between gap-2">
+                  <span className="min-w-0">
+                    <span className="block text-[15px] font-extrabold leading-tight text-ink transition-colors group-[:hover]:text-accent-strong">{a.title}</span>
+                    <span className="mt-1 block text-xs font-medium leading-snug text-muted">{a.hint}</span>
+                  </span>
+                  <span className="shrink-0 text-lg text-accent-strong/70 transition-transform group-[:hover]:translate-x-0.5" aria-hidden="true">→</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </Card>
+        )) : (
         <Card data-motion="reveal" className="mb-4 p-4">
           <CardTitle className="mb-3 text-sm font-extrabold">Quick Actions</CardTitle>
           {(() => {
@@ -906,6 +943,7 @@ export default function Dashboard({ onNavigate, search = "" }) {
             );
           })()}
         </Card>
+        )}
       </div>
 
       <div className={`mb-4 grid grid-cols-1 gap-4 ${solo ? "" : "lg:grid-cols-2"}`}>

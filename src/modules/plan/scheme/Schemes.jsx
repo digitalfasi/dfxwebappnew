@@ -59,7 +59,7 @@ const bonusTextToPct = (text) => {
 // Real schemes are loaded from the DFX backend via schemeService.
 // No mock/demo schemes remain as an active source or fallback.
 
-export default function Schemes() {
+export default function Schemes({ intent, clearIntent } = {}) {
   const scope = useRef(null);
   usePressFeedback(scope);
   // Staff see the schemes; only an Admin creates, edits or retires one.
@@ -106,6 +106,14 @@ export default function Schemes() {
   useEffect(() => {
     loadSchemes();
   }, [loadSchemes]);
+
+  // Dashboard "Add Scheme" quick action: open the create form straight away.
+  useEffect(() => {
+    if (intent !== "add-scheme") return;
+    if (canEdit) openCreate();
+    clearIntent?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent]);
 
   function openCreate() {
     setEditingId(null);

@@ -21,7 +21,7 @@ const OFFER_QUICK = ["15% Off on Making Value", "Zero Making Charges", "BIG SALE
 const EMPTY_FORM = { name: "", category: "", subCategory: "", price: "", sku: "", purity: "", weight: "", offerDiscount: "", offerLabel: "", tags: [], customTag: "", description: "", image: null, imageFile: null, isActive: true };
 const TAG_QUICK = ["Bestseller", "New Arrival", "Trending", "Exclusive", "Festive", "Ready to Ship"];
 
-export default function CatalogueStudio() {
+export default function CatalogueStudio({ intent, clearIntent } = {}) {
   const scope = useRef(null);
   // Staff browse the catalogue; adding and editing products is the Admin's.
   const canEdit = isShopAdmin(useAuth().backendRole);
@@ -99,6 +99,14 @@ export default function CatalogueStudio() {
     setErrors({});
     setView("create");
   }
+
+  // Dashboard "Add Catalogue" quick action: open a new product straight away.
+  useEffect(() => {
+    if (intent !== "add-product") return;
+    if (canEdit) startCreate();
+    clearIntent?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent]);
 
   // Existing Product path: select an existing catalogue product and edit it via
   // the real PUT /catalogue/products/{id}. No inventory linking is faked here.
