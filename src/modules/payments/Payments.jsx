@@ -503,7 +503,7 @@ export default function Payments({ intent, clearIntent }) {
                   <Card className="p-4 border-accent-line bg-accent-soft/40 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent">Total Collected</div>
                     <div className="num mt-1 text-2xl font-extrabold text-accent">₹{(bizKpi?.total ?? 0).toLocaleString("en-IN")}</div>
-                    <div className="mt-1 text-xs font-semibold text-accent/70">{note} · money in (excl. scheme &amp; refunds)</div>
+                    <div className="mt-1 text-xs font-semibold text-accent/70">{note} · money in ({hasSchemes ? "excl. scheme & refunds" : "excl. refunds"})</div>
                   </Card>
                 </>
               );

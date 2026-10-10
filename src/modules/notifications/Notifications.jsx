@@ -11,6 +11,7 @@ import {
   channelLabel, targetLabel, statusLabel,
 } from "@/modules/notifications/notificationService";
 import { schemeService } from "@/modules/plan/scheme/schemeService";
+import { useAuth } from "@/_shared/AuthContext";
 import InboxRow from "@/modules/inbox/InboxRow";
 import { inboxService, INBOX_CHANGED } from "@/modules/inbox/inboxService";
 import { badgeText } from "@/modules/inbox/inboxFormat";
@@ -95,6 +96,9 @@ export default function Notifications({ onNavigate }) {
   const scope = useRef(null);
   usePageMotion(scope);
   usePressFeedback(scope);
+  // A shop without schemes has no scheme audience to address.
+  const hasSchemes = useAuth().hasModule("schemes");
+  const targets = hasSchemes ? OFFERED_TARGETS : OFFERED_TARGETS.filter((t) => t.value !== "SCHEME");
 
   const [activeTab, setActiveTab] = useState("All");
   const [list, setList] = useState([]);
@@ -124,8 +128,9 @@ export default function Notifications({ onNavigate }) {
   // Only needed to address a scheme audience; a failure here must not stop the
   // rest of the screen working, so it is silent and leaves the list empty.
   useEffect(() => {
+    if (!hasSchemes) return;
     schemeService.getSchemes().then(setSchemes).catch(() => setSchemes([]));
-  }, []);
+  }, [hasSchemes]);
 
   const filtered = useMemo(() => {
     const want = TABS.find((t) => t.label === activeTab)?.status;
@@ -327,7 +332,7 @@ export default function Notifications({ onNavigate }) {
 
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold">Audience</span>
-                <Select value={form.targetType} onValueChange={v => setForm({ ...form, targetType: v, schemeId: "" })} options={OFFERED_TARGETS} />
+                <Select value={form.targetType} onValueChange={v => setForm({ ...form, targetType: v, schemeId: "" })} options={targets} />
               </label>
 
               {form.targetType === "SCHEME" && (

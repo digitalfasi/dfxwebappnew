@@ -366,7 +366,9 @@ export default function ReportsAnalytics() {
 
       {/* Domain tabs */}
       {!salesOnly && <div className="mb-4 flex flex-wrap items-center gap-2">
-        {[["business", "Business"], ["scheme", "Scheme"]].map(([k, lbl]) => (
+        {/* A shop without billing sells no gold here, so its scheme money is
+            not called "Business". */}
+        {[["business", hasModule("billing") ? "Business" : "Collections"], ["scheme", "Scheme"]].map(([k, lbl]) => (
           <button key={k} onClick={() => setDomain(k)} className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all ${domain === k ? "border-accent bg-accent-soft text-accent-strong" : "border-line bg-surface text-muted hover:border-accent-line hover:text-accent"}`}>{lbl}</button>
         ))}
       </div>}

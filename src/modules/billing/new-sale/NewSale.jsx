@@ -179,7 +179,10 @@ export default function NewSale({ intent, clearIntent } = {}) {
   const [publishedRate, setPublishedRate] = useState(null);
   // Staff may raise a bill but not approve a loss on it - the backend refuses
   // the flag from a Staff token, so the control is not offered to one either.
-  const { backendRole, user: authUser, tenantId } = useAuth();
+  const { backendRole, user: authUser, tenantId, hasModule } = useAuth();
+  // A shop without schemes has no scheme credit to redeem: no lookup (the
+  // server refuses it) and no redeem box.
+  const hasSchemes = hasModule("schemes");
   const canApproveBelowCost = backendRole === "Admin" || backendRole === "SuperAdmin";
 
   // Customer
@@ -634,7 +637,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
   // Load the selected customer's redeemable schemes (real backend balances).
   const loadSchemes = useCallback(async (customerId) => {
     setSchemeOptions([]); setSchemeAmounts({}); setSchemeLoadFailures(0);
-    if (!customerId) return;
+    if (!customerId || !hasSchemes) return;
     setSchemeLoading(true);
     try {
       const enrolls = await enrollmentService.getEnrollments(customerId);
@@ -657,7 +660,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
     } finally {
       setSchemeLoading(false);
     }
-  }, []);
+  }, [hasSchemes]);
 
   const selectCustomer = (c) => { setSelectedCustomer(c); setCustResults([]); setCustQuery(""); loadSchemes(c.id); };
   const clearCustomer = () => { setSelectedCustomer(null); setSchemeOptions([]); setSchemeAmounts({}); };
@@ -1422,7 +1425,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                   </label>
                 </div>
               )}
-              <p className="text-[11px] text-muted">Scheme redemption does not apply to bullion — a scheme buys jewellery gold at its contracted rate.</p>
+              {hasSchemes && <p className="text-[11px] text-muted">Scheme redemption does not apply to bullion — a scheme buys jewellery gold at its contracted rate.</p>}
             </div>
 
           </div>
@@ -1436,7 +1439,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                 "Find the piece by its HUID or Item Code, or a bar by its serial number.",
                 "Choose Online (live rate) or Offline (editable rate).",
                 "Adjust rate, profit % and charges — or type the customer's price.",
-                "Identify the buyer and redeem any schemes they hold.",
+                hasSchemes ? "Identify the buyer and redeem any schemes they hold." : "Identify the buyer.",
                 "State how they are paying, then create the bill.",
               ].map((step, i) => (
                 <li key={step} className="flex items-start gap-3 text-xs leading-5 text-ink-soft">
@@ -1635,7 +1638,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       <Button size="sm" variant="outline" onClick={clearCustomer}>Change</Button>
                     </div>
                     {/* Redeemable schemes */}
-                    <div>
+                    {hasSchemes && <div>
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <span className="text-xs font-bold text-muted">Active schemes</span>
                         {product && <span className="text-[10px] font-semibold text-muted">Covers the pure gold value, up to {money(goldValue)} — making &amp; GST waived on it</span>}
@@ -1694,7 +1697,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
                           Total scheme redemption {money(redeemTotal)} exceeds the item's gold value {money(goldValue)}. A scheme only pays for gold — reduce it to {money(goldValue)} or less.
                         </div>
                       )}
-                    </div>
+                    </div>}
                   </>
                 ) : (
                   <div className="space-y-2">
@@ -1745,8 +1748,8 @@ export default function NewSale({ intent, clearIntent } = {}) {
               <p className="flex items-start gap-1.5 text-[11px] leading-snug text-muted">
                 <svg viewBox="0 0 24 24" className="mt-px h-3.5 w-3.5 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
                 {customerMode === "existing"
-                  ? "Pick a customer to see their redeemable schemes, or add a walk-in buyer from the list."
-                  : "Walk-in buyers need a name and a 10-digit phone. Schemes apply to customers on file only."}
+                  ? (hasSchemes ? "Pick a customer to see their redeemable schemes, or add a walk-in buyer from the list." : "Pick a customer on file, or add a walk-in buyer from the list.")
+                  : (hasSchemes ? "Walk-in buyers need a name and a 10-digit phone. Schemes apply to customers on file only." : "Walk-in buyers need a name and a 10-digit phone.")}
               </p>
             </Card>
 
