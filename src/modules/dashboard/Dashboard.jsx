@@ -88,10 +88,10 @@ const MOBILE_MODULES = [
 // Enrollment Management on the running plans, where Manage closes one (only an
 // Active enrolment can be closed - Completed ones are already finished).
 const SCHEME_SHOP_ACTIONS = [
-  { title: "Add Customer", hint: "Register a new customer", page: "customers", intent: "add-customer", admin: true, icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6" },
-  { title: "Add Scheme", hint: "Create a new saving plan", page: "schemes", intent: "add-scheme", admin: true, icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
-  { title: "Add Catalogue", hint: "Put a new design in the catalogue", page: "catalogue", intent: "add-product", admin: true, module: "catalogue", icon: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM17.5 14v7M14 17.5h7" },
-  { title: "Complete Scheme", hint: "Close a customer's plan", page: "scheme-management", intent: { status: "Active", period: "all" }, admin: true, icon: "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3" },
+  { title: "Add Customer", hint: "New customer", page: "customers", intent: "add-customer", admin: true, icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6" },
+  { title: "Add Scheme", hint: "New saving plan", page: "schemes", intent: "add-scheme", admin: true, icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
+  { title: "Add Catalogue", hint: "New design", page: "catalogue", intent: "add-product", admin: true, module: "catalogue", icon: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM17.5 14v7M14 17.5h7" },
+  { title: "Complete Scheme", hint: "Close a plan", page: "scheme-management", intent: { status: "Active", period: "all" }, admin: true, icon: "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3" },
 ];
 
 const PERIOD_TABS = [
@@ -878,20 +878,22 @@ export default function Dashboard({ onNavigate, search = "" }) {
         {schemeShopActions ? (schemeShopActions.length > 0 && (
         <Card data-motion="reveal" className="mb-4 p-4">
           <CardTitle className="mb-3 text-sm font-extrabold">Quick Actions</CardTitle>
-          <div className={`grid grid-cols-2 gap-2.5 lg:gap-3 ${schemeShopActions.length >= 4 ? "lg:grid-cols-4" : schemeShopActions.length === 3 ? "lg:grid-cols-3" : ""}`}>
+          {/* auto-rows-fr: every tile in the grid is the height of the tallest,
+              so the 2x2 phone grid and the 1x4 desktop row both line up. */}
+          <div className={`grid auto-rows-fr grid-cols-2 gap-2.5 sm:gap-3 ${schemeShopActions.length >= 4 ? "xl:grid-cols-4" : schemeShopActions.length === 3 ? "xl:grid-cols-3" : ""}`}>
             {schemeShopActions.map((a) => (
               <button key={a.title} type="button" onClick={() => nav(a.page, a.intent)}
-                className="group relative flex min-h-[120px] flex-col justify-between gap-4 overflow-hidden rounded-2xl border border-line bg-white p-4 text-left transition-all duration-200 [&:hover]:-translate-y-0.5 [&:hover]:border-accent/50 [&:hover]:shadow-[0_12px_28px_-16px_rgba(159,29,53,0.45)] active:translate-y-0 active:border-accent/50 active:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 motion-reduce:transition-none motion-reduce:[&:hover]:translate-y-0">
+                className="group relative flex h-full min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-white p-3 text-left transition-all duration-200 sm:gap-4 sm:p-4 [&:hover]:-translate-y-0.5 [&:hover]:border-accent/50 [&:hover]:shadow-[0_12px_28px_-16px_rgba(159,29,53,0.45)] active:translate-y-0 active:border-accent/50 active:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 motion-reduce:transition-none motion-reduce:[&:hover]:translate-y-0">
                 <span aria-hidden="true" className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-accent-soft/70 transition-transform duration-300 group-[:hover]:scale-125" />
-                <span className="relative grid h-11 w-11 place-items-center rounded-xl bg-accent text-white shadow-[0_6px_14px_-6px_rgba(159,29,53,0.6)]">
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={a.icon} /></svg>
-                </span>
-                <span className="relative flex items-end justify-between gap-2">
-                  <span className="min-w-0">
-                    <span className="block text-[15px] font-extrabold leading-tight text-ink transition-colors group-[:hover]:text-accent-strong">{a.title}</span>
-                    <span className="mt-1 block text-xs font-medium leading-snug text-muted">{a.hint}</span>
+                <span className="relative flex items-center justify-between">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-white shadow-[0_6px_14px_-6px_rgba(159,29,53,0.6)] sm:h-11 sm:w-11">
+                    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={a.icon} /></svg>
                   </span>
-                  <span className="shrink-0 text-lg text-accent-strong/70 transition-transform group-[:hover]:translate-x-0.5" aria-hidden="true">→</span>
+                  <span className="text-lg leading-none text-accent-strong/70 transition-transform group-[:hover]:translate-x-0.5" aria-hidden="true">→</span>
+                </span>
+                <span className="relative mt-auto block min-w-0">
+                  <span className="block text-[14px] font-extrabold leading-tight text-ink transition-colors group-[:hover]:text-accent-strong max-[359px]:min-h-[2.5em] sm:text-[15px]">{a.title}</span>
+                  <span className="mt-1 block text-[12px] font-medium leading-snug text-muted">{a.hint}</span>
                 </span>
               </button>
             ))}
