@@ -190,6 +190,14 @@ function MethodBadge({ method }) {
   return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${s.bg} ${s.border} ${s.text}`}><span className="text-[11px]">{s.icon}</span>{method}</span>;
 }
 
+function kpiValueSize(val) {
+  const len = String(val ?? "").trim().length;
+  if (len >= 14) return "text-xs min-[360px]:text-sm min-[390px]:text-base sm:text-2xl";
+  if (len >= 12) return "text-[13px] min-[360px]:text-sm min-[390px]:text-base sm:text-2xl";
+  if (len >= 10) return "text-base min-[360px]:text-lg min-[410px]:text-xl sm:text-2xl";
+  return "text-lg min-[360px]:text-xl sm:text-2xl";
+}
+
 export default function Payments({ intent, clearIntent }) {
   const scope = useRef(null);
   usePressFeedback(scope);
@@ -485,24 +493,24 @@ export default function Payments({ intent, clearIntent }) {
               const note = bizKpiLoading ? "Loading…" : kpiNote(bizFilters, bizKpi);
               return (
                 <>
-                  <Card className="p-4 kpi-corner">
+                  <Card className="min-w-0 p-3 sm:p-4 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Offline (Cash)</div>
-                    <div className="num mt-1 text-2xl font-extrabold">₹{(bizKpi?.offline ?? 0).toLocaleString("en-IN")}</div>
+                    <div className={`num mt-1 w-full min-w-0 max-w-full font-extrabold leading-tight tracking-tight [overflow-wrap:anywhere] ${kpiValueSize(`₹${(bizKpi?.offline ?? 0).toLocaleString("en-IN")}`)}`}>₹{(bizKpi?.offline ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-muted">{note} · CASH</div>
                   </Card>
-                  <Card className="p-4 kpi-corner">
+                  <Card className="min-w-0 p-3 sm:p-4 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Online</div>
-                    <div className="num mt-1 text-2xl font-extrabold text-emerald-700">₹{(bizKpi?.online ?? 0).toLocaleString("en-IN")}</div>
+                    <div className={`num mt-1 w-full min-w-0 max-w-full font-extrabold leading-tight tracking-tight [overflow-wrap:anywhere] text-emerald-700 ${kpiValueSize(`₹${(bizKpi?.online ?? 0).toLocaleString("en-IN")}`)}`}>₹{(bizKpi?.online ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-emerald-700/70">{note} · UPI + Card + Bank</div>
                   </Card>
-                  <Card className="p-4 border-danger-line bg-danger-soft/30 kpi-corner">
+                  <Card className="min-w-0 p-3 sm:p-4 border-danger-line bg-danger-soft/30 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-danger">Outstanding</div>
-                    <div className="num mt-1 text-2xl font-extrabold text-danger">₹{bizOutstandingTotal.toLocaleString("en-IN")}</div>
+                    <div className={`num mt-1 w-full min-w-0 max-w-full font-extrabold leading-tight tracking-tight [overflow-wrap:anywhere] text-danger ${kpiValueSize(`₹${bizOutstandingTotal.toLocaleString("en-IN")}`)}`}>₹{bizOutstandingTotal.toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-danger/70">Uncollected · all sales</div>
                   </Card>
-                  <Card className="p-4 border-accent-line bg-accent-soft/40 kpi-corner">
+                  <Card className="min-w-0 p-3 sm:p-4 border-accent-line bg-accent-soft/40 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent">Total Collected</div>
-                    <div className="num mt-1 text-2xl font-extrabold text-accent">₹{(bizKpi?.total ?? 0).toLocaleString("en-IN")}</div>
+                    <div className={`num mt-1 w-full min-w-0 max-w-full font-extrabold leading-tight tracking-tight [overflow-wrap:anywhere] text-accent ${kpiValueSize(`₹${(bizKpi?.total ?? 0).toLocaleString("en-IN")}`)}`}>₹{(bizKpi?.total ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-accent/70">{note} · money in ({hasSchemes ? "excl. scheme & refunds" : "excl. refunds"})</div>
                   </Card>
                 </>
@@ -523,24 +531,24 @@ export default function Payments({ intent, clearIntent }) {
               const note = schemeKpiLoading ? "Loading…" : kpiNote(schemeFilters, schemeKpi);
               return (
                 <>
-                  <Card className="p-4 kpi-corner">
+                  <Card className="min-w-0 p-3 sm:p-4 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Offline (Cash)</div>
-                    <div className="num mt-1 text-2xl font-extrabold">₹{(schemeKpi?.offline ?? 0).toLocaleString("en-IN")}</div>
+                    <div className={`num mt-1 w-full min-w-0 max-w-full font-extrabold leading-tight tracking-tight [overflow-wrap:anywhere] ${kpiValueSize(`₹${(schemeKpi?.offline ?? 0).toLocaleString("en-IN")}`)}`}>₹{(schemeKpi?.offline ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-muted">{note} · CASH</div>
                   </Card>
-                  <Card className="p-4 kpi-corner">
+                  <Card className="min-w-0 p-3 sm:p-4 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Online</div>
-                    <div className="num mt-1 text-2xl font-extrabold text-emerald-700">₹{(schemeKpi?.online ?? 0).toLocaleString("en-IN")}</div>
+                    <div className={`num mt-1 w-full min-w-0 max-w-full font-extrabold leading-tight tracking-tight [overflow-wrap:anywhere] text-emerald-700 ${kpiValueSize(`₹${(schemeKpi?.online ?? 0).toLocaleString("en-IN")}`)}`}>₹{(schemeKpi?.online ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-emerald-700/70">{note} · UPI + Card + Bank</div>
                   </Card>
-                  <Card className="p-4 border-danger-line bg-danger-soft/30 kpi-corner">
+                  <Card className="min-w-0 p-3 sm:p-4 border-danger-line bg-danger-soft/30 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-danger">Overdue Amount</div>
-                    <div className="num mt-1 text-2xl font-extrabold text-danger">₹{schemeOverdue.toLocaleString("en-IN")}</div>
+                    <div className={`num mt-1 w-full min-w-0 max-w-full font-extrabold leading-tight tracking-tight [overflow-wrap:anywhere] text-danger ${kpiValueSize(`₹${schemeOverdue.toLocaleString("en-IN")}`)}`}>₹{schemeOverdue.toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-danger/70">Overdue installments · all enrollments</div>
                   </Card>
-                  <Card className="p-4 border-accent-line bg-accent-soft/40 kpi-corner">
+                  <Card className="min-w-0 p-3 sm:p-4 border-accent-line bg-accent-soft/40 kpi-corner">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent">Total Collection</div>
-                    <div className="num mt-1 text-2xl font-extrabold text-accent">₹{(schemeKpi?.total ?? 0).toLocaleString("en-IN")}</div>
+                    <div className={`num mt-1 w-full min-w-0 max-w-full font-extrabold leading-tight tracking-tight [overflow-wrap:anywhere] text-accent ${kpiValueSize(`₹${(schemeKpi?.total ?? 0).toLocaleString("en-IN")}`)}`}>₹{(schemeKpi?.total ?? 0).toLocaleString("en-IN")}</div>
                     <div className="mt-1 text-xs font-semibold text-accent/70">{note} · scheme money in (excl. refunds)</div>
                   </Card>
                 </>
