@@ -408,12 +408,20 @@ function RollingDigits() {
   );
 }
 
+function kpiValueSize(val) {
+  const len = String(val ?? "").trim().length;
+  if (len >= 14) return "text-xs min-[360px]:text-sm min-[390px]:text-base sm:text-xl";
+  if (len >= 12) return "text-[13px] min-[360px]:text-sm min-[390px]:text-base sm:text-xl";
+  if (len >= 10) return "text-base min-[360px]:text-lg sm:text-xl";
+  return "text-lg min-[360px]:text-xl sm:text-xl";
+}
+
 function KpiCard({ title, value, growth, growthOf, danger, onClick, loading = false }) {
   const g = formatGrowth(growth, growthOf);
   const up = g === null ? true : !String(g).startsWith("-");
   return (
     <button onClick={onClick} data-motion="stat"
-      className="group relative isolate flex flex-col overflow-hidden rounded-xl border border-line bg-surface p-4 text-left transition-all duration-150 hover:border-accent-line hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
+      className="group relative isolate flex flex-col overflow-hidden rounded-xl border border-line bg-surface p-3 sm:p-4 text-left transition-all duration-150 hover:border-accent-line hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 w-full min-w-0">
       <div className="pointer-events-none absolute -right-5 -top-5 -z-10 h-16 w-16 rounded-full bg-accent opacity-[0.07]" aria-hidden="true" />
       <div className="flex items-center justify-between gap-2">
         <div title={title} className="line-clamp-2 h-[2.7em] text-[10px] font-bold uppercase leading-[1.35] tracking-[0.06em] text-muted">{title}</div>
@@ -423,7 +431,7 @@ function KpiCard({ title, value, growth, growthOf, danger, onClick, loading = fa
           reserved for "we asked and do not know"; this is "we are asking". */}
       {loading
         ? <RollingDigits />
-        : <div data-motion="count" className={`num mt-1.5 text-xl font-extrabold tracking-tight ${danger ? "text-danger" : "text-ink"}`}>{value}</div>}
+        : <div data-motion="count" className={`num mt-1.5 w-full min-w-0 max-w-full font-extrabold tracking-tight leading-tight [overflow-wrap:anywhere] ${kpiValueSize(value)} ${danger ? "text-danger" : "text-ink"}`}>{value}</div>}
       <span className="mt-2 self-end inline-flex items-center gap-0.5 text-[10px] font-bold text-accent-strong transition-all group-hover:gap-1">View <span aria-hidden="true">→</span></span>
     </button>
   );

@@ -274,9 +274,9 @@ function DeliveredByField({ staff, hasSupplier, name, phone, isNew, onChange }) 
     { value: NEW_STAFF, label: "+ New delivery staff" },
   ];
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-2 w-full min-w-0">
       {staff.length > 0 && (
-        <Select value={isNew ? NEW_STAFF : name} placeholder="Select delivery staff"
+        <Select value={isNew ? NEW_STAFF : name} placeholder="Select delivery staff" className="w-full min-w-0"
           onValueChange={(v) => {
             if (v === NEW_STAFF) return onChange({ deliveredNew: true, deliveredBy: "", deliveredByPhone: "" });
             const s = staff.find((x) => x.name === v);
@@ -284,11 +284,11 @@ function DeliveredByField({ staff, hasSupplier, name, phone, isNew, onChange }) 
           }}
           options={options} />
       )}
-      {!hasSupplier && <div className="flex h-11 items-center rounded-xl border border-dashed border-line bg-canvas/40 px-3.5 text-sm text-muted">Select a supplier first</div>}
+      {!hasSupplier && <div className="flex h-11 w-full min-w-0 items-center rounded-xl border border-dashed border-line bg-canvas/40 px-3.5 text-sm text-muted">Select a supplier first</div>}
       {hasSupplier && showNew && (
-        <div className="grid grid-cols-2 gap-2">
-          <Input value={name} onChange={(e) => onChange({ deliveredNew: true, deliveredBy: e.target.value })} placeholder="New staff name" className="h-11" />
-          <PhoneInput value={phone} onValueChange={(v) => onChange({ deliveredNew: true, deliveredByPhone: v })} />
+        <div className="grid grid-cols-1 gap-2 w-full min-w-0 sm:grid-cols-2">
+          <Input value={name} onChange={(e) => onChange({ deliveredNew: true, deliveredBy: e.target.value })} placeholder="New staff name" className="h-11 w-full min-w-0" />
+          <PhoneInput value={phone} onValueChange={(v) => onChange({ deliveredNew: true, deliveredByPhone: v })} className="w-full min-w-0" />
         </div>
       )}
     </div>
@@ -311,12 +311,12 @@ const cleanDec = (v) => String(v).replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$
 // A header field: fixed-height label row so every control in the grid lines up.
 function HeaderField({ label, action, children }) {
   return (
-    <div className="grid content-start gap-1.5">
-      <div className="flex h-5 items-center justify-between gap-2">
+    <div className="grid content-start gap-1.5 w-full min-w-0">
+      <div className="flex min-h-[20px] flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <span className="text-xs font-bold">{label}</span>
         {action}
       </div>
-      {children}
+      <div className="w-full min-w-0">{children}</div>
     </div>
   );
 }
@@ -337,7 +337,7 @@ function LotCard({ label, unit, value, onChange, used, decimals, hint, locked })
   const chip = { empty: "Enter the lot", left: `${fmt(remaining)} ${unit} left`, done: "✓ All entered", over: `Over by ${fmt(-remaining)} ${unit}` }[state];
   const clean = (v) => (decimals ? v.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1") : v.replace(/\D/g, "")).slice(0, 10);
   return (
-    <div className={`rounded-xl border p-3.5 transition-colors ${tone.box}`}>
+    <div className={`w-full min-w-0 rounded-xl border p-3.5 transition-colors ${tone.box}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-accent-strong">{label} *</span>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>{chip}</span>
@@ -2251,19 +2251,19 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
 
       {/* Bulk Purchase Receiving — Phase 4. Jewellery (HUID) / Raw Gold (Serial). */}
       {showBulk && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
           <button className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={closeBulk} aria-label="Close" />
           <div className="relative w-full max-w-[1440px] max-h-[92vh] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between border-b border-line px-6 py-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <h3 className="text-base font-extrabold">{!isAdmin ? "Purchase Draft" : draftCtx ? "Record Staff Draft" : "Bulk Purchase Receiving"}</h3>
+            <div className="flex items-center justify-between border-b border-line px-4 py-3.5 sm:px-6 sm:py-4">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
+                <h3 className="text-base font-extrabold truncate">{!isAdmin ? "Purchase Draft" : draftCtx ? "Record Staff Draft" : "Bulk Purchase Receiving"}</h3>
                 {draftCtx && <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${(DRAFT_STATUS[draftCtx.status] || DRAFT_STATUS.DRAFT).tone}`}>{(DRAFT_STATUS[draftCtx.status] || DRAFT_STATUS.DRAFT)[isAdmin ? "admin" : "staff"]}</span>}
                 {isAdmin && !draftCtx && bulkDraftAt && <span className="text-[11px] text-muted">{draftStamp(bulkDraftAt)} · <button type="button" onClick={discardBulkDraft} className="font-bold text-danger underline underline-offset-2">Discard</button></span>}
                 {!isAdmin && draftCtx && !draftCtx.readOnly && <span className="text-[11px] text-muted">{draftSaving ? "Saving…" : draftSavedAt ? `Saved ${new Date(draftSavedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : "Not saved yet"}</span>}
               </div>
-              <button onClick={closeBulk} className="grid h-8 w-8 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
+              <button onClick={closeBulk} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line hover:bg-canvas" aria-label="Close">✕</button>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            <div className="flex-1 w-full min-w-0 overflow-y-auto overflow-x-hidden px-3.5 py-4 sm:px-6 sm:py-5 space-y-4">
               {draftCtx && isAdmin && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent-line bg-accent-soft/30 px-4 py-3">
                   <div className="text-sm">
@@ -2287,38 +2287,38 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
               {!isAdmin && !draftCtx?.readOnly && (
                 <p className="text-xs text-muted">Enter the lot and every piece&apos;s weights. The Admin adds the rates, Arrival Purity and payment when recording it.</p>
               )}
-              <fieldset disabled={!!draftCtx?.readOnly} className="m-0 min-w-0 space-y-4 border-0 p-0">
+              <fieldset disabled={!!draftCtx?.readOnly} className="m-0 w-full min-w-0 space-y-4 border-0 p-0">
               {/* Type toggle - fixed once a draft exists on the server. */}
               {draftCtx?.id ? (
                 <span className="inline-flex h-10 items-center rounded-xl border border-line bg-canvas/50 px-3 text-xs font-bold">{bulkType === "RAW_GOLD" ? "Raw Gold / Bullion" : "Jewellery / Artefacts"}</span>
               ) : (
-              <div className="inline-flex rounded-xl border border-line p-1">
+              <div className="inline-flex max-w-full flex-wrap rounded-xl border border-line p-1">
                 {[["JEWELLERY","Jewellery / Artefacts"],["RAW_GOLD","Raw Gold / Bullion"]].map(([val,label])=>(
-                  <button key={val} onClick={()=>setBulkType(val)} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors ${bulkType===val ? "bg-accent text-white" : "text-muted hover:text-ink"}`}>{label}</button>
+                  <button key={val} onClick={()=>setBulkType(val)} className={`h-8 rounded-lg px-2.5 sm:px-3 text-xs font-bold transition-colors ${bulkType===val ? "bg-accent text-white" : "text-muted hover:text-ink"}`}>{label}</button>
                 ))}
               </div>
               )}
 
               {/* Header - three even columns, every control 44px tall. */}
-              <div className="grid gap-4 rounded-xl border border-line bg-canvas/30 p-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid w-full min-w-0 grid-cols-1 gap-4 rounded-xl border border-line bg-canvas/30 p-3.5 sm:p-4 sm:grid-cols-2 lg:grid-cols-3">
                 <HeaderField label="Supplier *" action={!showAddVendor && canAddSupplier && (
-                  <button type="button" onClick={()=>setShowAddVendor(true)} className="text-[11px] font-bold text-accent underline">+ Add new supplier</button>
+                  <button type="button" onClick={()=>setShowAddVendor(true)} className="text-[11px] font-bold text-accent underline shrink-0">+ Add new supplier</button>
                 )}>
-                  <Select value={bulkHeader.vendor} onValueChange={v=>setBulkHeader({...bulkHeader, vendor:v, ...firstStaff(v)})} options={vendorOptions} placeholder={vendorOptions.length ? "Select supplier…" : "No suppliers — add one"} />
+                  <Select value={bulkHeader.vendor} onValueChange={v=>setBulkHeader({...bulkHeader, vendor:v, ...firstStaff(v)})} options={vendorOptions} placeholder={vendorOptions.length ? "Select supplier…" : "No suppliers — add one"} className="w-full min-w-0" />
                 </HeaderField>
                 <HeaderField label="Purchase Date & Time *">
-                  <Input type="datetime-local" value={bulkHeader.date} onChange={e=>setBulkHeader({...bulkHeader, date:e.target.value, dateEdited:true})} className="h-11" title="Defaults to now; editable for a back-dated slip" />
+                  <Input type="datetime-local" value={bulkHeader.date} onChange={e=>setBulkHeader({...bulkHeader, date:e.target.value, dateEdited:true})} className="h-11 w-full min-w-0 max-w-full" title="Defaults to now; editable for a back-dated slip" />
                 </HeaderField>
                 <HeaderField label="Invoice / Reference / Slip / DC No.">
-                  <Input value={bulkHeader.invoice} onChange={e=>setBulkHeader({...bulkHeader, invoice:e.target.value})} placeholder="e.g. INV-1024 or DC/77" className="h-11" />
+                  <Input value={bulkHeader.invoice} onChange={e=>setBulkHeader({...bulkHeader, invoice:e.target.value})} placeholder="e.g. INV-1024 or DC/77" className="h-11 w-full min-w-0" />
                 </HeaderField>
                 <HeaderField label="Delivered By">
                   <DeliveredByField staff={staffListOf(bulkHeader.vendor)} hasSupplier={!!bulkHeader.vendor} name={bulkHeader.deliveredBy} phone={bulkHeader.deliveredByPhone} isNew={!!bulkHeader.deliveredNew}
                     onChange={(p) => setBulkHeader((h) => ({ ...h, ...p }))} />
                 </HeaderField>
                 <HeaderField label="Entered By">
-                  <div className="flex h-11 items-center gap-2 rounded-xl border border-line bg-canvas/60 px-3.5 text-sm font-semibold text-ink-soft" title="Recorded automatically against your sign-in">
-                    <span className="truncate">{storeStaff}</span>
+                  <div className="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-line bg-canvas/60 px-3.5 text-sm font-semibold text-ink-soft" title="Recorded automatically against your sign-in">
+                    <span className="truncate min-w-0 flex-1">{storeStaff}</span>
                     <span className="ml-auto shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">You</span>
                   </div>
                 </HeaderField>
@@ -2326,9 +2326,9 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                     copied into every row (each row can still differ). */}
                 {isAdmin && (
                 <HeaderField label="24K Live Rate / g (₹) *" action={bulkHeader.rateEdited && liveRate24 != null && Number(bulkHeader.rate) !== liveRate24 && (
-                  <button type="button" onClick={()=>applyBulkRate(String(liveRate24), false)} className="text-[11px] font-bold text-accent underline">Use live {money(liveRate24)}</button>
+                  <button type="button" onClick={()=>applyBulkRate(String(liveRate24), false)} className="text-[11px] font-bold text-accent underline shrink-0">Use live {money(liveRate24)}</button>
                 )}>
-                  <MoneyInput allowDecimal value={bulkHeader.rate || (liveRate24 != null ? String(liveRate24) : "")} onValueChange={v=>applyBulkRate(v, true)} className="h-11" placeholder="0" />
+                  <MoneyInput allowDecimal value={bulkHeader.rate || (liveRate24 != null ? String(liveRate24) : "")} onValueChange={v=>applyBulkRate(v, true)} className="h-11 w-full min-w-0" placeholder="0" />
                 </HeaderField>
                 )}
               </div>
@@ -2336,12 +2336,12 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
               {/* The lot: the admin types what the supplier handed over; each
                   row entered counts down. Zero left on both = the slip is
                   complete. Jewellery also shows stone weight and V/A. */}
-              <div className={`grid gap-3 sm:grid-cols-2 ${bulkType !== "JEWELLERY" ? "" : isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
+              <div className={`grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 ${bulkType !== "JEWELLERY" ? "" : isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
                 <LotCard label="Total Gold Weight" unit="g" decimals value={bulkHeader.lotWeight} onChange={v=>setBulkHeader(h=>({...h, lotWeight:v}))} used={bulkLotUsed.weight} locked={!isAdmin && !!draftCtx?.lotLocked}
                   hint={bulkType === "JEWELLERY" ? "Each row deducts its gross weight, as weighed" : "Each bar deducts its net weight"} />
                 <LotCard label="Total Quantity" unit="pcs" value={bulkHeader.lotQty} onChange={v=>{ setBulkHeader(h=>({...h, lotQty:v})); fitBulkRows(v); }} used={bulkLotUsed.qty} locked={!isAdmin && !!draftCtx?.lotLocked}
                   hint={bulkType === "JEWELLERY" ? "Each row is one piece" : "Each row is one bar"} />
-                {bulkType === "JEWELLERY" && <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+                {bulkType === "JEWELLERY" && <div className="w-full min-w-0 rounded-xl border border-line bg-canvas/40 p-3.5">
                   <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Total Stone Weight</div>
                   <div className="num mt-2 text-2xl font-extrabold">{bulkBreakdown.stoneGTotal.toFixed(3)} <span className="text-base font-bold">g</span></div>
                   <div className="mt-1 text-xs text-muted">Deducted from gross · not gold</div>
@@ -2349,7 +2349,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                 </div>}
                 {/* Money, not metal - it is in none of the gram figures. */}
                 {isAdmin && bulkType === "JEWELLERY" && (
-                  <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+                  <div className="w-full min-w-0 rounded-xl border border-line bg-canvas/40 p-3.5">
                     <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Value Addition (V/A)</div>
                     <div className="num mt-2 text-2xl font-extrabold">{money(bulkBreakdown.valueAdditionTotal)}</div>
                     <div className="mt-1 text-xs text-muted">Stones &amp; other charges typed per row · no Tunch</div>
@@ -2357,7 +2357,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                 )}
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-line">
+              <div className="w-full min-w-0 max-w-full overflow-x-auto rounded-xl border border-line">
                 <table className={`table-fixed ${bulkType === "JEWELLERY" ? (isAdmin ? "w-[2200px]" : "w-[1590px]") : (isAdmin ? "w-[1540px]" : "w-[1270px]")} border-collapse text-sm`}>
                   <thead><tr className="bg-canvas/60 text-left text-[11px] font-bold uppercase tracking-[0.06em] text-muted">
                     {/* Jewellery: Item Code (blank = auto, Offline) XOR HUID
@@ -2659,7 +2659,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
               )}
 
               {isAdmin && (
-              <div className="rounded-xl border border-line bg-canvas/30 p-4">
+              <div className="w-full min-w-0 rounded-xl border border-line bg-canvas/30 p-3.5 sm:p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <h4 className="text-xs font-extrabold uppercase tracking-widest">Payment</h4>
                   <span className="text-[11px] text-muted">{bulkHeader.settleIn === "METAL" ? "Paid from your own metal" : "Cash or online"}</span>
@@ -2671,7 +2671,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
               )}
               </fieldset>
             </div>
-            <div className="flex flex-wrap justify-end gap-2.5 border-t border-line bg-canvas/30 px-6 py-4">
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-canvas/30 px-3.5 py-3 sm:gap-2.5 sm:px-6 sm:py-4">
               {isAdmin ? (<>
                 <Button variant="outline" size="sm" onClick={closeBulk}>Cancel</Button>
                 {!draftCtx && <Button variant="outline" size="sm" disabled={bulkSaving || draftBusy} onClick={openAssign} title="Set the supplier and lot, and let a staff member enter the products">Save as draft for staff</Button>}
