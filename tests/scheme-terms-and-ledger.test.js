@@ -104,9 +104,7 @@ describe("New Sale says what it is doing", () => {
   const src = read("../src/modules/billing/new-sale/NewSale.jsx");
 
   it("the whole-bill margin is coloured by its own sign", () => {
-    expect(src).toMatch(/const tone = negative/);
-    expect(src).toMatch(/border-emerald-200 bg-emerald-50/);
-    expect(src).toMatch(/border-danger-line bg-danger-soft\/50/);
+    expect(src).toMatch(/rawGold\.profitOrLoss < 0 \? "border-danger-line bg-danger-soft\/50" : "border-emerald-200 bg-emerald-50"/);
   });
 
   it("the discount field is never locked out — there is only one driver now", () => {

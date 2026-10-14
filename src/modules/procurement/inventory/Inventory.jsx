@@ -424,8 +424,12 @@ function labelOf(item) {
 // Print per row and Print all. Uses the codes the server SAVED, never the
 // grid's preview, so a sticker can never carry a code that was not recorded.
 function BarcodeSheet({ set, onClose }) {
+  const [printFormat, setPrintFormat] = useState("QR");
   const labels = set.items.map(labelOf).filter((l) => l.value);
-  const print = (list) => { if (!printBarcodeLabels(list)) toast("Nothing to print"); };
+  const print = async (list) => {
+    const ok = await printBarcodeLabels(list, printFormat);
+    if (!ok) toast("Nothing to print");
+  };
   // Stickers printed from the grid before recording: a code whose purity /
   // weight changed, or a code that was not saved at all, means that sticker
   // would open the wrong piece (or none) at billing.
@@ -447,6 +451,17 @@ function BarcodeSheet({ set, onClose }) {
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted">Format:</span>
+              <select
+                value={printFormat}
+                onChange={(e) => setPrintFormat(e.target.value)}
+                className="rounded-lg border border-line bg-surface px-2.5 py-1 text-xs font-bold text-ink focus:outline-none"
+              >
+                <option value="QR">QR Code</option>
+                <option value="CODE128">Standard Barcode</option>
+              </select>
+            </div>
             <Button size="sm" className="bg-accent hover:bg-accent-strong" onClick={() => print(labels)} disabled={!labels.length}>Print all ({labels.length})</Button>
             {printed.size > 0 && toPrint.length > 0 && toPrint.length < labels.length && (
               <Button size="sm" variant="outline" onClick={() => print(toPrint)}>Print only the {toPrint.length} still needed</Button>
@@ -478,7 +493,7 @@ function BarcodeSheet({ set, onClose }) {
                     </div>
                     <div className="mt-0.5 text-xs text-muted">{[l.title, l.line].filter(Boolean).join(" · ")}</div>
                   </td>
-                  <td className="px-3 py-3 align-middle"><Barcode value={l.value} height={34} width={1.3} className="h-9 w-[150px]" /></td>
+                  <td className="px-3 py-3 align-middle"><Barcode value={l.value} format={printFormat} height={34} width={1.3} className="h-9 w-[150px]" /></td>
                   <td className="px-6 py-3 text-right align-middle"><Button size="sm" variant="outline" onClick={() => print([l])}>Print</Button></td>
                 </tr>
               ))}
@@ -1259,10 +1274,11 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
   // The Item Code each row will be saved with. A HUID piece has none (it bills
   // Online by its HUID); a raw-gold row gets one as soon as it has content.
   const [barcodeSet, setBarcodeSet] = useState(null);
+  const [gridLabelFormat, setGridLabelFormat] = useState("QR");
   // code -> "purity · net" of every sticker printed from the grid this session.
   const printedRef = useRef(new Map());
-  const printFromGrid = (labels) => {
-    if (printBarcodeLabels(labels)) labels.forEach((l) => printedRef.current.set(l.value, l.line));
+  const printFromGrid = async (labels) => {
+    if (await printBarcodeLabels(labels, gridLabelFormat)) labels.forEach((l) => printedRef.current.set(l.value, l.line));
   };
   const bulkCodes = useMemo(() => {
     const seq = {};
@@ -2112,11 +2128,21 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                     Printed after Record, from the code the server saved. */}
                 {(addForm.huid.trim() || addCode.code) && (
                   <div className="flex items-center gap-3 rounded-xl border border-line bg-canvas/40 px-3.5 py-2.5 sm:col-span-2">
-                    <Barcode value={addForm.huid.trim().toUpperCase() || addCode.code} height={30} width={1.3} className="h-8 w-[170px] shrink-0" />
-                    <div className="min-w-0">
-                      <div className="truncate font-mono text-xs font-bold tracking-wide text-ink">{addForm.huid.trim().toUpperCase() || addCode.code}</div>
-                      <div className="text-[11px] text-muted">Barcode preview. Print or save as PDF after you record the purchase.</div>
+                    <div className="flex h-10 w-24 shrink-0 items-center justify-center rounded-lg border border-line bg-white p-1">
+                      <Barcode value={addForm.huid.trim().toUpperCase() || addCode.code} format={gridLabelFormat} height={30} width={1.3} className={gridLabelFormat === "QR" ? "h-8 w-8" : "h-8 w-full"} />
                     </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-mono text-xs font-bold tracking-wide text-ink">{addForm.huid.trim().toUpperCase() || addCode.code}</div>
+                      <div className="text-[11px] text-muted">Sticker preview ({gridLabelFormat === "QR" ? "QR Code" : "Barcode"}). Print or save as PDF after you record the purchase.</div>
+                    </div>
+                    <select
+                      value={gridLabelFormat}
+                      onChange={(e) => setGridLabelFormat(e.target.value)}
+                      className="rounded-lg border border-line bg-surface px-2.5 py-1 text-xs font-bold text-ink focus:outline-none"
+                    >
+                      <option value="QR">QR Code</option>
+                      <option value="CODE128">Barcode</option>
+                    </select>
                   </div>
                 )}
                 <label className="grid gap-1.5"><span className="text-xs font-bold">Product Name <span className="font-semibold text-muted">(optional)</span></span><Input placeholder="e.g. Gold Bangle" value={addForm.name} onChange={e=>setAddForm({...addForm, name:e.target.value})} /></label>
@@ -2364,7 +2390,19 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                         (Online, replaces the Item Code). Raw gold: serial. */}
                     <th className="px-3 py-2 w-[150px]">Item Code</th>
                     {bulkType === "JEWELLERY" && <th className="px-3 py-2 w-[150px]">HUID</th>}
-                    <th className="px-2 py-2 w-[210px]" title="Made from the HUID, or else the Item Code. Print turns on once the row is filled in.">Barcode</th>
+                    <th className="px-2 py-2 w-[220px]" title="Made from the HUID, or else the Item Code. Print turns on once the row is filled in.">
+                      <div className="flex items-center justify-between gap-1">
+                        <span>{gridLabelFormat === "QR" ? "QR Code" : "Barcode"}</span>
+                        <select
+                          value={gridLabelFormat}
+                          onChange={(e) => setGridLabelFormat(e.target.value)}
+                          className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-normal text-ink focus:outline-none"
+                        >
+                          <option value="QR">QR Code</option>
+                          <option value="CODE128">Barcode</option>
+                        </select>
+                      </div>
+                    </th>
                     <th className="px-2 py-2 w-[180px]">Product Name</th>
                     <th className="px-2 py-2 w-[170px]">Category</th>
                     <th className="px-2 py-2 w-[190px]">Sub-category</th>
@@ -2410,7 +2448,7 @@ export default function Inventory({ onNavigate, intent, clearIntent }) {
                               return (
                                 <div className="flex items-center gap-1.5">
                                   <div className="flex h-9 min-w-0 flex-1 items-center justify-center rounded-xl border border-line bg-white px-2" title={b.value}>
-                                    <Barcode value={b.value} height={26} width={1.1} className="h-6 w-full" />
+                                    <Barcode value={b.value} format={gridLabelFormat} height={26} width={1.1} className={gridLabelFormat === "QR" ? "h-7 w-7" : "h-6 w-full"} />
                                   </div>
                                   <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0" disabled={!b.ready}
                                     title={b.ready ? `Print the ${b.value} sticker` : b.why} aria-label={b.ready ? `Print barcode ${b.value}` : `Cannot print yet: ${b.why}`}

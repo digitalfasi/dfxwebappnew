@@ -666,7 +666,7 @@ export const billingService = {
     customerPrice, goldProfitPercent, schemeValue, exchangeValue,
     allowBelowCost, belowCostReason,
     paymentMethod = "CASH", paymentStatus = "PAID",
-    initialPaymentAmount, paymentReferenceNo,
+    initialPaymentAmount, paymentReferenceNo, panNumber,
   }) {
     const body = {
       product_code: productCode,
@@ -677,6 +677,7 @@ export const billingService = {
     if (customerId) body.customer_id = customerId;
     if (customerName) body.customer_name = customerName;
     if (customerPhone) body.customer_phone = customerPhone;
+    if (panNumber) body.pan_number = panNumber;
     if (discountAmount) body.discount_amount = discountAmount;
     if (customerPrice != null && customerPrice !== "") body.customer_price = Number(customerPrice);
     if (goldProfitPercent != null && goldProfitPercent !== "") body.gold_profit_percent = Number(goldProfitPercent);
@@ -726,6 +727,35 @@ export const billingService = {
     const res = await apiClient.post("/billing/quotation", body, { auth: true });
     const q = res.data?.quotation ?? {};
     return { id: q.id, quotationNumber: q.quotation_number, finalAmount: q.final_amount, outstandingAmount: q.outstanding_amount };
+  },
+
+  /** GET /api/v1/billing/quotations — list past quotations from the database. */
+  async listQuotations({ page = 1, limit = 50 } = {}) {
+    const params = new URLSearchParams();
+    if (page) params.set("page", String(page));
+    if (limit) params.set("limit", String(limit));
+    const res = await apiClient.get(`/billing/quotations?${params.toString()}`, { auth: true });
+    const payload = res.data ?? {};
+    const quotations = (payload.quotations ?? []).map((q) => ({
+      id: q.id,
+      quotationNumber: q.quotation_number,
+      productCode: q.product_code,
+      productName: q.product_name,
+      customerId: q.customer_id,
+      customerName: q.customer_name || "Walk-in",
+      customerPhone: q.customer_phone || "—",
+      finalAmount: q.final_amount ?? 0,
+      schemeAmountTotal: q.scheme_amount_total ?? 0,
+      outstandingAmount: q.outstanding_amount ?? 0,
+      note: q.note || "",
+      createdAt: q.created_at,
+    }));
+    return {
+      quotations,
+      total: payload.total ?? quotations.length,
+      page: payload.page ?? page,
+      limit: payload.limit ?? limit,
+    };
   },
 
   /** GET /api/v1/billing/dashboard-summary?period=today — today's 24K gold rate. */

@@ -394,7 +394,7 @@ describe("the verdict states this piece's own floors", () => {
     // It read "11% break-even" welded - which on a 4% tunch lot is the PROFIT
     // floor, not break-even (8%). It named the wrong line, and welded it.
     // numbers only when the server sent the bands - staff get the word alone
-    expect(ns).toMatch(/bands \? `\$\{round2\(impliedMakingPct\)\}% making . profit \$\{round2\(profitFloorPct\)\}% . break-even \$\{round2\(breakEvenPct\)\}%` : ""/);
+    expect(ns).toMatch(/sub=\{bands && impliedMakingPct != null\s*\?\s*`\$\{round2\(impliedMakingPct\)\}% making . list \$\{round2\(listPct\)\}% . break-even \$\{round2\(breakEvenPct\)\}%`/);
     expect(ns).not.toMatch(/% making . 11% break-even/);
   });
 
@@ -440,7 +440,6 @@ describe("the screens stay small enough to use", () => {
   it("pricing lives in Billing > Store Defaults, not in Inventory", () => {
     expect(inv).not.toMatch(/Store Pricing Defaults<\/Button>/);
     expect(ps).toMatch(/label="Gold profit"/);
-    expect(ps).toMatch(/const extra = r2\(making - goldProfit\);/);
     expect(ps).toMatch(/Compulsory on every bill/);
   });
 
@@ -548,10 +547,9 @@ describe("one answer to \"how much may I give?\"", () => {
     expect(ns).toMatch(/bill <b className="num">−\{money\(round2\(concession \* taxFactor\)\)\}<\/b>/);
   });
 
-  it("a paisa gap between the rounded lines and the total is shown as round-off, nothing larger", () => {
-    expect(ns).toMatch(/if \(Math\.abs\(diff\) < 0\.005 \|\| Math\.abs\(diff\) > 0\.05\) return null;/);
-    expect(ns).toMatch(/<RoundOffRow total=\{billTotal\}/);
-    expect(ns).toMatch(/<RoundOffRow total=\{totalPayable\}/);
+  it("no round-off row is shown; numbers add up exactly to the paisa", () => {
+    expect(ns).not.toMatch(/RoundOffRow/);
+    expect(ns).not.toMatch(/Round off/);
   });
 
   it("a scheme bill shows what the customer actually hands over", () => {

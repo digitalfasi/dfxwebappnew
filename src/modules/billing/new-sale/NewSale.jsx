@@ -30,7 +30,11 @@ const PAYMENT_STATUSES = ["PAID", "PARTIAL", "PENDING"];
 const PAYMENT_STATUS_LABEL = { PAID: "Paid in full", PARTIAL: "Partial", PENDING: "Pending (unpaid)" };
 
 const num = (s) => (s === "" || s == null ? 0 : Math.max(0, Number(s) || 0));
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const round2 = (n) => {
+  const v = Number(n) || 0;
+  const eps = v < 0 ? -1e-9 : 1e-9;
+  return Math.round((v + eps) * 100) / 100;
+};
 
 /** Charge label for a Making/Wastage row: "3%", "₹120.00/g" or "" (fixed). */
 function chargePct(type, value) {
@@ -224,6 +228,8 @@ export default function NewSale({ intent, clearIntent } = {}) {
   // "Pay later": billed with nothing collected (PENDING). Its own choice, so an
   // unpaid bill is something the counter said, never something it forgot.
   const [payLater, setPayLater] = useState(false);
+  // High-value billing compliance (optional PAN for bills >= 2,00,000)
+  const [panNumber, setPanNumber] = useState("");
 
   // OTP redemption
   const [otp, setOtp] = useState(null); // {saleId, items:[{enrollmentId,amount}]}
@@ -662,8 +668,14 @@ export default function NewSale({ intent, clearIntent } = {}) {
     }
   }, [hasSchemes]);
 
-  const selectCustomer = (c) => { setSelectedCustomer(c); setCustResults([]); setCustQuery(""); loadSchemes(c.id); };
-  const clearCustomer = () => { setSelectedCustomer(null); setSchemeOptions([]); setSchemeAmounts({}); };
+  const selectCustomer = (c) => {
+    setSelectedCustomer(c);
+    setCustResults([]);
+    setCustQuery("");
+    loadSchemes(c.id);
+    if (c?.idType === "PAN" && c?.idNo) setPanNumber(c.idNo);
+  };
+  const clearCustomer = () => { setSelectedCustomer(null); setSchemeOptions([]); setSchemeAmounts({}); setPanNumber(""); };
 
   // Scheme redemption maths (amounts are admin inputs; backend re-validates).
   const redeemLines = useMemo(
@@ -810,6 +822,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
       customerId: customerMode === "existing" ? selectedCustomer?.id : undefined,
       customerName: customerMode === "walkin" ? walkinName.trim() : undefined,
       customerPhone: customerMode === "walkin" ? (walkinPhone.trim() || undefined) : undefined,
+      panNumber: panNumber.trim().toUpperCase() || undefined,
       // Carried through on a scheme bill as well — the redemption's recompute
       // replays the sale's own discount, so it survives the carve-out.
       discountAmount: 0,   // in the making charge already - see the quote effect
@@ -907,6 +920,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
   // ---------------------------------------------------------------------------
   const STASH_KEY = "dfx.newsale.inprogress";
   const stashOwner = `${tenantId || ""}:${authUser?.id || authUser?.email || ""}`;
+  const [localDraft, setLocalDraft] = useState(null);
   const readStash = () => {
     try {
       const v = JSON.parse(sessionStorage.getItem(STASH_KEY) || "null");
@@ -915,7 +929,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
   };
   const writeStash = (v) => { try { if (v) sessionStorage.setItem(STASH_KEY, JSON.stringify(v)); } catch { /* storage off */ } };
   const clearStash = () => { try { sessionStorage.removeItem(STASH_KEY); } catch { /* storage off */ } setLocalDraft(null); };
-  const [localDraft, setLocalDraft] = useState(null);
   useEffect(() => { setLocalDraft(readStash()); }, [stashOwner]); // eslint-disable-line react-hooks/exhaustive-deps
   // Latest screen state, read on the way out. Nothing once the bill is created
   // or waiting on an OTP - those are real sales, not unfinished ones.
@@ -972,7 +985,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
     setProduct(null); setProductCode(""); setCode("");
     setRate(""); setMakingVal(""); setWastageVal(""); setDiscountText(null); setExchangeText(""); setGst(true); setShowProfit(false);
     setAllowBelowCost(false); setBelowCostReason(""); setPublishedRate(null);
-    setPayLines([]); setPayLater(false);
+    setPayLines([]); setPayLater(false); setPanNumber("");
     setSaleMode(null); setPriceText(null); setQuoteError("");
     clearCustomer(); setCustQuery(""); setCustResults([]); setWalkinName(""); setWalkinPhone("");
     setLookupError(""); setOtp(null);
@@ -1039,6 +1052,9 @@ export default function NewSale({ intent, clearIntent } = {}) {
         // Open the invoice summary dialog (Download PDF / Print). The form is
         // reset only when the dialog is closed, so the admin keeps the PDF handle.
         setInvoice({ id: sale.id, invoiceNumber: sale.invoiceNumber, finalAmount: sale.finalAmount, payments: payPlan, unrecorded });
+        if (selectedCustomer?.id && panNumber.trim()) {
+          customerService.updateCustomer(selectedCustomer.id, { panNumber: panNumber.trim().toUpperCase() }).catch(() => {});
+        }
         // The draft became a real bill, so it stops being an unfinished one.
         // Failing to clear it would leave the same bill in the list beside the
         // invoice it turned into, and somebody would bill it twice.
@@ -1289,9 +1305,14 @@ export default function NewSale({ intent, clearIntent } = {}) {
             {billOpen && findOpen && (
               <Button size="sm" variant="ghost" className="col-span-2 h-9 px-3" onClick={() => { setFindOpen(false); setCode(product.huid || product.productCode || ""); }}>Keep current item</Button>
             )}
-            <Button size="sm" variant="outline" className="h-9 w-full bg-surface px-3.5 sm:w-auto" disabled={loading} onClick={() => setCameraOpen(true)} title="Scan the piece's barcode sticker with the camera. A USB or phone scanner works without this - just scan.">
-              <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10.5 8v8M14 8v8M17 8v8" /></svg>
-              Scan barcode
+            <Button size="sm" variant="outline" className="h-9 w-full bg-surface px-3.5 sm:w-auto" disabled={loading} onClick={() => setCameraOpen(true)} title="Scan the piece's QR code sticker with the camera. A USB or phone scanner works without this - just scan.">
+              <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                <rect x="3" y="14" width="7" height="7" rx="1.5" />
+              </svg>
+              Scan QR code
             </Button>
             <Button size="sm" variant="outline" className="h-9 w-full bg-surface px-3.5 sm:w-auto" onClick={openDrafts}>
               <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></svg>
@@ -1303,7 +1324,7 @@ export default function NewSale({ intent, clearIntent } = {}) {
         <div className="px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
         <label htmlFor="ns-find-code" className="text-xs font-bold">HUID, Item Code or Serial No. *</label>
         <div className="mt-1.5 flex flex-col gap-2.5 sm:flex-row">
-          <SearchInput id="ns-find-code" className="min-w-0 flex-1" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Type or scan a code" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
+          <SearchInput id="ns-find-code" className="min-w-0 flex-1" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Type or scan: HUID or Item Code for jewellery, serial number for a gold bar" onKeyDown={(e) => e.key === "Enter" && handleFind()} />
           <Button size="sm" className="h-10 shrink-0 bg-accent px-7 hover:bg-accent-strong" disabled={loading} onClick={handleFind}>{loading ? "Finding…" : "Find Product"}</Button>
         </div>
         {localDraft && !product && !rawGold && (
@@ -2120,6 +2141,34 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       </div>
                     );
                   })()}
+
+                  {/* High-value compliance: optional PAN for bills >= ₹2,00,000 */}
+                  {billTotal >= 200000 && (
+                    <div className="rounded-xl border border-line bg-canvas/40 p-3 sm:p-3.5 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label htmlFor="pan-input" className="text-xs font-bold text-ink flex items-center gap-1.5">
+                          PAN Number
+                          <span className="font-normal text-muted text-[11px]">(High-value bill ≥ {money(200000)})</span>
+                        </label>
+                        <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-accent-strong border border-accent-line">
+                          Compliance
+                        </span>
+                      </div>
+                      <Input
+                        id="pan-input"
+                        type="text"
+                        maxLength={10}
+                        placeholder="ABCDE1234F (Optional)"
+                        value={panNumber}
+                        onChange={(e) => setPanNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10))}
+                        className="font-mono text-sm tracking-wider uppercase"
+                        error={panNumber && panNumber.length === 10 && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panNumber) ? "Invalid PAN format (e.g. ABCDE1234F)" : undefined}
+                      />
+                      <p className="text-[11px] text-muted">
+                        Standard Indian PAN format (5 letters, 4 numbers, 1 letter). Recommended for jewellery purchases of ₹2,00,000 and above.
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
               {schemeApplied && <p className="text-[11px] text-muted">Payment applies to the amount remaining after scheme redemption ({money(remaining)}).</p>}
@@ -2285,7 +2334,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
                         </>
                       )}
                       <Row label={`GST${taxLabel}`} value={money(product.taxAmount)} />
-                      <RoundOffRow total={totalPayable} parts={round2(normalSubtotal - disc) + (product.taxAmount || 0)} />
                       <Row label="Total Payable" value={money(totalPayable)} strong divider />
 
                       {/* What the scheme gold did NOT carry. Not deducted from
@@ -2343,7 +2391,6 @@ export default function NewSale({ intent, clearIntent } = {}) {
                       </>
                     )}
                     <Row label={`GST${product.gstApplied && product.taxRatePercent ? ` ${product.taxRatePercent}%` : ""}`} value={money(product.taxAmount)} />
-                    <RoundOffRow total={billTotal} parts={round2((product.subtotalBeforeTax || 0) - (product.discountAmount || 0)) + (product.taxAmount || 0)} />
                     <BillTotalBand label="Bill Total" value={money(billTotal)} />
                     {exchangeValue > 0 && !exchangeInvalid && (
                       <>
@@ -2746,13 +2793,3 @@ const Row = ({ label, value, strong, divider, tone }) => (
     <span className={`num text-sm ${strong ? "text-base font-extrabold text-accent-strong" : `font-semibold ${tone || ""}`}`}>{value}</span>
   </div>
 );
-
-// The backend totals from unrounded figures (and a typed customer price is
-// kept exactly), so the rounded lines can miss the total by a paisa. That gap
-// is stated as a round-off so the column adds up; anything larger is not a
-// rounding gap and is left visible rather than absorbed.
-const RoundOffRow = ({ total, parts }) => {
-  const diff = round2(total - parts);
-  if (Math.abs(diff) < 0.005 || Math.abs(diff) > 0.05) return null;
-  return <Row label="Round off" value={`${diff > 0 ? "+" : "−"} ${money(Math.abs(diff))}`} tone="text-muted" />;
-};

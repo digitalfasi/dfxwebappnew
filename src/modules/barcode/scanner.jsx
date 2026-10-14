@@ -140,8 +140,8 @@ export function CameraScanner({ onResult, onClose }) {
       <button className="absolute inset-0 bg-ink/50 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
       <div className="relative w-full max-w-[460px] overflow-hidden rounded-2xl border border-line bg-white shadow-2xl">
         <div className="px-6 pt-6">
-          <h3 id="camera-scan-title" className="text-base font-extrabold">Scan the barcode</h3>
-          <p className="mt-0.5 text-sm text-muted">Hold the sticker inside the box, about a hand&apos;s width from the camera. It reads by itself.</p>
+          <h3 id="camera-scan-title" className="text-base font-extrabold">Scan QR code</h3>
+          <p className="mt-0.5 text-sm text-muted">Hold the QR code inside the box, about a hand&apos;s width from the camera. It reads by itself.</p>
         </div>
         <div className="px-6 pt-4">
           {error ? (
@@ -149,7 +149,7 @@ export function CameraScanner({ onResult, onClose }) {
           ) : (
             <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-ink">
               <video ref={video} className="h-full w-full object-cover" muted playsInline />
-              <div className="pointer-events-none absolute inset-x-[12%] top-1/2 h-[34%] -translate-y-1/2 rounded-lg border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+              <div className="pointer-events-none absolute left-1/2 top-1/2 h-[60%] aspect-square -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
             </div>
           )}
         </div>

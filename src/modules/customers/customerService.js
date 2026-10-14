@@ -147,13 +147,14 @@ export const customerService = {
     return res.data?.customer;
   },
 
-  /** PUT /api/v1/admin/customers/{id} — name/phone/email/status. */
-  async updateCustomer(id, { name, phone, email, isActive }) {
+  /** PUT /api/v1/admin/customers/{id} — name/phone/email/status/pan. */
+  async updateCustomer(id, { name, phone, email, isActive, panNumber }) {
     const body = {
       ...(name !== undefined ? { name } : {}),
       ...(phone !== undefined ? { phone } : {}),
       ...(email !== undefined ? { email } : {}),
       ...(isActive !== undefined ? { is_active: isActive } : {}),
+      ...(panNumber !== undefined ? { pan_number: panNumber } : {}),
     };
     const res = await apiClient.put(`/admin/customers/${id}`, body, { auth: true });
     return res.data?.customer;

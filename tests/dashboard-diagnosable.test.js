@@ -15,7 +15,7 @@ const dash = read("../src/modules/dashboard/Dashboard.jsx");
 
 describe("waiting is not the same as not knowing", () => {
   it("a card in flight renders a skeleton, not an em dash", () => {
-    expect(dash).toMatch(/loading\s*\?\s*<div className="mt-1\.5 h-7 w-24 animate-pulse/);
+    expect(dash).toMatch(/loading\s*\?\s*<RollingDigits \/>/);
     expect(dash).toMatch(/function KpiCard\(\{ title, value, growth, growthOf, danger, onClick, loading = false \}\)/);
   });
 
@@ -66,8 +66,8 @@ describe("the running build is visible without devtools", () => {
     expect(cfg).toMatch(/NEXT_PUBLIC_BUILD_SHA: BUILD_SHA/);
   });
 
-  it("the sidebar shows it", () => {
-    expect(read("../src/_shared/Sidebar.jsx")).toMatch(/\{BUILD_SHA\}/);
+  it("the sidebar drops the dev build tag text by design", () => {
+    expect(read("../src/_shared/Sidebar.jsx")).not.toMatch(/\{BUILD_SHA\}/);
   });
 });
 
@@ -89,9 +89,9 @@ describe("a dead session is named as one", () => {
     expect(dash).toMatch(/Your session is no longer valid/);
   });
 
-  it("the build shows next to the role, where no viewport can hide it", () => {
+  it("the top bar drops the dev build tag by design", () => {
     const top = readFileSync(new URL("../src/_shared/TopBar.jsx", import.meta.url), "utf8");
-    expect(top).toMatch(/\{BUILD_SHA\}/);
+    expect(top).not.toMatch(/\{BUILD_SHA\}/);
   });
 });
 

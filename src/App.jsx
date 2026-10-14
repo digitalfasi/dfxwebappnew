@@ -27,6 +27,7 @@ import NewSale from "@/modules/billing/new-sale/NewSale";
 import PricingSettings from "@/modules/billing/pricing-settings/PricingSettings";
 import ReportsAnalytics from "@/modules/reports/ReportsAnalytics";
 import SalesHistory from "@/modules/billing/sale-history/SalesHistory";
+import QuotationsHistory from "@/modules/billing/quotations/QuotationsHistory";
 import ComingSoon from "@/_shared/ComingSoon";
 import { subscribe, toast } from "@/_shared/toast";
 import { useScannerInput } from "@/modules/barcode/scanner";
@@ -45,6 +46,7 @@ const PAGES = {
   vendors: { title: "Purchase History", component: Vendors },
   "new-sale": { title: "New Sale", component: NewSale },
   "sales-history": { title: "Sales History", component: SalesHistory },
+  "quotations-history": { title: "Quotations", component: QuotationsHistory },
   "store-defaults": { title: "Store Defaults", component: PricingSettings },
   catalogue: { title: "Catalogue Studio", component: CatalogueStudio },
   marketing: { title: "Promotion Banners", component: PromotionBanners },

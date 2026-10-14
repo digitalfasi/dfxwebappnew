@@ -15,6 +15,7 @@ import { formatINR as formatWholeINR, istToday } from "@/_shared/utils";
 const formatINR = (v, opts = {}) => formatWholeINR(v, { minimumFractionDigits: 2, maximumFractionDigits: 2, ...opts });
 import { PnlWordCard } from "@/_shared/ui/verdict";
 import { billingService } from "@/modules/billing/billingService";
+import QuotationsHistory from "@/modules/billing/quotations/QuotationsHistory";
 
 const STATUS_TONE = { Paid: "success", Partial: "warning", Pending: "danger", Returned: "info", Canceled: "neutral" };
 const PAY_STATUS_TONE = { PAID: "success", PARTIAL: "warning", PENDING: "danger" };
@@ -72,7 +73,12 @@ function chargeLabel(type, value) {
   return "(fixed)";
 }
 
-export default function SalesHistory() {
+export default function SalesHistory({ onNavigate, intent }) {
+  const [activeTab, setActiveTab] = useState(() => (intent === "quotations" ? "quotations" : "sales"));
+  useEffect(() => {
+    if (intent === "quotations") setActiveTab("quotations");
+  }, [intent]);
+
   const scope = useRef(null);
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState("all");
@@ -227,20 +233,59 @@ export default function SalesHistory() {
 
   return (
     <div ref={scope} className="mx-auto max-w-[1280px]">
-      <div data-motion="page-head" className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold tracking-tight">Sales History</h2>
-          <p className="mt-1 max-w-[55ch] text-sm text-muted">
-            Every bill raised at the counter — filter, view the full breakdown, and reprint invoices.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" disabled={exporting} onClick={handleExport}>
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 15V3m0 12-4-4m4 4 4-4" /><path d="M2 17l.62 2.48A2 2 0 0 0 4.56 21h14.88a2 2 0 0 0 1.94-1.52L22 17" />
+      {/* View Switcher: Sales Invoices vs Quotations */}
+      <div className="mb-6 flex items-center gap-2 border-b border-line pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab("sales")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            activeTab === "sales"
+              ? "bg-accent/15 text-accent border border-accent/30 shadow-sm"
+              : "text-muted hover:text-fg hover:bg-card"
+          }`}
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <path d="M14 2v6h6" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
           </svg>
-          {exporting ? "Exporting…" : "Export Excel"}
-        </Button>
+          Sales Invoices
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("quotations")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            activeTab === "quotations"
+              ? "bg-accent/15 text-accent border border-accent/30 shadow-sm"
+              : "text-muted hover:text-fg hover:bg-card"
+          }`}
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.5L19 7.5V19a2 2 0 0 1-2 2z" />
+          </svg>
+          Quotations
+        </button>
       </div>
+
+      {activeTab === "quotations" ? (
+        <QuotationsHistory onNavigate={onNavigate} />
+      ) : (
+        <>
+          <div data-motion="page-head" className="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-extrabold tracking-tight">Sales History</h2>
+              <p className="mt-1 max-w-[55ch] text-sm text-muted">
+                Every bill raised at the counter — filter, view the full breakdown, and reprint invoices.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" disabled={exporting} onClick={handleExport}>
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 15V3m0 12-4-4m4 4 4-4" /><path d="M2 17l.62 2.48A2 2 0 0 0 4.56 21h14.88a2 2 0 0 0 1.94-1.52L22 17" />
+              </svg>
+              {exporting ? "Exporting…" : "Export Excel"}
+            </Button>
+          </div>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(220px,270px)_1fr]">
         <div className="grid gap-3">
@@ -447,6 +492,8 @@ export default function SalesHistory() {
           onClose={() => setSelectedId(null)}
           onChanged={load}
         />
+      )}
+        </>
       )}
     </div>
   );
